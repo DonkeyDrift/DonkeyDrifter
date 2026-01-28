@@ -20,7 +20,7 @@ THROTTLE_STOPPED_PWM = 0 # Stopped throttle config
 THROTTLE_REVERSE_PWM = -100 # Max reverse throttle config
 
 # Arduino serial port configuration
-ARDUINO_SERIAL_PORT = "/dev/ttyS6"  # Default serial port for Arduino
+ARDUINO_SERIAL_PORT = "/dev/ttyS4"  # Default serial port for Arduino
 ARDUINO_BAUDRATE = 115200           # Baud rate for serial communication
 ARDUINO_TIMEOUT = 1               # Serial read timeout in seconds
 ARDUINO_WRITE_TIMEOUT = 1       # Serial write timeout in seconds
