@@ -44,7 +44,7 @@ GYM_CONF = {
     "car_name" : "DKC",             # 小车名称
     "font_size" : 50                # 车名字体大小
     } 
-SIM_HOST = "127.0.0.1"  # 模拟器主机IP地址（默认：127.0.0.1）
+SIM_HOST = "127.0.0.1"  # 模拟器主机IP地址（默认：127.0.0.1-代表本机，若不在同一系统，则需指定模拟器主机IP地址）
 WEB_CONTROL_PORT = 8887  # 控制网页的端口号（默认：8887）
 USE_JOYSTICK_AS_DEFAULT = False  # 是否将摇杆作为默认输入设备（默认：否）
 
