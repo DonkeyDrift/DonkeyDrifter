@@ -1,45 +1,51 @@
 # """ 
-# My CAR CONFIG 
-
-# This file is read by your car application's manage.py script to change the car
-# performance
-
-# If desired, all config overrides can be specified here. 
-# The update operation will not touch this file.
+# myconfig.py（我的配置）
+# 本文件读取manage.py脚本，并在此基础上修改
+# 所有配置都可以在此修改，且程序更新不会修改本文件
 # """
+#--------------------------For DonkeyCar 驴车实车相关配置
+# 转向(控制舵机)
+STEERING_PWM_CHANNEL = 0    # 转向PWM通道（默认：0）
+STEERING_LEFT_PWM = -100    # 转向左PWM值（默认：-100）
+STEERING_RIGHT_PWM = 100    # 转向右PWM值（默认：100）
 
-#STEERING (aka servo)
-STEERING_PWM_CHANNEL = 0  # the Arduino pin to which steering is connected
-STEERING_LEFT_PWM = -100   # One end of steering 
-STEERING_RIGHT_PWM = 100   # Other end of the steering
+# 油门(控制电调>>电机)
+THROTTLE_PWM_CHANNEL = 1    # 油门PWM通道（默认：1）
+THROTTLE_FORWARD_PWM = 100  # 最大前进油门配置（默认：100）
+THROTTLE_STOPPED_PWM = 0    # 停止油门配置（默认：0）
+THROTTLE_REVERSE_PWM = -100 # 最大倒车油门配置（默认：-100）
 
-#THROTTLE (aka ESC)
-THROTTLE_PWM_CHANNEL = 1  # the Arduino pin to which throttle is connected
-THROTTLE_FORWARD_PWM = 100 # Max forward throttle config
-THROTTLE_STOPPED_PWM = 0 # Stopped throttle config 
-THROTTLE_REVERSE_PWM = -100 # Max reverse throttle config
+# 底盘控制器串口配置
+DRIVE_TRAIN_TYPE = "ARDUINO_CONTROLLER" # 底盘驱动器类型
+ARDUINO_SERIAL_PORT = "/dev/ttyS4"      # 默认串口端口（默认：/dev/ttyS4）
+ARDUINO_BAUDRATE = 115200               # 串口通信波特率（默认：115200）
+ARDUINO_TIMEOUT = 1                     # 串口读取超时时间（秒），默认：1.0
+ARDUINO_WRITE_TIMEOUT = 1               # 串口写入超时时间（秒），默认：1.0
 
-# Arduino serial port configuration
-ARDUINO_SERIAL_PORT = "/dev/ttyS4"  # Default serial port for Arduino
-ARDUINO_BAUDRATE = 115200           # Baud rate for serial communication
-ARDUINO_TIMEOUT = 1               # Serial read timeout in seconds
-ARDUINO_WRITE_TIMEOUT = 1       # Serial write timeout in seconds
+# 线程安全配置
+ARDUINO_LOCK_TIMEOUT = 1.0     # 最大等待锁的时间（秒），默认：1.0
+ARDUINO_MAX_RETRIES = 3        # 最大重试次数（默认：3）
 
-# Thread safety configuration
-ARDUINO_LOCK_TIMEOUT = 1.0          # Maximum time to wait for lock in seconds
-ARDUINO_MAX_RETRIES = 3             # Maximum number of retries for failed operations
+# 摄像头配置
+CAMERA_TYPE = "WEBCAM"   # 摄像头类型，需简要说明（如："WEBCAM"、"PICAM"等）
+CAMERA_INDEX = 0         # 摄像头索引（默认：0）
 
-# Debug settings
-ARDUINO_DEBUG = False               # Enable debug logging
-ARDUINO_VERBOSE = False             # Enable verbose logging
+# 智驾相关配置
+DRIVE_LOOP_HZ = 60      # 系统运行的循环频率（Hz）
+AI_THROTTLE_MULT = 1.1  # 自动驾驶时，油门的缩放因子（默认：1.1）
 
-CAMERA_TYPE = "WEBCAM"   # pygame camera backend (SDL/v4l2)
-CAMERA_INDEX = 0        # Select /dev/videoX index. Try 0,1 if needed
-# BGR2RGB = True           # Convert OpenCV BGR frames to RGB for pipeline
+#--------------------------For DonkeySim 驴车模拟器相关配置
+# DonkeySim 驴车模拟器相关配置
+DONKEY_GYM = True           # 是否使用DonkeySim模拟器（默认：True）
+DONKEY_SIM_PATH = "remote"  # DonkeySim模拟器的安装路基（默认："remote"，需要先运行DonkeySim模拟器）
+GYM_CONF = { 
+    "body_style" : "donkey",        # 车子模型（"donkey" | "bare" | "car01" | "f1" | "cybertruck")
+    "body_rgb" : (128, 128, 128),   # 车子颜色(红, 绿, 蓝)，数值范围（0-255）
+    "car_name" : "DKC",             # 小车名称
+    "font_size" : 50                # 车名字体大小
+    } 
+SIM_HOST = "127.0.0.1"  # 模拟器主机IP地址（默认：127.0.0.1）
+WEB_CONTROL_PORT = 8887  # 控制网页的端口号（默认：8887）
+USE_JOYSTICK_AS_DEFAULT = False  # 是否将摇杆作为默认输入设备（默认：否）
 
-DRIVE_TRAIN_TYPE = "ARDUINO_CONTROLLER"
-# DRIVE_TRAIN_TYPE = "PIGPIO_PWM"
-
-DRIVE_LOOP_HZ = 60      # the vehicle loop will pause if faster than this speed.
-
-AI_THROTTLE_MULT = 1.1             # this multiplier will scale every throttle value for all output from NN models
+#--------------------------End 结尾
