@@ -447,12 +447,14 @@ class ShowPredictionPlots(BaseCommand):
         from pathlib import Path
         from donkeycar.pipeline.types import TubDataset
 
-        model_path = os.path.expanduser(model_path)
-        model = dk.utils.get_model_by_type(model_type, cfg)
-        # This just gets us the text for the plot title:
-        if model_type is None:
-            model_type = cfg.DEFAULT_MODEL_TYPE
-        model.load(model_path)
+        model = None
+        if model_path:
+            model_path = os.path.expanduser(model_path)
+            model = dk.utils.get_model_by_type(model_type, cfg)
+            # This just gets us the text for the plot title:
+            if model_type is None:
+                model_type = cfg.DEFAULT_MODEL_TYPE
+            model.load(model_path)
 
         user_angles = []
         user_throttles = []
@@ -460,36 +462,45 @@ class ShowPredictionPlots(BaseCommand):
         pilot_throttles = []
 
         base_path = Path(os.path.expanduser(tub_paths)).absolute().as_posix()
+        seq_size = model.seq_size() if model else 0
         dataset = TubDataset(config=cfg, tub_paths=[base_path],
-                             seq_size=model.seq_size())
+                             seq_size=seq_size)
         records = dataset.get_records()[:limit]
         bar = IncrementalBar('Inferencing', max=len(records))
 
-        output_names = list(model.output_shapes()[1].keys())
         for tub_record in records:
-            input_dict = model.x_transform(
-                tub_record, lambda x: normalize_image(x))
-            pilot_angle, pilot_throttle = \
-                model.inference_from_dict(input_dict)
+            if model:
+                input_dict = model.x_transform(
+                    tub_record, lambda x: normalize_image(x))
+                pilot_angle, pilot_throttle = \
+                    model.inference_from_dict(input_dict)
+                pilot_angles.append(pilot_angle)
+                pilot_throttles.append(pilot_throttle)
+
             user_angle = tub_record.underlying['user/angle']
             user_throttle = tub_record.underlying['user/throttle']
             user_angles.append(user_angle)
             user_throttles.append(user_throttle)
-            pilot_angles.append(pilot_angle)
-            pilot_throttles.append(pilot_throttle)
             bar.next()
 
         bar.finish()
-        angles_df = pd.DataFrame({'user_angle': user_angles,
-                                  'pilot_angle': pilot_angles})
-        throttles_df = pd.DataFrame({'user_throttle': user_throttles,
-                                     'pilot_throttle': pilot_throttles})
+        
+        if model:
+            angles_df = pd.DataFrame({'user_angle': user_angles,
+                                      'pilot_angle': pilot_angles})
+            throttles_df = pd.DataFrame({'user_throttle': user_throttles,
+                                         'pilot_throttle': pilot_throttles})
+        else:
+            angles_df = pd.DataFrame({'user_angle': user_angles})
+            throttles_df = pd.DataFrame({'user_throttle': user_throttles})
+
         if dark:
             plt.style.use('dark_background')
         fig = plt.figure('Tub Plot')
         fig.set_layout_engine('tight')
-        title = f"Model Predictions\nTubs: {tub_paths}\nModel: {model_path}\n" \
-                f"Type: {model_type}"
+        title = f"Tub Plot\nTubs: {tub_paths}"
+        if model:
+            title += f"\nModel: {model_path}\nType: {model_type}"
         fig.suptitle(title)
         ax1 = fig.add_subplot(211)
         ax2 = fig.add_subplot(212)
@@ -497,8 +508,9 @@ class ShowPredictionPlots(BaseCommand):
         throttles_df.plot(ax=ax2)
         ax1.legend(loc=4)
         ax2.legend(loc=4)
-        plt.savefig(model_path + '_pred.png')
-        logger.info(f'Saving tubplot at {model_path}_pred.png')
+        if model_path:
+            plt.savefig(model_path + '_pred.png')
+            logger.info(f'Saving tubplot at {model_path}_pred.png')
         if not noshow:
             plt.show()
 
