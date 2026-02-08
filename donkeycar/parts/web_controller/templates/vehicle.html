@@ -104,6 +104,76 @@
               {% end %}
             </select>
           </div>
+
+          <br/>
+          <div class="panel panel-default" id="pid_panel">
+            <div class="panel-heading">PID / 回中 / 加速度调节</div>
+            <ul class="list-group">
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">Kp</div>
+                  <div class="col-xs-6">
+                    <input id="pid_kp" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="pid_kp"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">Ki</div>
+                  <div class="col-xs-6">
+                    <input id="pid_ki" type="range" min="0" max="1" step="0.01" class="form-control"/>
+                    <small>当前: <span data-for="pid_ki"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">Kd</div>
+                  <div class="col-xs-6">
+                    <input id="pid_kd" type="range" min="0" max="2" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="pid_kd"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">回中速度 (角/秒)</div>
+                  <div class="col-xs-6">
+                    <input id="recenter_rate" type="range" min="0" max="2" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="recenter_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">转向角速度 (角/秒)</div>
+                  <div class="col-xs-6">
+                    <input id="steer_rate" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="steer_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">加速度变化率</div>
+                  <div class="col-xs-6">
+                    <input id="accel_rate" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="accel_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">刹车变化率</div>
+                  <div class="col-xs-6">
+                    <input id="brake_rate" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="brake_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
         </div>
       </div> <!-- end joystick-column -->
       <div id="joystick-padding"></div>

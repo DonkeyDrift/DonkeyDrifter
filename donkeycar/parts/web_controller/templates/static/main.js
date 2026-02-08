@@ -27,8 +27,29 @@ var driveHandler = new function() {
             "w3": false,
             "w4": false,
             "w5": false,
+        },
+        // 参数可通过滑块调整并持久化
+        'params': {
+            'pid': {
+                'kp': 0.8,
+                'ki': 0.0,
+                'kd': 0.15,
+            },
+            'recenterRate': 0.35, // 每秒回中速度（角度/秒）
+            'steerRate': 1.2,     // 左右方向键按下时角速度（角度/秒）
+            'accelRate': 1.0,     // 每秒加速率（油门单位/秒）
+            'brakeRate': 1.2      // 每秒减速/刹车率
+        },
+        // 方向键状态
+        'keyInput': {
+            'left': false,
+            'right': false,
+            'up': false,
+            'down': false,
         }
     }
+
+    const PARAM_STORAGE_KEY = 'dkc_drive_params';
 
     var joystick_options = {}
     var joystickLoopRunning=false;
@@ -42,11 +63,132 @@ var driveHandler = new function() {
     var driveURL = ""
     var socket
 
+    // ---------- 参数持久化 ----------
+    var loadPersistedParams = function() {
+      try {
+        const raw = localStorage.getItem(PARAM_STORAGE_KEY);
+        if(!raw) { return; }
+        const data = JSON.parse(raw);
+        if(data && data.params) {
+          updateState(state.params, data.params);
+        }
+      } catch (err) {
+        console.warn('Failed to load params', err);
+      }
+    }
+
+    var savePersistedParams = function() {
+      try {
+        localStorage.setItem(PARAM_STORAGE_KEY, JSON.stringify({ params: state.params }));
+      } catch (err) {
+        console.warn('Failed to save params', err);
+      }
+    }
+
+    // ---------- 键盘方向控制循环 ----------
+    var lastArrowLoopTs = Date.now();
+
+    var arrowControlActive = false;
+
+    var arrowControlLoop = function() {
+      setTimeout(function() {
+        const now = Date.now();
+        const dt = Math.max((now - lastArrowLoopTs) / 1000.0, 0.001);
+        lastArrowLoopTs = now;
+        let changed = false;
+        const anyKey = state.keyInput.left || state.keyInput.right || state.keyInput.up || state.keyInput.down;
+
+        if(anyKey) { arrowControlActive = true; }
+        if(!arrowControlActive) {
+          arrowControlLoop();
+          return;
+        }
+
+        // 目标角速度积分（左右键）
+        if(state.keyInput.left && !state.keyInput.right) {
+          state.tele.user.angle = Math.max(state.tele.user.angle - state.params.steerRate * dt, -1);
+          changed = true;
+        } else if(state.keyInput.right && !state.keyInput.left) {
+          state.tele.user.angle = Math.min(state.tele.user.angle + state.params.steerRate * dt, 1);
+          changed = true;
+        } else {
+          // 回中
+          if(Math.abs(state.tele.user.angle) > 0.001) {
+            const sign = Math.sign(state.tele.user.angle);
+            const delta = state.params.recenterRate * dt;
+            const next = state.tele.user.angle - sign * delta;
+            // 过零保护
+            state.tele.user.angle = (sign > 0) ? Math.max(next, 0) : Math.min(next, 0);
+            changed = true;
+          }
+        }
+
+        // PID 平滑：将目标角度误差通过 PID 修正（模拟竞速手感）
+        const targetAngle = state.tele.user.angle;
+        pidState.error = targetAngle - pidState.output;
+        pidState.integral += pidState.error * dt;
+        const derivative = (pidState.error - pidState.prevError) / dt;
+        const control = state.params.pid.kp * pidState.error + state.params.pid.ki * pidState.integral + state.params.pid.kd * derivative;
+        pidState.output = Math.max(Math.min(pidState.output + control, 1), -1);
+        pidState.prevError = pidState.error;
+
+        if(Math.abs(pidState.output - state.tele.user.angle) > 0.0001) {
+          state.tele.user.angle = pidState.output;
+          changed = true;
+        }
+
+        // 油门增量与松手回零
+        if(state.keyInput.up && !state.keyInput.down) {
+          state.tele.user.throttle = limitedThrottle(state.tele.user.throttle + state.params.accelRate * dt);
+          changed = true;
+        } else if(state.keyInput.down && !state.keyInput.up) {
+          state.tele.user.throttle = limitedThrottle(state.tele.user.throttle - state.params.brakeRate * dt);
+          changed = true;
+        } else {
+          // 松手自动减速
+          if(Math.abs(state.tele.user.throttle) > 0.001) {
+            const signT = Math.sign(state.tele.user.throttle);
+            const decel = state.params.accelRate * dt;
+            const nextT = state.tele.user.throttle - signT * decel;
+            state.tele.user.throttle = (signT > 0) ? Math.max(nextT, 0) : Math.min(nextT, 0);
+            changed = true;
+          }
+        }
+
+        // 若角度与油门均回到零且无按键，停止箭控干预
+        if(!anyKey && Math.abs(state.tele.user.angle) < 0.001 && Math.abs(state.tele.user.throttle) < 0.001) {
+          arrowControlActive = false;
+          pidState.output = 0;
+          pidState.error = 0;
+          pidState.prevError = 0;
+          pidState.integral = 0;
+        }
+
+        if(changed) {
+          postDrive(['angle','throttle']);
+        }
+
+        arrowControlLoop();
+      }, 50);
+    }
+
+    var pidState = {
+      error: 0,
+      prevError: 0,
+      integral: 0,
+      output: 0,
+    }
+
     this.load = function() {
       driveURL = '/drive'
       socket = new WebSocket('ws://' + location.host + '/wsDrive');
 
+      loadPersistedParams();
+
       setBindings()
+
+      bindParamInputs();
+      arrowControlLoop();
 
       joystick_element = document.getElementById('joystick_container');
       joystick_options = {
@@ -122,6 +264,9 @@ var driveHandler = new function() {
       };
 
       $(document).keydown(function(e) {
+          // 阻止方向键滚动页面
+          if([37,38,39,40].includes(e.which)) { e.preventDefault(); }
+
           if(e.which == 32) { toggleBrake() }  // 'space'  brake
           if(e.which == 82) { toggleRecording() }  // 'r'  toggle recording
           if(e.which == 73) { throttleUp() }  // 'i'  throttle up
@@ -132,6 +277,20 @@ var driveHandler = new function() {
           if(e.which == 85) { updateDriveMode('user') } // 'u' turn on manual mode (_U_user)
           if(e.which == 83) { updateDriveMode('local_angle') } // 's' turn on local mode (auto _S_teering)
           if(e.which == 77) { toggleDriveMode() } // 'm' toggle drive mode (_M_ode)
+
+          // 方向键状态（增量控制 + PID）
+          if(e.which == 37) { state.keyInput.left = true; }   // left
+          if(e.which == 39) { state.keyInput.right = true; }  // right
+          if(e.which == 38) { state.keyInput.up = true; }     // up
+          if(e.which == 40) { state.keyInput.down = true; }   // down
+      });
+
+      $(document).keyup(function(e) {
+          if([37,38,39,40].includes(e.which)) { e.preventDefault(); }
+          if(e.which == 37) { state.keyInput.left = false; }
+          if(e.which == 39) { state.keyInput.right = false; }
+          if(e.which == 38) { state.keyInput.up = false; }
+          if(e.which == 40) { state.keyInput.down = false; }
       });
 
       $('#mode_select').on('change', function () {
@@ -190,6 +349,57 @@ var driveHandler = new function() {
       });
     };
 
+    var paramInputMap = [
+      { id: 'pid_kp', path: ['pid','kp'], min: 0, max: 3, step: 0.05 },
+      { id: 'pid_ki', path: ['pid','ki'], min: 0, max: 1, step: 0.01 },
+      { id: 'pid_kd', path: ['pid','kd'], min: 0, max: 2, step: 0.05 },
+      { id: 'recenter_rate', path: ['recenterRate'], min: 0, max: 2, step: 0.05 },
+      { id: 'steer_rate', path: ['steerRate'], min: 0, max: 3, step: 0.05 },
+      { id: 'accel_rate', path: ['accelRate'], min: 0, max: 3, step: 0.05 },
+      { id: 'brake_rate', path: ['brakeRate'], min: 0, max: 3, step: 0.05 },
+    ];
+
+    var setDeepValue = function(root, path, val) {
+      let cur = root;
+      for(let i = 0; i < path.length - 1; i++) {
+        cur = cur[path[i]];
+      }
+      cur[path[path.length - 1]] = val;
+    }
+
+    var getDeepValue = function(root, path) {
+      let cur = root;
+      path.forEach(p => { cur = cur[p]; });
+      return cur;
+    }
+
+    var applyParamsToUI = function() {
+      paramInputMap.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if(!el) { return; }
+        el.min = cfg.min;
+        el.max = cfg.max;
+        el.step = cfg.step;
+        el.value = getDeepValue(state.params, cfg.path);
+        const label = document.querySelector(`[data-for="${cfg.id}"]`);
+        if(label) { label.innerText = el.value; }
+      });
+    }
+
+    var bindParamInputs = function() {
+      applyParamsToUI();
+      paramInputMap.forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        if(!el) { return; }
+        el.addEventListener('input', function(evt) {
+          const val = parseFloat(evt.target.value);
+          setDeepValue(state.params, cfg.path, val);
+          const label = document.querySelector(`[data-for="${cfg.id}"]`);
+          if(label) { label.innerText = val; }
+          savePersistedParams();
+        });
+      });
+    }
 
     function bindNipple(manager) {
       manager.on('start', function(evt, data) {
@@ -220,6 +430,8 @@ var driveHandler = new function() {
     }
 
     var updateUI = function() {
+      applyParamsToUI();
+
       $("#throttleInput").val(state.tele.user.throttle);
       $("#angleInput").val(state.tele.user.angle);
       $('#mode_select').val(state.driveMode);
