@@ -140,8 +140,15 @@ class LocalWebController(tornado.web.Application):
 
         settings = {'debug': True}
         super().__init__(handlers, **settings)
-        logger.info(f"You can now go to {gethostname()}.local:{port} to "
-                    f"drive your car.")
+        url = f"http://localhost:{port}"
+        logger.info(f"You can now go to {url} to drive your car.")
+        
+        # Automatically open browser
+        import webbrowser
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            logger.warning(f"Failed to open browser automatically: {e}")
 
     def update(self):
         """ Start the tornado webserver. """
