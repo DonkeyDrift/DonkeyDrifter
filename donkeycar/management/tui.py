@@ -1,0 +1,398 @@
+#!/usr/bin/env python3
+"""
+Donkey Car 交互式管理终端 (DonkeyUI)
+基于 rich 和 prompt_toolkit 构建
+"""
+import sys
+import os
+import json
+import subprocess
+import time
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Callable
+from pathlib import Path
+
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+from rich.prompt import Prompt, Confirm, IntPrompt
+from rich.align import Align
+from rich import box
+from rich.markdown import Markdown
+
+# 初始化 Console
+console = Console()
+
+# -----------------------------------------------------------------------------
+# 历史记录管理
+# -----------------------------------------------------------------------------
+class HistoryManager:
+    def __init__(self, history_file: str = ".donkey_history"):
+        self.history_file = Path(history_file)
+        self.history = self._load()
+
+    def _load(self) -> Dict[str, Any]:
+        if self.history_file.exists():
+            try:
+                with open(self.history_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def save(self):
+        try:
+            with open(self.history_file, "w", encoding="utf-8") as f:
+                json.dump(self.history, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            console.print(f"[red]保存历史记录失败: {e}[/red]")
+
+    def get_last_params(self, command_name: str) -> Dict[str, Any]:
+        return self.history.get("commands", {}).get(command_name, {})
+
+    def update_last_params(self, command_name: str, params: Dict[str, Any]):
+        if "commands" not in self.history:
+            self.history["commands"] = {}
+        self.history["commands"][command_name] = params
+        self.save()
+
+    def add_command_log(self, command_str: str):
+        if "log" not in self.history:
+            self.history["log"] = []
+        self.history["log"].append({
+            "timestamp": datetime.now().isoformat(),
+            "command": command_str
+        })
+        # 保持最近 50 条
+        if len(self.history["log"]) > 50:
+            self.history["log"] = self.history["log"][-50:]
+        self.save()
+
+# -----------------------------------------------------------------------------
+# 命令定义基类
+# -----------------------------------------------------------------------------
+class CommandOption:
+    def __init__(self, name: str, prompt_text: str, default: Any = None, required: bool = True, 
+                 validator: Callable[[str], bool] = None, help_text: str = ""):
+        self.name = name
+        self.prompt_text = prompt_text
+        self.default = default
+        self.required = required
+        self.validator = validator
+        self.help_text = help_text
+
+class DonkeyCommand:
+    def __init__(self, name: str, description: str, category: str, is_favorite: bool = False):
+        self.name = name
+        self.description = description
+        self.category = category
+        self.is_favorite = is_favorite
+        self.options: List[CommandOption] = []
+        self.history_mgr = HistoryManager()
+
+    def get_command_line(self, params: Dict[str, Any]) -> List[str]:
+        raise NotImplementedError
+
+    def execute(self):
+        console.clear()
+        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        
+        last_params = self.history_mgr.get_last_params(self.name)
+        current_params = {}
+
+        # 1. 收集参数
+        for opt in self.options:
+            default_val = last_params.get(opt.name, opt.default)
+            prompt_text = f"{opt.prompt_text}"
+            if opt.help_text:
+                console.print(f"[dim]{opt.help_text}[/dim]")
+            
+            while True:
+                val = Prompt.ask(prompt_text, default=str(default_val) if default_val is not None else None)
+                if not val and opt.required and default_val is None:
+                    console.print("[red]此项为必填项[/red]")
+                    continue
+                
+                if opt.validator and val:
+                    if not opt.validator(val):
+                        console.print(f"[red]输入无效，请重新输入[/red]")
+                        continue
+                
+                current_params[opt.name] = val
+                break
+
+        # 2. 生成预览
+        cmd_list = self.get_command_line(current_params)
+        cmd_str = " ".join(cmd_list)
+        
+        console.print("\n[bold yellow]命令预览:[/bold yellow]")
+        console.print(Panel(f"[green]{cmd_str}[/green]", title="Shell Command"))
+
+        # 3. 确认执行
+        console.print("([green]y[/green]:执行 [red]n[/red]:取消 [blue]c[/blue]:复制命令)")
+        action = Prompt.ask(
+            "请选择操作", 
+            choices=["y", "n", "c", "copy"], 
+            default="y",
+            show_choices=False
+        )
+
+        if action == "copy":
+            import pyperclip
+            try:
+                pyperclip.copy(cmd_str)
+                console.print("[green]✓ 命令已复制到剪贴板[/green]")
+            except ImportError:
+                console.print("[red]✗ 未安装 pyperclip，无法复制。请手动复制上方命令。[/red]")
+            Prompt.ask("按回车键返回...")
+            return
+
+        if action != "y":
+            console.print("[yellow]操作已取消[/yellow]")
+            time.sleep(1)
+            return
+
+        # 4. 执行并记录
+        self.history_mgr.update_last_params(self.name, current_params)
+        self.history_mgr.add_command_log(cmd_str)
+        
+        console.print(f"\n[bold cyan]>> [{datetime.now().strftime('%H:%M:%S')}] 开始执行...[/bold cyan]")
+        try:
+            # 使用 subprocess.run 实时显示输出有点麻烦，这里直接让子进程接管 stdio
+            # 或者使用 Popen 读取 pipe
+            process = subprocess.Popen(
+                cmd_list, 
+                stdout=sys.stdout, 
+                stderr=sys.stderr,
+                text=True
+            )
+            process.wait()
+            
+            if process.returncode == 0:
+                console.print(f"\n[bold green]✓ 执行成功 (Exit Code: 0)[/bold green]")
+            else:
+                console.print(f"\n[bold red]✗ 执行失败 (Exit Code: {process.returncode})[/bold red]")
+                console.print(f"[dim]请检查上方错误日志[/dim]")
+
+        except Exception as e:
+            console.print(f"\n[bold red]✗ 发生异常: {e}[/bold red]")
+        
+        Prompt.ask("\n按回车键返回菜单...")
+
+# -----------------------------------------------------------------------------
+# 具体命令实现
+# -----------------------------------------------------------------------------
+
+class CreateCarCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("createcar", "创建新的 DonkeyCar 项目目录", "管理", is_favorite=True)
+        self.options = [
+            CommandOption("folder", "项目目录名称", default="mycar", help_text="将在 ~/projects/ 下创建此目录"),
+            CommandOption("template", "模板名称", default=None, required=False, help_text="可选模板: basic, square 等 (留空使用默认)"),
+            CommandOption("overwrite", "是否覆盖", default="n", validator=lambda x: x.lower() in ['y', 'n'], help_text="如果目录存在是否覆盖 (y/n)")
+        ]
+
+    def get_command_line(self, params):
+        base_dir = os.path.expanduser("~/projects")
+        full_path = os.path.join(base_dir, params["folder"])
+        cmd = ["donkey", "createcar", "--path", full_path]
+        if params.get("template"):
+            cmd.extend(["--template", params["template"]])
+        if params.get("overwrite", "").lower() == 'y':
+            cmd.append("--overwrite")
+        return cmd
+
+class FindCarCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("findcar", "查找局域网内的 DonkeyCar", "管理")
+    
+    def get_command_line(self, params):
+        return ["donkey", "findcar"]
+
+class TrainCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("train", "训练自动驾驶模型", "训练", is_favorite=True)
+        self.options = [
+            CommandOption("tub", "数据目录 (Tub)", default="./data", help_text="包含训练数据的目录"),
+            CommandOption("model", "模型输出路径", default="./models/mypilot.h5", help_text="训练后的模型保存路径"),
+            CommandOption("type", "模型类型", default="linear", help_text="可选: linear, categorical, rnn, imu, behavior, localizer, 3d"),
+            CommandOption("transfer", "迁移学习模型", default=None, required=False, help_text="基础模型路径 (可选)")
+        ]
+
+    def get_command_line(self, params):
+        cmd = ["donkey", "train", "--tub", params["tub"], "--model", params["model"], "--type", params["type"]]
+        if params.get("transfer"):
+            cmd.extend(["--transfer", params["transfer"]])
+        return cmd
+
+class DriveCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("drive", "启动驾驶/仿真模式", "仿真", is_favorite=True)
+        self.options = [
+            CommandOption("model", "加载模型路径", default=None, required=False, help_text="要运行的模型文件 (可选)"),
+            CommandOption("js", "使用物理手柄", default="n", validator=lambda x: x.lower() in ['y', 'n']),
+            CommandOption("type", "模型类型", default=None, required=False, help_text="如果指定了模型，需匹配其类型")
+        ]
+
+    def get_command_line(self, params):
+        # 优先使用当前目录的 manage.py
+        if os.path.exists("manage.py"):
+            cmd = [sys.executable, "manage.py", "drive"]
+        else:
+            cmd = ["donkey", "ui"] # Fallback, 这里的逻辑可能需要根据实际情况调整
+
+        if params.get("model"):
+            cmd.extend(["--model", params["model"]])
+        if params.get("js", "").lower() == 'y':
+            cmd.append("--js")
+        if params.get("type"):
+            cmd.extend(["--type", params["type"]])
+        return cmd
+
+class CalibrateCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("calibrate", "校准转向和油门", "工具")
+        self.options = [
+            CommandOption("channel", "通道 (Channel)", default="0", help_text="PWM 通道 (0-15)"),
+            CommandOption("bus", "总线 (Bus)", default=None, required=False)
+        ]
+
+    def get_command_line(self, params):
+        cmd = ["donkey", "calibrate", "--channel", params["channel"]]
+        if params.get("bus"):
+            cmd.extend(["--bus", params["bus"]])
+        return cmd
+
+class TubPlotCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("tubplot", "绘制 Tub 数据图表", "工具", is_favorite=True)
+        self.options = [
+            CommandOption("tub", "Tub 路径", default="./data"),
+            CommandOption("output", "输出文件名", default=None, required=False)
+        ]
+
+    def get_command_line(self, params):
+        cmd = ["donkey", "tubplot", "--tub", params["tub"]]
+        if params.get("output"):
+            cmd.extend(["--output", params["output"]])
+        return cmd
+
+class MakeMovieCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("makemovie", "从 Tub 数据生成视频", "工具")
+        self.options = [
+            CommandOption("tub", "Tub 路径", default="./data"),
+            CommandOption("out", "输出视频文件", default="tub_movie.mp4"),
+            CommandOption("model", "模型可视化", default=None, required=False, help_text="加载模型以显示 Pilot 覆盖层")
+        ]
+
+    def get_command_line(self, params):
+        cmd = ["donkey", "makemovie", "--tub", params["tub"], "--out", params["out"]]
+        if params.get("model"):
+            cmd.extend(["--model", params["model"]])
+        return cmd
+
+# -----------------------------------------------------------------------------
+# 菜单系统
+# -----------------------------------------------------------------------------
+class MenuSystem:
+    def __init__(self):
+        self.commands: Dict[str, List[DonkeyCommand]] = {
+            "管理": [CreateCarCommand(), FindCarCommand()],
+            "训练": [TrainCommand()],
+            "仿真": [DriveCommand()],
+            "工具": [CalibrateCommand(), TubPlotCommand(), MakeMovieCommand()]
+        }
+        self.flat_commands = [cmd for sublist in self.commands.values() for cmd in sublist]
+
+    def show_main_menu(self):
+        while True:
+            console.clear()
+            self._print_header()
+            
+            # 显示最近使用记录 (可选)
+            # self._print_recent_history()
+
+            table = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta")
+            table.add_column("No.", style="cyan", width=4, justify="right")
+            table.add_column("分类", style="bold yellow", width=8)
+            table.add_column("功能名称", style="green", width=20)
+            table.add_column("描述", style="dim")
+
+            menu_items = []
+            idx = 1
+            
+            for category, cmds in self.commands.items():
+                first = True
+                for cmd in cmds:
+                    # 标记常用功能
+                    name_display = f"{cmd.name} [*]" if cmd.is_favorite else cmd.name
+                    cat_display = category if first else ""
+                    
+                    table.add_row(str(idx), cat_display, name_display, cmd.description)
+                    menu_items.append(cmd)
+                    idx += 1
+                    first = False
+                table.add_section()
+
+            console.print(table)
+            console.print("[dim]提示: 输入编号选择功能，输入 '?' 显示帮助，输入 '0' 退出[/dim]")
+
+            choice = Prompt.ask("\n请选择", default="0")
+
+            if choice == "0":
+                if Confirm.ask("确定要退出吗?"):
+                    console.print("再见! 👋")
+                    sys.exit(0)
+            elif choice == "?":
+                self.show_help()
+            elif choice.isdigit():
+                c_idx = int(choice) - 1
+                if 0 <= c_idx < len(menu_items):
+                    menu_items[c_idx].execute()
+                else:
+                    console.print(f"[red]无效的编号: {choice}[/red]")
+                    time.sleep(1)
+            else:
+                console.print(f"[red]无效输入[/red]")
+                time.sleep(1)
+
+    def _print_header(self):
+        title = Text("Donkey Car 交互式管理终端", style="bold white on blue", justify="center")
+        console.print(Panel(title, style="blue"))
+        console.print(f"[dim]当前目录: {os.getcwd()}[/dim]\n")
+
+    def show_help(self):
+        console.clear()
+        md = Markdown("""
+# 帮助系统
+
+此工具旨在简化 Donkey Car 的命令行操作。
+
+## 操作指南
+- **输入编号**: 直接输入菜单左侧的数字进入相应功能。
+- **参数输入**: 进入功能后，根据提示输入参数。[]内为默认值，直接回车即可使用。
+- **常用功能**: 带 `*` 标记的为常用功能。
+- **历史记录**: 您的输入会被自动记录，下次使用时作为默认值。
+
+## 常见问题
+- 如果 `donkey` 命令未找到，请确保已激活 conda 环境。
+- 只有在确认页面输入 `y` 才会真正执行命令。
+        """)
+        console.print(Panel(md, title="帮助说明", border_style="green"))
+        Prompt.ask("按回车键返回...")
+
+# -----------------------------------------------------------------------------
+# 入口
+# -----------------------------------------------------------------------------
+def main():
+    try:
+        app = MenuSystem()
+        app.show_main_menu()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]程序已中断[/yellow]")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()

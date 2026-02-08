@@ -610,6 +610,12 @@ class Gui(BaseCommand):
         main()
 
 
+class Tui(BaseCommand):
+    def run(self, args):
+        from donkeycar.management.tui import main
+        main()
+
+
 def execute_from_command_line():
     """
     This is the function linked to the "donkey" terminal command.
@@ -627,6 +633,7 @@ def execute_from_command_line():
         'train': Train,
         'models': ModelDatabase,
         'ui': Gui,
+        'tui': Tui,
     }
 
     args = sys.argv[:]
@@ -635,6 +642,10 @@ def execute_from_command_line():
         command = commands[args[1]]
         c = command()
         c.run(args[2:])
+    elif len(args) == 1:
+        # Default to TUI
+        c = Tui()
+        c.run([])
     else:
         dk.utils.eprint('Usage: The available commands are:')
         dk.utils.eprint(list(commands.keys()))
