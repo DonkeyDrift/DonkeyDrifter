@@ -30,6 +30,95 @@ class OnlineTrainer:
         with open(self.log_file, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] [{status}] {message}\n")
 
+    def _get_interactive_model_name(self, no_interactive=False):
+        """
+        获取交互式模型名称，支持配置文件回写和自动后缀追加
+        """
+        current_model_name = self.get_config_value("model_name")
+        
+        if no_interactive:
+            # 非交互模式，直接使用配置值并添加后缀
+            final_model_name = self._get_auto_increment_model_name(current_model_name)
+            console.print(f"[dim]非交互模式，使用模型名称: {final_model_name}[/dim]")
+            return final_model_name
+        
+        # 交互模式
+        console.print(f"\n[bold blue]模型配置[/bold blue]")
+        console.print(f"当前配置文件: {self.config_file}")
+        
+        # 提示用户输入，显示当前值作为默认值
+        user_input = Prompt.ask(
+            f"请输入模型名称",
+            default=current_model_name
+        )
+        
+        # 如果用户输入了新的名称，更新配置文件
+        if user_input != current_model_name:
+            try:
+                # 原子性更新配置文件
+                self.config.set("Remote", "model_name", user_input)
+                with open(self.config_file, 'w') as f:
+                    self.config.write(f)
+                console.print(f"[green]✓ 配置文件已更新: model_name = {user_input}[/green]")
+                self._log(f"Updated config model_name from '{current_model_name}' to '{user_input}'")
+            except Exception as e:
+                self._log(f"Failed to update config file: {e}", success=False)
+                raise RuntimeError(f"配置文件写入失败: {e}")
+        
+        # 生成最终带后缀的模型名称
+        final_model_name = self._get_auto_increment_model_name(user_input)
+        console.print(f"最终模型名称: [bold]{final_model_name}[/bold]")
+        
+        return final_model_name
+
+    def _get_auto_increment_model_name(self, base_name=None):
+        """
+        生成自动递增的模型名称，格式：{base_name}-YYMMDD-XXX
+        """
+        if base_name is None:
+            base_name = self.get_config_value("model_name")
+        
+        today = datetime.now()
+        today_str = today.strftime("%y%m%d")
+        
+        # 检查模型目录是否存在
+        models_dir = "./models"
+        if not os.path.exists(models_dir):
+            os.makedirs(models_dir)
+        
+        # 查找今天已有的模型文件
+        max_seq = 0
+        pattern = re.compile(rf"^{re.escape(base_name)}-{re.escape(today_str)}-(\d{{3}})\.tflite$")
+        
+        for filename in os.listdir(models_dir):
+            match = pattern.match(filename)
+            if match:
+                seq = int(match.group(1))
+                max_seq = max(max_seq, seq)
+        
+        # 如果序号超过999，递增日期
+        if max_seq >= 999:
+            # 寻找下一个可用日期
+            next_day = today
+            while True:
+                next_day = next_day.replace(day=next_day.day + 1)
+                next_day_str = next_day.strftime("%y%m%d")
+                
+                # 检查新日期是否有文件
+                new_pattern = re.compile(rf"^{re.escape(base_name)}-{re.escape(next_day_str)}-(\d{{3}})\.tflite$")
+                has_files = any(new_pattern.match(f) for f in os.listdir(models_dir))
+                
+                if not has_files:
+                    today_str = next_day_str
+                    max_seq = 0
+                    break
+        
+        next_seq = max_seq + 1
+        final_model_name = f"{base_name}-{today_str}-{next_seq:03d}"
+        
+        self._log(f"Generated model name: {final_model_name}")
+        return final_model_name
+
     def _load_config(self):
         config = configparser.ConfigParser()
         if not os.path.exists(self.config_file):
@@ -179,9 +268,10 @@ class OnlineTrainer:
         
         return remote_path
 
-    def run_remote_training(self, remote_tar_path):
+    def run_remote_training(self, remote_tar_path, model_name=None):
         remote_dir = self.get_config_value("remote_dir_base")
-        model_name = self.get_config_value("model_name")
+        if model_name is None:
+            model_name = self.get_config_value("model_name")
         python_path = self.get_config_value("python_path")
         
         # Resolve python path if needed (e.g. if it starts with ~)
@@ -381,28 +471,31 @@ class OnlineTrainer:
             except Exception as e:
                 self._log(f"Cleanup failed: {e}", success=False)
 
-    def run(self):
+    def run(self, no_interactive=False):
         tar_file = None
         remote_tar_path = None
         try:
             # 1. Config (Loaded in init)
             
-            # 2. Package
+            # 2. Get interactive model name
+            final_model_name = self._get_interactive_model_name(no_interactive)
+            
+            # 3. Package
             tar_file, _ = self.package_data()
             
-            # 3. Connect
+            # 4. Connect
             self.connect_ssh()
             
-            # 4. Upload
+            # 5. Upload
             remote_tar_path = self.upload_data(tar_file, os.path.basename(tar_file))
             
-            # 5. Train
-            self.run_remote_training(remote_tar_path)
+            # 6. Train
+            self.run_remote_training(remote_tar_path, final_model_name)
             
-            # 6. Download
+            # 7. Download
             local_model_path = self.download_model()
             
-            # 7. Post-interaction
+            # 8. Post-interaction
             if local_model_path:
                 if Confirm.ask(f"是否立即运行 drive？（将使用刚下载的模型 {local_model_path}）"):
                     # Use sys.executable to run the same python interpreter
@@ -419,5 +512,15 @@ class OnlineTrainer:
                 os.remove(tar_file)
 
 if __name__ == "__main__":
-    trainer = OnlineTrainer()
-    trainer.run()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="DonkeyCar 云端训练工具")
+    parser.add_argument("--no-interactive", action="store_true", 
+                       help="非交互模式，使用配置文件中的默认值")
+    parser.add_argument("--config", default="train_online.conf",
+                       help="配置文件路径 (默认: train_online.conf)")
+    
+    args = parser.parse_args()
+    
+    trainer = OnlineTrainer(args.config)
+    trainer.run(no_interactive=args.no_interactive)
