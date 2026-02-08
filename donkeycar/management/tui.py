@@ -306,9 +306,12 @@ class OpenProjectCommand(DonkeyCommand):
     def get_command_line(self, params):
         return [] # Not used since we override execute
 
-class TrainCommand(DonkeyCommand):
+from donkeycar.management.train_online import OnlineTrainer
+from donkeycar.management.train_local import run_local_train
+
+class TrainLocalCommand(DonkeyCommand):
     def __init__(self):
-        super().__init__("train", "训练自动驾驶模型", "训练", is_favorite=True)
+        super().__init__("train_local", "本地训练", "训练", is_favorite=True)
         self.options = [
             CommandOption("tub", "数据目录 (Tub)", default="./data", help_text="包含训练数据的目录"),
             CommandOption("model", "模型输出路径", default=self._get_next_model_name(), help_text="训练后的模型保存路径 (自动递增)"),
@@ -344,20 +347,68 @@ class TrainCommand(DonkeyCommand):
         return f"./models/{base_name}_{next_idx}"
 
     def execute(self):
-        # 每次进入 execute 时重新计算默认模型名
-        # 更新 options 中的默认值
+        # Update default model name
         for opt in self.options:
             if opt.name == "model":
                 opt.default = self._get_next_model_name()
                 break
         
+        # Reuse base class execution flow which calls get_command_line
         super().execute()
 
     def get_command_line(self, params):
+        # We construct the command to run the script via python -m or direct
+        # But actually, we can just return the donkey command as before, 
+        # OR since we have run_local_train logic in a file, we could call it.
+        # However, TUI executes via subprocess.
+        # Let's keep using 'donkey train' as it's the standard way, 
+        # AND the user requirement was to split the module, which we did.
+        # But the prompt said "refactor... into train_online and train_local".
+        # So maybe we should call our new script?
+        # Let's call the original donkey train for local to be safe/standard, 
+        # or call python donkeycar/management/train_local.py? 
+        # calling `donkey train` IS running local training.
+        # But let's stick to the prompt's implication of using the new modules.
+        # Actually, `run_local_train` in `train_local.py` just calls `donkey train` subprocess.
+        # So we can just use the command line directly here.
+        
         cmd = ["donkey", "train", "--tub", params["tub"], "--model", params["model"], "--type", params["type"]]
         if params.get("transfer"):
             cmd.extend(["--transfer", params["transfer"]])
         return cmd
+
+class TrainOnlineCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("train_online", "云端训练", "训练", is_favorite=True)
+        self.options = [] # Configuration is via file, not CLI args for simplicity as per requirements
+
+    def execute(self):
+        console.clear()
+        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        
+        # Check env
+        if self.requires_mycar_folder and not is_valid_mycar_folder():
+             console.print("[red]请在有效的 mycar 项目目录下运行[/red]")
+             Prompt.ask("按回车键返回...")
+             return
+
+        console.print("即将开始云端训练流程：打包 -> 上传 -> 训练 -> 下载")
+        console.print("配置文件: train_online.conf (首次运行自动生成)")
+        
+        if not Confirm.ask("确认开始?"):
+            return
+
+        try:
+            # Call the OnlineTrainer logic directly
+            trainer = OnlineTrainer()
+            trainer.run()
+        except Exception as e:
+            console.print(f"[red]执行出错: {e}[/red]")
+        
+        Prompt.ask("\n按回车键返回菜单...")
+
+    def get_command_line(self, params):
+        return [] # Not used
 
 class DriveCommand(DonkeyCommand):
     def __init__(self):
@@ -602,7 +653,7 @@ class MenuSystem:
         self.commands: Dict[str, List[DonkeyCommand]] = {
             "管理": [CreateCarCommand(), OpenProjectCommand()],
             "仿真": [DriveCommand()],
-            "训练": [TrainCommand()],
+            "训练": [TrainLocalCommand(), TrainOnlineCommand()],
         }
         self.flat_commands = [cmd for sublist in self.commands.values() for cmd in sublist]
 
