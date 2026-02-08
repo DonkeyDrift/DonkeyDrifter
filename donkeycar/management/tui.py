@@ -1228,8 +1228,8 @@ class DriveCommand(DonkeyCommand):
         if params.get("model"):
             full_model_path = os.path.join("./models", params["model"])
             cmd.extend(["--model", full_model_path])
-        if params.get("type"):
-            cmd.extend(["--type", params["type"]])
+            model_type = params.get("type") or "tflite_linear"
+            cmd.extend(["--type", model_type])
         return cmd
 
 class DonkeyUICommand(DonkeyCommand):
