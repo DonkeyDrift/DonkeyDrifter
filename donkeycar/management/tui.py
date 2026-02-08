@@ -12,6 +12,8 @@ import threading
 import queue
 import shutil
 import getpass
+import tarfile
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from pathlib import Path
@@ -160,6 +162,64 @@ def _delete_directory_contents(trash_dir: Path, progress_callback: Callable[[int
             except Exception as e:
                 errors.append(f"{path}: {e}")
     return errors
+
+def _get_data_cache_dir() -> Path:
+    return Path("/home/dkc/projects/mycar/data_cache")
+
+def _get_next_backup_path(cache_dir: Path, date_str: str) -> Path:
+    pattern = re.compile(rf"^data-{date_str}-(\d{{3}})\.tar\.gz$")
+    max_idx = 0
+    for item in cache_dir.glob(f"data-{date_str}-*.tar.gz"):
+        match = pattern.match(item.name)
+        if match:
+            idx = int(match.group(1))
+            max_idx = max(max_idx, idx)
+    next_idx = max_idx + 1
+    return cache_dir / f"data-{date_str}-{next_idx:03d}.tar.gz"
+
+def _list_backup_archives(cache_dir: Path) -> List[Dict[str, Any]]:
+    pattern = re.compile(r"^data-(\d{6})-(\d{3})\.tar\.gz$")
+    items = []
+    if not cache_dir.exists():
+        return items
+    for item in cache_dir.iterdir():
+        if not item.is_file():
+            continue
+        match = pattern.match(item.name)
+        if not match:
+            continue
+        date_str, seq = match.groups()
+        size = 0
+        try:
+            size = item.stat().st_size
+        except OSError:
+            size = 0
+        items.append({
+            "path": item,
+            "date": date_str,
+            "seq": seq,
+            "size": size
+        })
+    items.sort(key=lambda x: x["path"].name)
+    return items
+
+def _is_safe_member(member: tarfile.TarInfo) -> bool:
+    name = member.name
+    member_path = Path(name)
+    if member_path.is_absolute():
+        return False
+    if ".." in member_path.parts:
+        return False
+    return True
+
+def _archive_member_stats(tar: tarfile.TarFile) -> Tuple[int, int]:
+    total_files = 0
+    total_size = 0
+    for member in tar.getmembers():
+        if member.isfile():
+            total_files += 1
+            total_size += member.size
+    return total_files, total_size
 
 # -----------------------------------------------------------------------------
 # 命令定义基类
@@ -330,7 +390,7 @@ class CreateCarCommand(DonkeyCommand):
 
 class OpenProjectCommand(DonkeyCommand):
     def __init__(self):
-        super().__init__("open", "打开已有 DonkeyCar 项目", "管理", is_favorite=True, requires_mycar_folder=False)
+        super().__init__("open", "打开已有 DonkeyCar 项目", "管理", is_favorite=False, requires_mycar_folder=False)
         self.options = [] # No options needed, we'll ask interactively
 
     def execute(self):
@@ -393,7 +453,7 @@ class OpenProjectCommand(DonkeyCommand):
 
 class ClearDataCommand(DonkeyCommand):
     def __init__(self):
-        super().__init__("clear_data", "清空当前项目 data 目录", "管理", is_favorite=False, requires_mycar_folder=True)
+        super().__init__("clear_data", "清空当前项目 data 目录", "数据", is_favorite=True, requires_mycar_folder=True)
         self.options = []
 
     def execute(self):
@@ -540,12 +600,304 @@ class ClearDataCommand(DonkeyCommand):
 
         Prompt.ask("按回车键返回菜单...")
 
+class BackupDataCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("backup_data", "备份当前项目 data 目录", "数据", is_favorite=False, requires_mycar_folder=True)
+        self.options = []
+
+    def execute(self):
+        console.clear()
+        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+
+        if self.requires_mycar_folder and not is_valid_mycar_folder():
+            console.print(Panel(
+                "[bold red]错误：当前目录不是有效的 mycar 项目文件夹！[/bold red]\n\n"
+                "缺少关键文件：manage.py 或 myconfig.py\n"
+                "请先执行 [bold yellow]createcar[/bold yellow] 命令创建新的车辆项目。",
+                title="环境检查失败",
+                border_style="red"
+            ))
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        data_dir = Path("./data")
+        if not data_dir.exists():
+            console.print(Panel("[yellow]未找到 data 目录，无法备份。[/yellow]", title="状态提示"))
+            self.history_mgr.add_action_log("backup_data", "failed", {"reason": "data_dir_missing"})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        cache_dir = _get_data_cache_dir()
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            console.print(Panel(f"[red]无法创建备份目录: {cache_dir}[/red]\n{e}", title="操作失败", border_style="red"))
+            self.history_mgr.add_action_log("backup_data", "failed", {"reason": "cache_dir_create_failed", "error": str(e)})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        file_count, total_size = _scan_directory(data_dir)
+        try:
+            usage = shutil.disk_usage(cache_dir)
+            if usage.free < int(total_size * 1.1) + 1024 * 1024:
+                console.print(Panel(
+                    "[red]备份目录可用空间不足。[/red]\n"
+                    f"需要: {_human_readable_size(int(total_size * 1.1))}，可用: {_human_readable_size(usage.free)}",
+                    title="空间不足",
+                    border_style="red"
+                ))
+                self.history_mgr.add_action_log("backup_data", "failed", {"reason": "disk_full"})
+                Prompt.ask("按回车键返回菜单...")
+                return
+        except Exception as e:
+            console.print(Panel(f"[red]无法检查磁盘空间: {e}[/red]", title="操作失败", border_style="red"))
+            self.history_mgr.add_action_log("backup_data", "failed", {"reason": "disk_check_failed", "error": str(e)})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        date_str = datetime.now().strftime("%y%m%d")
+        archive_path = _get_next_backup_path(cache_dir, date_str)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        try:
+            with Progress(
+                TextColumn("{task.description}"),
+                BarColumn(),
+                TextColumn("{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn()
+            ) as progress:
+                total = max(1, file_count)
+                task_id = progress.add_task("正在备份 data...", total=total)
+                with tarfile.open(archive_path, "w:gz") as tar:
+                    for root, dirs, files in os.walk(data_dir):
+                        for name in dirs:
+                            dir_path = Path(root) / name
+                            rel = dir_path.relative_to(data_dir)
+                            tar.add(dir_path, arcname=str(rel))
+                        for name in files:
+                            file_path = Path(root) / name
+                            rel = file_path.relative_to(data_dir)
+                            tar.add(file_path, arcname=str(rel))
+                            progress.advance(task_id, 1)
+        except Exception as e:
+            if archive_path.exists():
+                try:
+                    archive_path.unlink()
+                except Exception:
+                    pass
+            console.print(Panel(f"[red]备份失败: {e}[/red]", title="操作失败", border_style="red"))
+            self.history_mgr.add_action_log("backup_data", "failed", {"error": str(e)})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        console.print(Panel(
+            f"[bold green]✓ 备份完成[/bold green]\n"
+            f"文件: {archive_path.name}\n"
+            f"时间: {timestamp}",
+            title="操作完成",
+            border_style="green"
+        ))
+        self.history_mgr.add_action_log("backup_data", "success", {
+            "file": archive_path.name,
+            "size": total_size,
+            "timestamp": timestamp
+        })
+        Prompt.ask("按回车键返回菜单...")
+
+class RestoreDataCommand(DonkeyCommand):
+    def __init__(self):
+        super().__init__("restore_data", "从备份恢复 data 目录", "数据", is_favorite=False, requires_mycar_folder=True)
+        self.options = []
+
+    def execute(self):
+        console.clear()
+        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+
+        if self.requires_mycar_folder and not is_valid_mycar_folder():
+            console.print(Panel(
+                "[bold red]错误：当前目录不是有效的 mycar 项目文件夹！[/bold red]\n\n"
+                "缺少关键文件：manage.py 或 myconfig.py\n"
+                "请先执行 [bold yellow]createcar[/bold yellow] 命令创建新的车辆项目。",
+                title="环境检查失败",
+                border_style="red"
+            ))
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        cache_dir = _get_data_cache_dir()
+        if not cache_dir.exists():
+            console.print(Panel(f"[yellow]备份目录不存在: {cache_dir}[/yellow]", title="状态提示"))
+            self.history_mgr.add_action_log("restore_data", "failed", {"reason": "cache_dir_missing"})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        backups = _list_backup_archives(cache_dir)
+        if not backups:
+            console.print(Panel("[yellow]未找到符合规范的备份文件。[/yellow]", title="状态提示"))
+            self.history_mgr.add_action_log("restore_data", "failed", {"reason": "no_backups"})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        table = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta")
+        table.add_column("No.", style="cyan", width=4, justify="right")
+        table.add_column("文件名", style="green", width=28)
+        table.add_column("备份日期", style="yellow", width=10)
+        table.add_column("大小", style="dim", width=12)
+        for idx, item in enumerate(backups, 1):
+            table.add_row(str(idx), item["path"].name, item["date"], _human_readable_size(item["size"]))
+        console.print(table)
+        console.print("[dim]提示: 输入编号选择备份，输入 '0' 取消[/dim]")
+
+        selected = None
+        while True:
+            choice = Prompt.ask("请输入编号", default="0")
+            if choice == "0":
+                self.history_mgr.add_action_log("restore_data", "cancelled")
+                return
+            if choice.isdigit():
+                idx = int(choice)
+                if 1 <= idx <= len(backups):
+                    selected = backups[idx - 1]["path"]
+                    break
+            console.print("[red]无效的选择，请重新输入[/red]")
+
+        if not Confirm.ask(f"确认从 {selected.name} 恢复?", default=False):
+            self.history_mgr.add_action_log("restore_data", "cancelled")
+            return
+
+        data_dir = Path("./data")
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with tarfile.open(selected, "r:gz") as tar:
+                total_files, total_size = _archive_member_stats(tar)
+        except Exception as e:
+            console.print(Panel(f"[red]无法读取备份文件: {e}[/red]", title="操作失败", border_style="red"))
+            self.history_mgr.add_action_log("restore_data", "failed", {"reason": "tar_open_failed", "error": str(e)})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        try:
+            usage = shutil.disk_usage(data_dir)
+            if usage.free < int(total_size * 1.1) + 1024 * 1024:
+                console.print(Panel(
+                    "[red]当前磁盘空间不足以恢复备份。[/red]\n"
+                    f"需要: {_human_readable_size(int(total_size * 1.1))}，可用: {_human_readable_size(usage.free)}",
+                    title="空间不足",
+                    border_style="red"
+                ))
+                self.history_mgr.add_action_log("restore_data", "failed", {"reason": "disk_full"})
+                Prompt.ask("按回车键返回菜单...")
+                return
+        except Exception as e:
+            console.print(Panel(f"[red]无法检查磁盘空间: {e}[/red]", title="操作失败", border_style="red"))
+            self.history_mgr.add_action_log("restore_data", "failed", {"reason": "disk_check_failed", "error": str(e)})
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        trash_dir = data_dir.parent / f".data_restore_trash_{timestamp}"
+        moved, move_errors = _move_items_to_trash(data_dir, trash_dir)
+        if move_errors:
+            _restore_from_trash(trash_dir, data_dir)
+            console.print(Panel(
+                "[red]移动现有 data 到临时区失败，已尝试回滚。[/red]\n"
+                + "\n".join(move_errors[:10]),
+                title="操作失败",
+                border_style="red"
+            ))
+            self.history_mgr.add_action_log("restore_data", "failed", {
+                "stage": "move_to_trash",
+                "errors": move_errors[:20]
+            })
+            Prompt.ask("按回车键返回菜单...")
+            return
+
+        errors: List[str] = []
+        progress_queue: queue.Queue = queue.Queue()
+
+        def worker():
+            try:
+                with tarfile.open(selected, "r:gz") as tar:
+                    for member in tar.getmembers():
+                        if not _is_safe_member(member):
+                            errors.append(f"{member.name}: unsafe_path")
+                            continue
+                        if member.isdir():
+                            target_dir = data_dir / member.name
+                            target_dir.mkdir(parents=True, exist_ok=True)
+                        else:
+                            tar.extract(member, data_dir)
+                            if member.isfile():
+                                progress_queue.put(("progress", 1))
+            except Exception as e:
+                errors.append(str(e))
+            progress_queue.put(("done", None))
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        with Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn()
+        ) as progress:
+            total = max(1, total_files)
+            task_id = progress.add_task("正在恢复 data...", total=total)
+            while thread.is_alive() or not progress_queue.empty():
+                try:
+                    msg = progress_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                if msg[0] == "progress":
+                    progress.advance(task_id, msg[1])
+                elif msg[0] == "done":
+                    break
+            if total_files == 0:
+                progress.advance(task_id, 1)
+
+        restored_files, _ = _scan_directory(data_dir)
+        if errors or (total_files > 0 and restored_files == 0):
+            _restore_from_trash(trash_dir, data_dir)
+            console.print(Panel(
+                "[red]恢复过程中出现错误，已尝试回滚。[/red]\n"
+                "建议:\n"
+                "- 检查备份文件是否损坏\n"
+                "- 检查目录权限\n",
+                title="恢复失败",
+                border_style="red"
+            ))
+            self.history_mgr.add_action_log("restore_data", "failed", {
+                "errors": errors[:20],
+                "restored_files": restored_files
+            })
+        else:
+            try:
+                shutil.rmtree(trash_dir, ignore_errors=True)
+            except Exception:
+                pass
+            console.print(Panel(
+                f"[bold green]✓ 恢复完成[/bold green]\n"
+                f"文件数量: {restored_files}",
+                title="操作完成",
+                border_style="green"
+            ))
+            self.history_mgr.add_action_log("restore_data", "success", {
+                "backup": selected.name,
+                "files": restored_files
+            })
+
+        Prompt.ask("按回车键返回菜单...")
+
 from donkeycar.management.train_online import OnlineTrainer
 from donkeycar.management.train_local import run_local_train
 
 class TrainLocalCommand(DonkeyCommand):
     def __init__(self):
-        super().__init__("train_local", "本地训练", "训练", is_favorite=True)
+        super().__init__("train_local", "本地训练", "训练", is_favorite=False, requires_mycar_folder=True)
         self.options = [
             CommandOption("tub", "数据目录 (Tub)", default="./data", help_text="包含训练数据的目录"),
             CommandOption("model", "模型输出路径", default=self._get_next_model_name(), help_text="训练后的模型保存路径 (自动递增)"),
@@ -613,7 +965,7 @@ class TrainLocalCommand(DonkeyCommand):
 
 class TrainOnlineCommand(DonkeyCommand):
     def __init__(self):
-        super().__init__("train_online", "云端训练（train_online.conf）", "训练", is_favorite=True)
+        super().__init__("train_online", "云端训练（train_online.conf）", "训练", is_favorite=True, requires_mycar_folder=True)
         self.options = [] # Configuration is via file, not CLI args for simplicity as per requirements
 
     def execute(self):
@@ -885,7 +1237,8 @@ class DriveCommand(DonkeyCommand):
 class MenuSystem:
     def __init__(self):
         self.commands: Dict[str, List[DonkeyCommand]] = {
-            "管理": [CreateCarCommand(), OpenProjectCommand(), ClearDataCommand()],
+            "管理": [CreateCarCommand(), OpenProjectCommand()],
+            "数据": [ClearDataCommand(), BackupDataCommand(), RestoreDataCommand()],
             "驾驶": [DriveCommand()],
             "训练": [TrainLocalCommand(), TrainOnlineCommand()],
         }
