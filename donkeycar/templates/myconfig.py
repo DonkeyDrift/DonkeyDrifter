@@ -44,7 +44,54 @@ GYM_CONF = {
     "car_name" : "DKC",             # 小车名称
     "font_size" : 50                # 车名字体大小
     } 
-SIM_HOST = "127.0.0.1"  # 模拟器主机IP地址（默认：127.0.0.1-代表本机，若不在同一系统，则需指定模拟器主机IP地址）
+import os
+import re
+import subprocess
+
+def get_wsl_host_ip():
+    # 尝试 1: 使用 ipconfig.exe (最准确，能获取 Windows 局域网 IP)
+    try:
+        result = subprocess.run(['ipconfig.exe'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            output = result.stdout
+            try:
+                text = output.decode('gbk') # Windows 中文通常是 GBK
+            except:
+                text = output.decode('utf-8', errors='ignore')
+            
+            ips = []
+            for line in text.splitlines():
+                if "IPv4" in line or "IP Address" in line:
+                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                    if match:
+                        ips.append(match.group(1))
+            
+            # 优先选择 192.168.x.x
+            for ip in ips:
+                if ip.startswith("192.168."):
+                    return ip
+            
+            # 其次选择非 172.x (通常是 WSL/Docker 桥接) 和非 127.0.0.1
+            for ip in ips:
+                if not ip.startswith("127.") and not ip.startswith("172."):
+                    return ip
+    except Exception:
+        pass
+
+    # 尝试 2: 读取 /etc/resolv.conf (获取的是 WSL 网关 IP，通常是 172.x)
+    try:
+        with open('/etc/resolv.conf', 'r') as f:
+            content = f.read()
+            match = re.search(r'nameserver\s+(\d+\.\d+\.\d+\.\d+)', content)
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+    
+    return "127.0.0.1"
+
+SIM_HOST = get_wsl_host_ip()
+#SIM_HOST = "127.0.0.1"  # 模拟器主机IP地址（默认：127.0.0.1-代表本机，若不在同一系统，则需指定模拟器主机IP地址）
 WEB_CONTROL_PORT = 8887  # 控制网页的端口号（默认：8887）
 USE_JOYSTICK_AS_DEFAULT = False  # 是否将摇杆作为默认输入设备（默认：否）
 
