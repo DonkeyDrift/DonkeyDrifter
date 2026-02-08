@@ -1,6 +1,7 @@
 
 import os
 import sys
+import subprocess
 import tarfile
 import paramiko
 import configparser
@@ -519,7 +520,7 @@ class OnlineTrainer:
             
             # 8. Post-interaction
             if local_model_path:
-                if Confirm.ask(f"是否立即运行 drive？（将使用刚下载的模型 {local_model_path}）"):
+                if Confirm.ask(f"是否立即运行 drive？（将使用刚下载的模型 {local_model_path}）", default=True):
                     # Use sys.executable to run the same python interpreter
                     subprocess.run([sys.executable, "manage.py", "drive", "--model", local_model_path])
             
