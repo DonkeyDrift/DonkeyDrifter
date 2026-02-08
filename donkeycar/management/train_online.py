@@ -156,12 +156,17 @@ class OnlineTrainer:
         if not os.path.exists(data_dir):
             raise FileNotFoundError("Local ./data directory not found")
 
-        # Naming rule: data-YYMMDD-XXX.tar.gz
+        # 1. Check and create cache dir
+        cache_dir = "./data_cache"
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
+
+        # 2. Naming rule: data-YYMMDD-XXX.tar.gz
         today_str = datetime.now().strftime("%y%m%d")
         pattern = re.compile(rf"^data-{today_str}-(\d{{3}})\.tar\.gz$")
         
         max_seq = 0
-        for f in os.listdir("."):
+        for f in os.listdir(cache_dir):
             match = pattern.match(f)
             if match:
                 seq = int(match.group(1))
@@ -170,16 +175,36 @@ class OnlineTrainer:
         
         next_seq = max_seq + 1
         filename = f"data-{today_str}-{next_seq:03d}.tar.gz"
-        filepath = os.path.abspath(filename)
+        filepath = os.path.join(cache_dir, filename)
+        filepath = os.path.abspath(filepath)
 
-        console.print(f"正在打包 {data_dir} 到 {filename} ...")
-        with tarfile.open(filename, "w:gz") as tar:
+        console.print(f"正在打包 {data_dir} 到 {filepath} ...")
+        
+        # 3. Package
+        with tarfile.open(filepath, "w:gz") as tar:
             tar.add(data_dir, arcname="data")
         
-        size = os.path.getsize(filename)
-        console.print(f"[green]打包完成: {filepath} (大小: {size/1024/1024:.2f} MB)[/green]")
-        self._log(f"Packaged data to {filename}, size={size}")
-        return filename, size
+        # 4. Verify integrity
+        console.print("正在校验备份文件...")
+        try:
+            # Check if it is a valid tar file
+            if not tarfile.is_tarfile(filepath):
+                 raise RuntimeError("File is not a valid tar archive")
+            
+            # Detailed check: iterate over members
+            with tarfile.open(filepath, "r:gz") as tar:
+                for _ in tar:
+                    pass
+        except Exception as e:
+            self._log(f"Backup verification failed: {e}", success=False)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            raise RuntimeError(f"备份文件校验失败: {e}")
+
+        size = os.path.getsize(filepath)
+        console.print(f"[green]打包及备份完成: {filepath} (大小: {size/1024/1024:.2f} MB)[/green]")
+        self._log(f"Packaged data to {filepath}, size={size}")
+        return filepath, size
 
     def connect_ssh(self):
         host = self.get_config_value("host")
@@ -536,9 +561,9 @@ class OnlineTrainer:
             sys.exit(1)
         finally:
             self.cleanup(remote_tar_path)
-            # Remove local tar file
-            if tar_file and os.path.exists(tar_file):
-                os.remove(tar_file)
+            # Local tar file is kept as backup in ./data_cache
+            if tar_file:
+                console.print(f"[dim]Local backup saved at: {tar_file}[/dim]")
 
 if __name__ == "__main__":
     import argparse
