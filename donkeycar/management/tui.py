@@ -208,10 +208,46 @@ class TrainCommand(DonkeyCommand):
         super().__init__("train", "训练自动驾驶模型", "训练", is_favorite=True)
         self.options = [
             CommandOption("tub", "数据目录 (Tub)", default="./data", help_text="包含训练数据的目录"),
-            CommandOption("model", "模型输出路径", default="./models/mypilot.h5", help_text="训练后的模型保存路径"),
+            CommandOption("model", "模型输出路径", default=self._get_next_model_name(), help_text="训练后的模型保存路径 (自动递增)"),
             CommandOption("type", "模型类型", default="linear", help_text="可选: linear, categorical, rnn, imu, behavior, localizer, 3d"),
             CommandOption("transfer", "迁移学习模型", default=None, required=False, help_text="基础模型路径 (可选)")
         ]
+
+    def _get_next_model_name(self, base_name="pilot"):
+        """
+        生成下一个自动递增的模型名称。
+        默认名称: ./models/pilot_1.h5
+        如果存在，则递增为 pilot_2.h5, pilot_3.h5 ...
+        """
+        models_dir = Path("./models")
+        if not models_dir.exists():
+            return f"./models/{base_name}_1.h5"
+
+        import re
+        
+        # 匹配 pilot_x.h5 的正则
+        pattern = re.compile(rf"^{base_name}_(\d+)\.h5$")
+        
+        max_idx = 0
+        for f in models_dir.glob("*.h5"):
+            match = pattern.match(f.name)
+            if match:
+                idx = int(match.group(1))
+                if idx > max_idx:
+                    max_idx = idx
+        
+        next_idx = max_idx + 1
+        return f"./models/{base_name}_{next_idx}.h5"
+
+    def execute(self):
+        # 每次进入 execute 时重新计算默认模型名
+        # 更新 options 中的默认值
+        for opt in self.options:
+            if opt.name == "model":
+                opt.default = self._get_next_model_name()
+                break
+        
+        super().execute()
 
     def get_command_line(self, params):
         cmd = ["donkey", "train", "--tub", params["tub"], "--model", params["model"], "--type", params["type"]]
