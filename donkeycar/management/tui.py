@@ -70,6 +70,13 @@ class HistoryManager:
         self.save()
 
 # -----------------------------------------------------------------------------
+# 辅助函数
+# -----------------------------------------------------------------------------
+def is_valid_mycar_folder():
+    """检查当前目录是否为有效的 mycar 项目目录"""
+    return os.path.exists("manage.py") and os.path.exists("myconfig.py")
+
+# -----------------------------------------------------------------------------
 # 命令定义基类
 # -----------------------------------------------------------------------------
 class CommandOption:
@@ -83,21 +90,38 @@ class CommandOption:
         self.help_text = help_text
 
 class DonkeyCommand:
-    def __init__(self, name: str, description: str, category: str, is_favorite: bool = False):
+    def __init__(self, name: str, description: str, category: str, is_favorite: bool = False, requires_mycar_folder: bool = True):
         self.name = name
         self.description = description
         self.category = category
         self.is_favorite = is_favorite
+        self.requires_mycar_folder = requires_mycar_folder
         self.options: List[CommandOption] = []
         self.history_mgr = HistoryManager()
 
     def get_command_line(self, params: Dict[str, Any]) -> List[str]:
         raise NotImplementedError
 
+    def on_success(self, params: Dict[str, Any]):
+        """命令执行成功后的回调"""
+        pass
+
     def execute(self):
         console.clear()
         console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
         
+        # 检查是否需要有效的 mycar 目录
+        if self.requires_mycar_folder and not is_valid_mycar_folder():
+            console.print(Panel(
+                "[bold red]错误：当前目录不是有效的 mycar 项目文件夹！[/bold red]\n\n"
+                "缺少关键文件：manage.py 或 myconfig.py\n"
+                "请先执行 [bold yellow]createcar[/bold yellow] 命令创建新的车辆项目。",
+                title="环境检查失败",
+                border_style="red"
+            ))
+            Prompt.ask("按回车键返回菜单...")
+            return
+
         last_params = self.history_mgr.get_last_params(self.name)
         current_params = {}
 
@@ -171,6 +195,7 @@ class DonkeyCommand:
             
             if process.returncode == 0:
                 console.print(f"\n[bold green]✓ 执行成功 (Exit Code: 0)[/bold green]")
+                self.on_success(current_params)
             else:
                 console.print(f"\n[bold red]✗ 执行失败 (Exit Code: {process.returncode})[/bold red]")
                 console.print(f"[dim]请检查上方错误日志[/dim]")
@@ -186,12 +211,27 @@ class DonkeyCommand:
 
 class CreateCarCommand(DonkeyCommand):
     def __init__(self):
-        super().__init__("createcar", "创建新的 DonkeyCar 项目目录", "管理", is_favorite=True)
+        super().__init__("createcar", "创建新的 DonkeyCar 项目目录", "管理", is_favorite=True, requires_mycar_folder=False)
         self.options = [
             CommandOption("folder", "项目目录名称", default="mycar", help_text="将在 ~/projects/ 下创建此目录"),
             CommandOption("template", "模板名称", default=None, required=False, help_text="可选模板: basic, square 等 (留空使用默认)"),
             CommandOption("overwrite", "是否覆盖", default="n", validator=lambda x: x.lower() in ['y', 'n'], help_text="如果目录存在是否覆盖 (y/n)")
         ]
+
+    def on_success(self, params):
+        base_dir = os.path.expanduser("~/projects")
+        full_path = os.path.join(base_dir, params["folder"])
+        
+        if os.path.exists(full_path):
+            try:
+                os.chdir(full_path)
+                console.print(Panel(f"[bold green]✓ 已切换工作目录至: {full_path}[/bold green]\n"
+                                    f"[dim]现在您可以直接运行 train 或 drive 命令了[/dim]",
+                                    title="环境自动配置"))
+            except Exception as e:
+                console.print(f"[red]切换目录失败: {e}[/red]")
+        else:
+            console.print(f"[yellow]警告: 目录 {full_path} 不存在，无法切换[/yellow]")
 
     def get_command_line(self, params):
         base_dir = os.path.expanduser("~/projects")
