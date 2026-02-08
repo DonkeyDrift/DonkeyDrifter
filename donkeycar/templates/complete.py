@@ -3,8 +3,9 @@
 Scripts to drive a donkey 2 car
 
 Usage:
-    manage.py (drive) [--model=<model>] [--js] [--type=(linear|categorical)] [--camera=(single|stereo)] [--meta=<key:value> ...] [--myconfig=<filename>]
-    manage.py (train) [--tubs=tubs] (--model=<model>) [--type=(linear|inferred|tensorrt_linear|tflite_linear)]
+    manage.py [drive] [--model=<model>] [--js] [--type=(linear|categorical)] [--camera=(single|stereo)] [--meta=<key:value> ...] [--myconfig=<filename>]
+    manage.py train [--tubs=tubs] (--model=<model>) [--type=(linear|inferred|tensorrt_linear|tflite_linear)]
+    manage.py dashboard
 
 Options:
     -h --help               Show this screen.
@@ -26,6 +27,13 @@ except:
     pass
 
 
+import sys
+import os
+import subprocess
+import threading
+import webbrowser
+import tornado.ioloop
+import tornado.web
 import donkeycar as dk
 from donkeycar.parts.behavior import BehaviorPart
 from donkeycar.parts.controller import (JoystickController, LocalWebController,
@@ -1166,15 +1174,185 @@ def add_drivetrain(V, cfg):
             #V.add(throttle, inputs=['throttle'], threaded=True)
 
 
+# -----------------------------------------------------------------------------
+# Interactive & Dashboard Features
+# -----------------------------------------------------------------------------
+
+def start_drive(cfg, args):
+    """Wrapper to start drive mode"""
+    model_type = args['--type']
+    camera_type = args['--camera']
+    drive(cfg, model_path=args['--model'], use_joystick=args['--js'],
+          model_type=model_type, camera_type=camera_type,
+          meta=args['--meta'])
+
+def interactive_mode():
+    """CLI Interactive Menu"""
+    while True:
+        print("\n" + "="*40)
+        print("   Donkey Car 交互式管理终端 (Mysim)")
+        print("="*40)
+        print(" 1. 启动驾驶模式 (Drive Mode)")
+        print(" 2. 训练自动驾驶模型 (Train Model)")
+        print(" 3. 启动网页仪表盘 (Web Dashboard)")
+        print(" 4. 查看 Tub 数据 (View Data)")
+        print(" q. 退出 (Quit)")
+        print("-" * 40)
+        
+        choice = input("请选择功能 [1-4/q]: ").strip().lower()
+        
+        if choice == '1':
+            print("\n>> 正在启动驾驶模式...")
+            # Simulate arguments for drive mode
+            args = docopt(__doc__, argv=['drive'])
+            cfg = dk.load_config(myconfig=args['--myconfig'])
+            start_drive(cfg, args)
+            break 
+            
+        elif choice == '2':
+            print("\n>> 训练模型向导")
+            tub_path = input("请输入数据目录 (默认: data): ").strip() or "data"
+            model_name = input("请输入模型名称 (默认: mypilot.h5): ").strip() or "mypilot.h5"
+            cmd = [sys.executable, "train.py", "--tubs", tub_path, "--model", f"models/{model_name}"]
+            print(f"执行命令: {' '.join(cmd)}")
+            try:
+                subprocess.run(cmd)
+            except KeyboardInterrupt:
+                print("\n训练已中断")
+            
+        elif choice == '3':
+            start_web_dashboard()
+            
+        elif choice == '4':
+            print("\n>> 启动数据浏览器...")
+            tub_path = input("请输入数据目录 (默认: data): ").strip() or "data"
+            model_path = input("请输入模型路径 (可选，直接回车跳过): ").strip()
+            
+            cmd = ["donkey", "tubplot", "--tub", tub_path]
+            if model_path:
+                cmd.extend(["--model", model_path])
+
+            print(f"执行命令: {' '.join(cmd)}")
+            try:
+                subprocess.run(cmd)
+            except Exception as e:
+                print(f"无法启动数据浏览器: {e}")
+                
+        elif choice == 'q':
+            print("再见!")
+            sys.exit(0)
+        else:
+            print("无效选项，请重试。")
+
+class DashboardHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Donkey Car Dashboard</title>
+            <style>
+                body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; text-align: center; background-color: #f4f4f9; }
+                h1 { color: #333; }
+                .btn { display: inline-block; padding: 15px 30px; margin: 15px; font-size: 18px; 
+                       cursor: pointer; text-decoration: none; color: white; border-radius: 8px; border: none; transition: opacity 0.3s; }
+                .btn:hover { opacity: 0.9; }
+                .btn-drive { background-color: #28a745; box-shadow: 0 4px 6px rgba(40,167,69,0.2); }
+                .btn-data { background-color: #007bff; box-shadow: 0 4px 6px rgba(0,123,255,0.2); }
+                .status { margin: 20px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                #message { margin-top: 20px; color: #555; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h1>Donkey Car 控制台</h1>
+            <div class="status">
+                <p>欢迎使用 Mysim 交互式仪表盘</p>
+                <p>点击下方按钮启动相应服务。启动后将自动跳转。</p>
+            </div>
+            
+            <div>
+                <button class="btn btn-drive" onclick="startService('drive')">🏎️ 启动驾驶模式</button>
+                <button class="btn btn-data" onclick="startService('data')">📊 浏览 Tub 数据</button>
+            </div>
+
+            <div id="message"></div>
+
+            <script>
+                function startService(type) {
+                    document.getElementById('message').innerText = "正在启动服务，请稍候...";
+                    fetch('/api/start/' + type, {method: 'POST'})
+                        .then(response => response.json())
+                        .then(data => {
+                            document.getElementById('message').innerText = data.message;
+                            if(data.url) {
+                                setTimeout(() => { window.open(data.url, '_blank'); }, 1500);
+                            }
+                        })
+                        .catch(err => {
+                            document.getElementById('message').innerText = "启动失败: " + err;
+                        });
+                }
+            </script>
+        </body>
+        </html>
+        """)
+
+class ActionHandler(tornado.web.RequestHandler):
+    def initialize(self, cfg):
+        self.cfg = cfg
+
+    def post(self, action):
+        response = {"status": "ok", "message": "", "url": ""}
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        
+        if action == "drive":
+            # Start drive in a separate process
+            cmd = [sys.executable, "manage.py", "drive"]
+            subprocess.Popen(cmd, cwd=cwd)
+            response["message"] = "驾驶模式已在后台启动，即将打开控制页..."
+            response["url"] = f"http://{self.request.host_name}:{self.cfg.WEB_CONTROL_PORT}" 
+            
+        elif action == "data":
+            # Start tubplot
+            cmd = ["donkey", "tubplot", "--tub", "data"]
+            subprocess.Popen(cmd, cwd=cwd)
+            response["message"] = "数据浏览器已启动，即将打开..."
+            response["url"] = f"http://{self.request.host_name}:8886" 
+            
+        self.write(response)
+
+def start_web_dashboard():
+    port = 8885
+    args = docopt(__doc__, argv=['drive']) # Dummy args to load config
+    cfg = dk.load_config(myconfig=args['--myconfig'])
+    
+    app = tornado.web.Application([
+        (r"/", DashboardHandler),
+        (r"/api/start/([^/]+)", ActionHandler, dict(cfg=cfg)),
+    ])
+    print(f"\n>> 网页仪表盘已启动: http://localhost:{port}")
+    print(">> 请在浏览器中访问该地址。按 Ctrl+C 停止服务。")
+    app.listen(port)
+    try:
+        tornado.ioloop.IOLoop.current().start()
+    except KeyboardInterrupt:
+        print("\n仪表盘服务已停止")
+
 if __name__ == '__main__':
     args = docopt(__doc__)
     cfg = dk.load_config(myconfig=args['--myconfig'])
 
-    if args['drive']:
+    if args['train']:
+        print('Use python train.py instead.\n')
+    elif args['dashboard']:
+        start_web_dashboard()
+    elif args['drive']:
         model_type = args['--type']
         camera_type = args['--camera']
         drive(cfg, model_path=args['--model'], use_joystick=args['--js'],
               model_type=model_type, camera_type=camera_type,
               meta=args['--meta'])
-    elif args['train']:
-        print('Use python train.py instead.\n')
+    else:
+        # Default to interactive mode if no args
+        interactive_mode()
