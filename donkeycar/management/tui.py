@@ -308,6 +308,18 @@ class DriveCommand(DonkeyCommand):
         console.clear()
         console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
         
+        # 检查是否需要有效的 mycar 目录
+        if self.requires_mycar_folder and not is_valid_mycar_folder():
+            console.print(Panel(
+                "[bold red]错误：当前目录不是有效的 mycar 项目文件夹！[/bold red]\n\n"
+                "缺少关键文件：manage.py 或 myconfig.py\n"
+                "请先执行 [bold yellow]createcar[/bold yellow] 命令创建新的车辆项目。",
+                title="环境检查失败",
+                border_style="red"
+            ))
+            Prompt.ask("按回车键返回菜单...")
+            return
+
         last_params = self.history_mgr.get_last_params(self.name)
         current_params = {}
 
