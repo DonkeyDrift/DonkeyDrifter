@@ -395,9 +395,21 @@ class OnlineTrainer:
             pass # Ignore parsing errors
 
 
-    def download_model(self):
+    def download_model(self, model_name=None):
+        """
+        下载训练好的模型。
+        
+        Args:
+            model_name (str, optional): 要下载的模型名称（不含路径，含后缀或不含取决于具体逻辑，但在本类中通常指文件名主体）。
+                                      新规范下应为 '{base_name}-YYMMDD-XXX' 格式。
+                                      如果为 None，则回退到配置文件中的 'model_name'（旧规范）。
+        """
         remote_dir = self.get_config_value("remote_dir_base")
-        model_name = self.get_config_value("model_name")
+        # 如果未传入 model_name，则从配置获取（兼容旧逻辑，但训练流程应传入完整名称）
+        # 新命名规范要求 model_name 格式为：{base_name}-YYMMDD-XXX
+        if model_name is None:
+            model_name = self.get_config_value("model_name")
+            
         remote_model_path = f"{remote_dir}/models/{model_name}.tflite".replace("//", "/")
         
         local_models_dir = "./models"
@@ -493,7 +505,7 @@ class OnlineTrainer:
             self.run_remote_training(remote_tar_path, final_model_name)
             
             # 7. Download
-            local_model_path = self.download_model()
+            local_model_path = self.download_model(final_model_name)
             
             # 8. Post-interaction
             if local_model_path:
