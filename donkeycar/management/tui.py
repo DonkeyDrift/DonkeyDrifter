@@ -250,8 +250,8 @@ class MenuSystem:
     def __init__(self):
         self.commands: Dict[str, List[DonkeyCommand]] = {
             "管理": [CreateCarCommand()],
-            "训练": [TrainCommand()],
             "仿真": [DriveCommand()],
+            "训练": [TrainCommand()],
         }
         self.flat_commands = [cmd for sublist in self.commands.values() for cmd in sublist]
 
