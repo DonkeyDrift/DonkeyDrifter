@@ -1048,27 +1048,28 @@ class DriveCommand(DonkeyCommand):
                     break
             console.print("[red]无效的选择，请重新输入[/red]")
 
-        # Other options
-        # Skip the first option (model) as we handled it manually
-        for opt in self.options[1:]:
-            default_val = last_params.get(opt.name, opt.default)
-            prompt_text = f"{opt.prompt_text}"
-            if opt.help_text:
-                console.print(f"[dim]{opt.help_text}[/dim]")
-            
-            while True:
-                val = Prompt.ask(prompt_text, default=str(default_val) if default_val is not None else None)
-                if not val and opt.required and default_val is None:
-                    console.print("[red]此项为必填项[/red]")
-                    continue
+        if current_params.get("model") is None:
+            current_params["type"] = None
+        else:
+            for opt in self.options[1:]:
+                default_val = last_params.get(opt.name, opt.default)
+                prompt_text = f"{opt.prompt_text}"
+                if opt.help_text:
+                    console.print(f"[dim]{opt.help_text}[/dim]")
                 
-                if opt.validator and val:
-                    if not opt.validator(val):
-                        console.print(f"[red]输入无效，请重新输入[/red]")
+                while True:
+                    val = Prompt.ask(prompt_text, default=str(default_val) if default_val is not None else None)
+                    if not val and opt.required and default_val is None:
+                        console.print("[red]此项为必填项[/red]")
                         continue
-                
-                current_params[opt.name] = val
-                break
+                    
+                    if opt.validator and val:
+                        if not opt.validator(val):
+                            console.print(f"[red]输入无效，请重新输入[/red]")
+                            continue
+                    
+                    current_params[opt.name] = val
+                    break
 
         # Generate preview
         cmd_list = self.get_command_line(current_params)
