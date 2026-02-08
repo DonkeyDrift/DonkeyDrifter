@@ -223,22 +223,130 @@ class DriveCommand(DonkeyCommand):
     def __init__(self):
         super().__init__("drive", "启动驾驶/仿真模式", "仿真", is_favorite=True)
         self.options = [
-            CommandOption("model", "加载模型路径", default=None, required=False, help_text="要运行的模型文件 (可选)"),
-            CommandOption("js", "使用物理手柄", default="n", validator=lambda x: x.lower() in ['y', 'n']),
-            CommandOption("type", "模型类型", default=None, required=False, help_text="如果指定了模型，需匹配其类型")
+            CommandOption("model", "模型名称", default=None, required=False, help_text="请选择要加载的模型 (默认0:不加载)"),
+            CommandOption("type", "模型类型", default="tflite_linear", required=False, help_text="模型类型 (默认: tflite_linear)")
         ]
+
+    def execute(self):
+        console.clear()
+        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        
+        last_params = self.history_mgr.get_last_params(self.name)
+        current_params = {}
+
+        # Custom logic for model selection
+        models_dir = Path("./models")
+        model_files = []
+        if models_dir.exists():
+            model_files = [f.name for f in models_dir.glob("*") if f.is_file() and not f.name.startswith('.')]
+            model_files.sort()
+        
+        # Model selection
+        console.print("[bold]选择模型:[/bold]")
+        console.print("0. 不加载模型 (默认)")
+        for idx, filename in enumerate(model_files, 1):
+            console.print(f"{idx}. {filename}")
+        
+        while True:
+            choice = Prompt.ask("请输入编号", default="0")
+            if choice == "0":
+                current_params["model"] = None
+                break
+            elif choice.isdigit():
+                idx = int(choice)
+                if 1 <= idx <= len(model_files):
+                    current_params["model"] = model_files[idx-1]
+                    break
+            console.print("[red]无效的选择，请重新输入[/red]")
+
+        # Other options
+        # Skip the first option (model) as we handled it manually
+        for opt in self.options[1:]:
+            default_val = last_params.get(opt.name, opt.default)
+            prompt_text = f"{opt.prompt_text}"
+            if opt.help_text:
+                console.print(f"[dim]{opt.help_text}[/dim]")
+            
+            while True:
+                val = Prompt.ask(prompt_text, default=str(default_val) if default_val is not None else None)
+                if not val and opt.required and default_val is None:
+                    console.print("[red]此项为必填项[/red]")
+                    continue
+                
+                if opt.validator and val:
+                    if not opt.validator(val):
+                        console.print(f"[red]输入无效，请重新输入[/red]")
+                        continue
+                
+                current_params[opt.name] = val
+                break
+
+        # Generate preview
+        cmd_list = self.get_command_line(current_params)
+        cmd_str = " ".join(cmd_list)
+        
+        console.print("\n[bold yellow]命令预览:[/bold yellow]")
+        console.print(Panel(f"[green]{cmd_str}[/green]", title="Shell Command"))
+
+        # Confirm execution
+        console.print("([green]y[/green]:执行 [red]n[/red]:取消 [blue]c[/blue]:复制命令)")
+        action = Prompt.ask(
+            "请选择操作", 
+            choices=["y", "n", "c", "copy"], 
+            default="y",
+            show_choices=False
+        )
+
+        if action == "copy":
+            import pyperclip
+            try:
+                pyperclip.copy(cmd_str)
+                console.print("[green]✓ 命令已复制到剪贴板[/green]")
+            except ImportError:
+                console.print("[red]✗ 未安装 pyperclip，无法复制。请手动复制上方命令。[/red]")
+            Prompt.ask("按回车键返回...")
+            return
+
+        if action != "y":
+            console.print("[yellow]操作已取消[/yellow]")
+            time.sleep(1)
+            return
+
+        # Execute and log
+        self.history_mgr.update_last_params(self.name, current_params)
+        self.history_mgr.add_command_log(cmd_str)
+        
+        console.print(f"\n[bold cyan]>> [{datetime.now().strftime('%H:%M:%S')}] 开始执行...[/bold cyan]")
+        try:
+            process = subprocess.Popen(
+                cmd_list, 
+                stdout=sys.stdout, 
+                stderr=sys.stderr,
+                text=True
+            )
+            process.wait()
+            
+            if process.returncode == 0:
+                console.print(f"\n[bold green]✓ 执行成功 (Exit Code: 0)[/bold green]")
+            else:
+                console.print(f"\n[bold red]✗ 执行失败 (Exit Code: {process.returncode})[/bold red]")
+                console.print(f"[dim]请检查上方错误日志[/dim]")
+
+        except Exception as e:
+            console.print(f"\n[bold red]✗ 发生异常: {e}[/bold red]")
+        
+        Prompt.ask("\n按回车键返回菜单...")
 
     def get_command_line(self, params):
         # 优先使用当前目录的 manage.py
         if os.path.exists("manage.py"):
             cmd = [sys.executable, "manage.py", "drive"]
         else:
-            cmd = ["donkey", "ui"] # Fallback, 这里的逻辑可能需要根据实际情况调整
+            cmd = ["donkey", "ui"] # Fallback
 
         if params.get("model"):
-            cmd.extend(["--model", params["model"]])
-        if params.get("js", "").lower() == 'y':
-            cmd.append("--js")
+            full_model_path = os.path.join("./models", params["model"])
+            cmd.extend(["--model", full_model_path])
         if params.get("type"):
             cmd.extend(["--type", params["type"]])
         return cmd
