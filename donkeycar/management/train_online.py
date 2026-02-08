@@ -405,23 +405,33 @@ class OnlineTrainer:
                                       如果为 None，则回退到配置文件中的 'model_name'（旧规范）。
         """
         remote_dir = self.get_config_value("remote_dir_base")
+        
+        # Debug info
+        console.print(f"[DEBUG] Current working directory: {os.getcwd()}")
+        
+        # Resolve remote path (handle ~ expansion)
+        remote_dir = self._resolve_remote_path(remote_dir)
+        
         # 如果未传入 model_name，则从配置获取（兼容旧逻辑，但训练流程应传入完整名称）
         # 新命名规范要求 model_name 格式为：{base_name}-YYMMDD-XXX
         if model_name is None:
             model_name = self.get_config_value("model_name")
             
         remote_model_path = f"{remote_dir}/models/{model_name}.tflite".replace("//", "/")
+        console.print(f"[DEBUG] Resolved remote model path: {remote_model_path}")
         
         local_models_dir = "./models"
         if not os.path.exists(local_models_dir):
             os.makedirs(local_models_dir)
             
         local_model_path = os.path.join(local_models_dir, f"{model_name}.tflite")
+        local_model_path = os.path.abspath(local_model_path)
+        console.print(f"[DEBUG] Local target path: {local_model_path}")
         
         if os.path.exists(local_model_path):
-            if not Confirm.ask(f"检测到 {local_model_path} 已存在，是否替换？", default=False):
-                console.print("[yellow]已取消下载[/yellow]")
-                return None
+            console.print(f"[yellow]检测到本地模型 {local_model_path} 已存在，跳过下载[/yellow]")
+            self._log(f"Local model {local_model_path} exists, skipping download")
+            return local_model_path
         
         console.print(f"正在下载模型 {remote_model_path} ...")
         try:
