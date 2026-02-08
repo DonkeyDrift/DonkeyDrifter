@@ -203,13 +203,6 @@ class CreateCarCommand(DonkeyCommand):
             cmd.append("--overwrite")
         return cmd
 
-class FindCarCommand(DonkeyCommand):
-    def __init__(self):
-        super().__init__("findcar", "查找局域网内的 DonkeyCar", "管理")
-    
-    def get_command_line(self, params):
-        return ["donkey", "findcar"]
-
 class TrainCommand(DonkeyCommand):
     def __init__(self):
         super().__init__("train", "训练自动驾驶模型", "训练", is_favorite=True)
@@ -250,59 +243,15 @@ class DriveCommand(DonkeyCommand):
             cmd.extend(["--type", params["type"]])
         return cmd
 
-class CalibrateCommand(DonkeyCommand):
-    def __init__(self):
-        super().__init__("calibrate", "校准转向和油门", "工具")
-        self.options = [
-            CommandOption("channel", "通道 (Channel)", default="0", help_text="PWM 通道 (0-15)"),
-            CommandOption("bus", "总线 (Bus)", default=None, required=False)
-        ]
-
-    def get_command_line(self, params):
-        cmd = ["donkey", "calibrate", "--channel", params["channel"]]
-        if params.get("bus"):
-            cmd.extend(["--bus", params["bus"]])
-        return cmd
-
-class TubPlotCommand(DonkeyCommand):
-    def __init__(self):
-        super().__init__("tubplot", "绘制 Tub 数据图表", "工具", is_favorite=True)
-        self.options = [
-            CommandOption("tub", "Tub 路径", default="./data"),
-            CommandOption("output", "输出文件名", default=None, required=False)
-        ]
-
-    def get_command_line(self, params):
-        cmd = ["donkey", "tubplot", "--tub", params["tub"]]
-        if params.get("output"):
-            cmd.extend(["--output", params["output"]])
-        return cmd
-
-class MakeMovieCommand(DonkeyCommand):
-    def __init__(self):
-        super().__init__("makemovie", "从 Tub 数据生成视频", "工具")
-        self.options = [
-            CommandOption("tub", "Tub 路径", default="./data"),
-            CommandOption("out", "输出视频文件", default="tub_movie.mp4"),
-            CommandOption("model", "模型可视化", default=None, required=False, help_text="加载模型以显示 Pilot 覆盖层")
-        ]
-
-    def get_command_line(self, params):
-        cmd = ["donkey", "makemovie", "--tub", params["tub"], "--out", params["out"]]
-        if params.get("model"):
-            cmd.extend(["--model", params["model"]])
-        return cmd
-
 # -----------------------------------------------------------------------------
 # 菜单系统
 # -----------------------------------------------------------------------------
 class MenuSystem:
     def __init__(self):
         self.commands: Dict[str, List[DonkeyCommand]] = {
-            "管理": [CreateCarCommand(), FindCarCommand()],
+            "管理": [CreateCarCommand()],
             "训练": [TrainCommand()],
             "仿真": [DriveCommand()],
-            "工具": [CalibrateCommand(), TubPlotCommand(), MakeMovieCommand()]
         }
         self.flat_commands = [cmd for sublist in self.commands.values() for cmd in sublist]
 
