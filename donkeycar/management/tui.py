@@ -317,21 +317,112 @@ class DriveCommand(DonkeyCommand):
         self.history_mgr.add_command_log(cmd_str)
         
         console.print(f"\n[bold cyan]>> [{datetime.now().strftime('%H:%M:%S')}] 开始执行...[/bold cyan]")
+        console.print("[bold yellow]提示: 按 ESC 键停止运行并返回菜单[/bold yellow]")
+        
         try:
+            # 针对 Windows 和其他系统的处理
+            creation_flags = 0
+            if sys.platform == "win32":
+                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+            
             process = subprocess.Popen(
                 cmd_list, 
                 stdout=sys.stdout, 
                 stderr=sys.stderr,
-                text=True
+                text=True,
+                creationflags=creation_flags
             )
-            process.wait()
             
-            if process.returncode == 0:
-                console.print(f"\n[bold green]✓ 执行成功 (Exit Code: 0)[/bold green]")
+            # 键盘监听循环
+            import signal
+            import select
+            
+            # Windows 键盘监听
+            def is_esc_pressed_win():
+                try:
+                    import msvcrt
+                    if msvcrt.kbhit():
+                        if ord(msvcrt.getch()) == 27: # ESC
+                            return True
+                except ImportError:
+                    pass
+                return False
+
+            # Linux/Mac 键盘监听
+            def is_esc_pressed_unix():
+                try:
+                    import sys
+                    import termios
+                    import tty
+                    
+                    # 检查 stdin 是否有数据
+                    if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+                        c = sys.stdin.read(1)
+                        if c == '\x1b': # ESC
+                            return True
+                except ImportError:
+                    pass
+                return False
+
+            # 保存终端设置 (仅限 Unix)
+            old_settings = None
+            if sys.platform != "win32":
+                try:
+                    import termios
+                    import tty
+                    old_settings = termios.tcgetattr(sys.stdin)
+                    tty.setcbreak(sys.stdin.fileno())
+                except Exception:
+                    pass
+
+            try:
+                while process.poll() is None:
+                    esc_pressed = False
+                    if sys.platform == "win32":
+                        esc_pressed = is_esc_pressed_win()
+                    else:
+                        esc_pressed = is_esc_pressed_unix()
+
+                    if esc_pressed:
+                        console.print("\n[yellow]检测到 ESC 键，正在停止...[/yellow]")
+                        if sys.platform == "win32":
+                            os.kill(process.pid, signal.CTRL_C_EVENT)
+                        else:
+                            process.send_signal(signal.SIGINT)
+                        
+                        try:
+                            process.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        break
+                    
+                    # 避免 CPU 占用过高
+                    time.sleep(0.1)
+            finally:
+                # 恢复终端设置 (仅限 Unix)
+                if old_settings:
+                    import termios
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+            if process.poll() is None:
+                # 如果还没有结束（非 ESC 退出，或者 Linux 环境），继续等待
+                process.wait()
+            
+            if process.returncode == 0 or process.returncode == 3221225786: # 3221225786 is CTRL+C on Windows
+                console.print(f"\n[bold green]✓ 执行结束[/bold green]")
             else:
                 console.print(f"\n[bold red]✗ 执行失败 (Exit Code: {process.returncode})[/bold red]")
                 console.print(f"[dim]请检查上方错误日志[/dim]")
 
+        except KeyboardInterrupt:
+            # 捕获父进程的 Ctrl+C，尝试优雅关闭子进程
+            console.print("\n[yellow]收到中断信号，正在停止...[/yellow]")
+            if process and process.poll() is None:
+                if sys.platform == "win32":
+                    os.kill(process.pid, signal.CTRL_C_EVENT)
+                else:
+                    process.send_signal(signal.SIGINT)
+                process.wait()
         except Exception as e:
             console.print(f"\n[bold red]✗ 发生异常: {e}[/bold red]")
         
