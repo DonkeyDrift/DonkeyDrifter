@@ -204,7 +204,7 @@ class OnlineTrainer:
         # 3. Train
         console.print(f"正在启动云端训练 (Python: {python_path})...")
         # Fix: Use train.py instead of manage.py train
-        cmd_train = f"cd {remote_dir} && {python_path} train.py --tub ./data --model ./models/{model_name}.tflite --type linear"
+        cmd_train = f"cd {remote_dir} && {python_path} train.py --tub ./data --model ./models/{model_name} --type linear"
         
         # We need to stream output
         stdin, stdout, stderr = self.ssh_client.exec_command(cmd_train, get_pty=True)
