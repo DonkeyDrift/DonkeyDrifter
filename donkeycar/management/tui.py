@@ -395,7 +395,7 @@ class TrainOnlineCommand(DonkeyCommand):
         console.print("即将开始云端训练流程：打包 -> 上传 -> 训练 -> 下载")
         console.print("配置文件: train_online.conf (首次运行自动生成)")
         
-        if not Confirm.ask("确认开始?"):
+        if not Confirm.ask("确认开始?", default=True):
             return
 
         try:
