@@ -14,6 +14,8 @@ print(cfg.CAMERA_RESOLUTION)
 
 
 import os
+import re
+import subprocess
 
 #PATHS
 CAR_PATH = PACKAGE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -239,7 +241,50 @@ GYM_CONF["racer_name"] = "Your Name"
 GYM_CONF["country"] = "Place"
 GYM_CONF["bio"] = "I race robots."
 
-SIM_HOST = "127.0.0.1"              # when racing on virtual-race-league use host "trainmydonkey.com"
+def get_wsl_host_ip():
+    # 尝试 1: 使用 ipconfig.exe (最准确，能获取 Windows 局域网 IP)
+    try:
+        result = subprocess.run(['ipconfig.exe'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            output = result.stdout
+            try:
+                text = output.decode('gbk') # Windows 中文通常是 GBK
+            except:
+                text = output.decode('utf-8', errors='ignore')
+            
+            ips = []
+            for line in text.splitlines():
+                if "IPv4" in line or "IP Address" in line:
+                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                    if match:
+                        ips.append(match.group(1))
+            
+            # 优先选择 192.168.x.x
+            for ip in ips:
+                if ip.startswith("192.168."):
+                    return ip
+            
+            # 其次选择非 172.x (通常是 WSL/Docker 桥接) 和非 127.0.0.1
+            for ip in ips:
+                if not ip.startswith("127.") and not ip.startswith("172."):
+                    return ip
+    except Exception:
+        pass
+
+    # 尝试 2: 读取 /etc/resolv.conf (获取的是 WSL 网关 IP，通常是 172.x)
+    try:
+        with open('/etc/resolv.conf', 'r') as f:
+            content = f.read()
+            match = re.search(r'nameserver\s+(\d+\.\d+\.\d+\.\d+)', content)
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+    
+    return "127.0.0.1"
+
+SIM_HOST = get_wsl_host_ip()
+#SIM_HOST = "127.0.0.1"              # when racing on virtual-race-league use host "trainmydonkey.com"
 SIM_ARTIFICIAL_LATENCY = 0          # this is the millisecond latency in controls. Can use useful in emulating the delay when useing a remote server. values of 100 to 400 probably reasonable.
 
 #publish camera over network

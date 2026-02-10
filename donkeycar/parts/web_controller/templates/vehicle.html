@@ -104,6 +104,112 @@
               {% end %}
             </select>
           </div>
+
+          <br/>
+          <div class="panel panel-default" id="pid_panel">
+            <div class="panel-heading">PID / 回中 / 加速度调节</div>
+            <ul class="list-group">
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">Kp</div>
+                  <div class="col-xs-6">
+                    <input id="pid_kp" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="pid_kp"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">Ki</div>
+                  <div class="col-xs-6">
+                    <input id="pid_ki" type="range" min="0" max="1" step="0.01" class="form-control"/>
+                    <small>当前: <span data-for="pid_ki"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">Kd</div>
+                  <div class="col-xs-6">
+                    <input id="pid_kd" type="range" min="0" max="0.1" step="0.001" class="form-control"/>
+                    <small>当前: <span data-for="pid_kd"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">回中速度 (角/秒)</div>
+                  <div class="col-xs-6">
+                    <input id="recenter_rate" type="range" min="0" max="2" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="recenter_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">转向角速度 (角/秒)</div>
+                  <div class="col-xs-6">
+                    <input id="steer_rate" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="steer_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">加速度变化率</div>
+                  <div class="col-xs-6">
+                    <input id="accel_rate" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="accel_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+              <li class="list-group-item">
+                <div class="row">
+                  <div class="col-xs-6">刹车变化率</div>
+                  <div class="col-xs-6">
+                    <input id="brake_rate" type="range" min="0" max="3" step="0.05" class="form-control"/>
+                    <small>当前: <span data-for="brake_rate"></span></small>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 参数管理面板 -->
+        <div class="panel panel-default" id="param_management_panel">
+          <div class="panel-heading">参数管理</div>
+          <div class="panel-body">
+            <div class="btn-group btn-group-justified" role="group">
+              <div class="btn-group" role="group">
+                <button type="button" id="reset_params_btn" class="btn btn-warning btn-sm">
+                  <span class="glyphicon glyphicon-refresh"></span> 重置默认值
+                </button>
+              </div>
+              <div class="btn-group" role="group">
+                <button type="button" id="export_params_btn" class="btn btn-info btn-sm">
+                  <span class="glyphicon glyphicon-download-alt"></span> 导出参数
+                </button>
+              </div>
+            </div>
+            <div class="btn-group btn-group-justified" role="group" style="margin-top:10px;">
+              <div class="btn-group" role="group">
+                <label for="import_params_file" class="btn btn-success btn-sm" style="margin:0;">
+                  <span class="glyphicon glyphicon-upload"></span> 导入参数
+                  <input type="file" id="import_params_file" accept=".json" style="display:none;"/>
+                </label>
+              </div>
+              <div class="btn-group" role="group">
+                <button type="button" id="load_server_params_btn" class="btn btn-primary btn-sm">
+                  <span class="glyphicon glyphicon-cloud-download"></span> 从服务器加载
+                </button>
+              </div>
+            </div>
+            <div style="margin-top:10px;font-size:12px;color:#666;">
+              <span class="glyphicon glyphicon-info-sign"></span> 
+              参数自动保存到本地存储和服务器（如可用）
+            </div>
+          </div>
         </div>
       </div> <!-- end joystick-column -->
       <div id="joystick-padding"></div>
@@ -130,13 +236,17 @@
         </div>
         <div class="modal-body">
           <p>
-            <strong>Joystick</strong> control is provided via the blue touch/click area on screen. Click or touch and drag to control throttle and steering. In joystick mode, you can also use the following keyboard keys:
+            <strong>Joystick</strong> control is provided via the blue touch/click area on screen. Click or touch and drag to control throttle and steering.
+          </p>
+          <p>
+            <strong>Keyboard (IKJL)</strong> control with racing game feel:
             <ul>
-              <li>Forward: <code>I</code></li>
-              <li>Reverse: <code>K</code></li>
-              <li>Left: <code>J</code> </li>
-              <li>Right: <code>L</code></li>
+              <li>Forward: <code>I</code> (Hold to accelerate, release to auto-brake)</li>
+              <li>Reverse: <code>K</code> (Hold to brake/reverse, release to auto-brake)</li>
+              <li>Left: <code>J</code> (Hold to steer left, release to auto-center)</li>
+              <li>Right: <code>L</code> (Hold to steer right, release to auto-center)</li>
             </ul>
+            <em>Features: PID smoothing, auto-centering steering, auto-braking throttle. Adjustable via sliders below.</em>
           </p>
           <p>
             <strong>Gamepad</strong> control is enabled by the <a href="https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API/Using_the_Gamepad_API">HTML5 gamepad API</a>, currently supported by Chrome and Firefox. Playstation 3 controllers have been confirmed to work.
