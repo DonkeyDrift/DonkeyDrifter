@@ -49,13 +49,23 @@ import re
 import subprocess
 
 def get_wsl_host_ip():
-    # 尝试 1: 使用 ipconfig.exe (最准确，能获取 Windows 局域网 IP)
+    # 尝试 1: 使用 ip route 获取默认网关 (WSL2 中 Windows 主机 IP 就是默认网关)
+    try:
+        result = subprocess.run(['ip', 'route', 'show'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', result.stdout)
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+
+    # 尝试 2: 使用 ipconfig.exe (能获取 Windows 局域网 IP)
     try:
         result = subprocess.run(['ipconfig.exe'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode == 0:
             output = result.stdout
             try:
-                text = output.decode('gbk') # Windows 中文通常是 GBK
+                text = output.decode('gbk')
             except:
                 text = output.decode('utf-8', errors='ignore')
             
@@ -66,25 +76,13 @@ def get_wsl_host_ip():
                     if match:
                         ips.append(match.group(1))
             
-            # 优先选择 192.168.x.x
             for ip in ips:
                 if ip.startswith("192.168."):
                     return ip
             
-            # 其次选择非 172.x (通常是 WSL/Docker 桥接) 和非 127.0.0.1
             for ip in ips:
-                if not ip.startswith("127.") and not ip.startswith("172."):
+                if not ip.startswith("127.") and not ip.startswith("172.") and not ip.startswith("10.255."):
                     return ip
-    except Exception:
-        pass
-
-    # 尝试 2: 读取 /etc/resolv.conf (获取的是 WSL 网关 IP，通常是 172.x)
-    try:
-        with open('/etc/resolv.conf', 'r') as f:
-            content = f.read()
-            match = re.search(r'nameserver\s+(\d+\.\d+\.\d+\.\d+)', content)
-            if match:
-                return match.group(1)
     except Exception:
         pass
     
