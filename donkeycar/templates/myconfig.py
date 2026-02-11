@@ -3,6 +3,11 @@
 # 本文件读取manage.py脚本，并在此基础上修改
 # 所有配置都可以在此修改，且程序更新不会修改本文件
 # """
+import os
+import re
+import subprocess
+import sys
+
 #--------------------------For DonkeyCar 驴车实车相关配置
 # 转向(控制舵机)
 STEERING_PWM_CHANNEL = 0    # 转向PWM通道（默认：0）
@@ -44,9 +49,7 @@ GYM_CONF = {
     "car_name" : "DKC",             # 小车名称
     "font_size" : 50                # 车名字体大小
     } 
-import os
-import re
-import subprocess
+
 
 def get_wsl_host_ip():
     # 尝试 1: 使用 ip route 获取默认网关 (WSL2 中 Windows 主机 IP 就是默认网关)
@@ -92,5 +95,32 @@ SIM_HOST = get_wsl_host_ip()
 #SIM_HOST = "127.0.0.1"  # 模拟器主机IP地址（默认：127.0.0.1-代表本机，若不在同一系统，则需指定模拟器主机IP地址）
 WEB_CONTROL_PORT = 8887  # 控制网页的端口号（默认：8887）
 USE_JOYSTICK_AS_DEFAULT = False  # 是否将摇杆作为默认输入设备（默认：否）
+
+
+def _should_limit_gpu_memory():
+    args = sys.argv if hasattr(sys, "argv") else []
+    if not args:
+        return False
+    argv0 = os.path.basename(args[0])
+    if argv0 == "donkey" and "train" in args:
+        return True
+    if argv0 in {"train.py", "manage.py"} and "train" in args:
+        return True
+    return False
+
+if _should_limit_gpu_memory():
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices("GPU")
+        if gpus:
+            for gpu in gpus:
+                tf.config.set_logical_device_configuration(
+                    gpu,
+                    [tf.config.LogicalDeviceConfiguration(memory_limit=2048)],
+                )
+    except Exception:
+        pass
+
 
 #--------------------------End 结尾
