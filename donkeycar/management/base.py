@@ -77,7 +77,7 @@ class CreateCar(BaseCommand):
         path = make_dir(path)
 
         print("Creating data & model folders.")
-        folders = ['models', 'data', 'logs']
+        folders = ['models', 'data', 'data_cache','logs']
         folder_paths = [os.path.join(path, f) for f in folders]
         for fp in folder_paths:
             make_dir(fp)
