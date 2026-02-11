@@ -860,15 +860,24 @@ class RestoreDataCommand(DonkeyCommand):
         def worker():
             try:
                 with tarfile.open(selected, "r:gz") as tar:
-                    for member in tar.getmembers():
+                    members = tar.getmembers()
+                    # Check if archive members are prefixed with 'data/'
+                    # This handles archives created with 'tar czf backup.tar.gz data/'
+                    has_data_prefix = False
+                    if members:
+                        has_data_prefix = all(m.name == 'data' or m.name.startswith('data/') for m in members)
+                    
+                    extract_path = data_dir.parent if has_data_prefix else data_dir
+
+                    for member in members:
                         if not _is_safe_member(member):
                             errors.append(f"{member.name}: unsafe_path")
                             continue
                         if member.isdir():
-                            target_dir = data_dir / member.name
+                            target_dir = extract_path / member.name
                             target_dir.mkdir(parents=True, exist_ok=True)
                         else:
-                            tar.extract(member, data_dir)
+                            tar.extract(member, extract_path)
                             if member.isfile():
                                 progress_queue.put(("progress", 1))
             except Exception as e:
