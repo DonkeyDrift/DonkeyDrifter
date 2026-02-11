@@ -160,7 +160,7 @@ class OnlineTrainer:
         if not os.path.exists(self.config_file):
             current_dir_name = os.path.basename(os.getcwd())
             config["Remote"] = {
-                "host": "121.5.26.9",
+                "host": "haowenpi.com",
                 "user": "ubuntu",
                 "password": "dkc@2026",
                 "remote_dir_base": "~/projects",  # 修改为父级目录
