@@ -8,6 +8,8 @@ import configparser
 import time
 import re
 import select
+import random
+import string
 from datetime import datetime
 from pathlib import Path
 from rich.console import Console
@@ -24,6 +26,7 @@ class OnlineTrainer:
         self.config = self._load_config()
         self.ssh_client = None
         self.sftp_client = None
+        self.remote_work_dir = None  # 用于存储动态生成的远程工作目录
         self.log_file = os.path.join("logs", "train_online.log")
 
     def _log(self, message, success=True):
@@ -128,10 +131,10 @@ class OnlineTrainer:
         if not os.path.exists(self.config_file):
             current_dir_name = os.path.basename(os.getcwd())
             config["Remote"] = {
-                "host": "111.231.196.5",
+                "host": "121.5.26.9",
                 "user": "ubuntu",
                 "password": "dkc@2026",
-                "remote_dir_base": f"~/projects/{current_dir_name}",
+                "remote_dir_base": "~/projects",  # 修改为父级目录
                 "model_name": "model",
                 "python_path": "~/miniconda3/envs/donkey/bin/python"
             }
@@ -254,17 +257,111 @@ class OnlineTrainer:
              
         return resolved_path
 
+    def _generate_workspace_name(self, existing_names, date_str=None):
+        """
+        生成唯一的工作目录名称，格式：mycar-YYMMDD-XXX-ABCD
+        
+        Args:
+            existing_names (list): 已存在的目录名称列表
+            date_str (str, optional): 日期字符串，默认当天
+            
+        Returns:
+            str: 生成的目录名称
+        """
+        if date_str is None:
+            date_str = datetime.now().strftime("%y%m%d")
+        
+        pattern = re.compile(rf"^mycar-{date_str}-(\d{{3}})-[0-9A-Z]{{4}}$")
+        
+        max_seq = 0
+        
+        for name in existing_names:
+            match = pattern.match(name)
+            if match:
+                seq = int(match.group(1))
+                if seq > max_seq:
+                    max_seq = seq
+        
+        next_seq = max_seq + 1
+        
+        # 生成4位随机码（数字+大写字母），确保当日唯一性需要结合现有列表检查，
+        # 但此处主要依赖序号递增保证顺序，随机码作为防冲突补充。
+        # 简单起见，每次随机生成，冲突概率极低。
+        random_code = ''.join(random.choices(string.digits + string.ascii_uppercase, k=4))
+        
+        return f"mycar-{date_str}-{next_seq:03d}-{random_code}"
+
+    def setup_remote_workspace(self):
+        """
+        在远程服务器上设置独立的工作目录。
+        遵循规则：mycar-YYMMDD-XXX-ABCD
+        """
+        if self.remote_work_dir:
+            return self.remote_work_dir
+
+        if not self.ssh_client:
+            raise RuntimeError("SSH client not connected. Call connect_ssh() first.")
+
+        parent_dir_raw = self.get_config_value("remote_dir_base")
+        parent_dir = self._resolve_remote_path(parent_dir_raw)
+
+        # 1. 检查父级目录是否存在且可写
+        check_cmd = f"test -d {parent_dir} && test -w {parent_dir}"
+        stdin, stdout, stderr = self.ssh_client.exec_command(check_cmd)
+        if stdout.channel.recv_exit_status() != 0:
+            self._log(f"Parent directory {parent_dir} not writable or does not exist", success=False)
+            raise PermissionError(f"远程父目录 {parent_dir} 不存在或不可写")
+
+        # 2. 获取现有的子目录列表
+        ls_cmd = f"ls -1 {parent_dir}"
+        stdin, stdout, stderr = self.ssh_client.exec_command(ls_cmd)
+        existing_names = stdout.read().decode().strip().split('\n')
+        
+        # 3. 尝试生成并创建目录（带重试机制）
+        retries = 3
+        python_path = self.get_config_value("python_path")
+        python_path_resolved = self._resolve_remote_path(python_path)
+        # 假设 donkey 命令在 python 同级目录
+        if "/" in python_path_resolved:
+            donkey_bin = python_path_resolved.rsplit('/', 1)[0] + "/donkey"
+        else:
+            donkey_bin = "donkey" # Fallback
+
+        for attempt in range(retries):
+            new_name = self._generate_workspace_name(existing_names)
+            full_path = f"{parent_dir}/{new_name}".replace("//", "/")
+            
+            console.print(f"尝试创建远程工作目录: {full_path} (尝试 {attempt+1}/{retries})...")
+            
+            create_cmd = f"{donkey_bin} createcar --path {full_path}"
+            
+            stdin, stdout, stderr = self.ssh_client.exec_command(create_cmd)
+            exit_status = stdout.channel.recv_exit_status()
+            
+            if exit_status == 0:
+                self.remote_work_dir = full_path
+                console.print(f"[green]成功创建远程工作目录: {full_path}[/green]")
+                self._log(f"Created remote workspace: {full_path}")
+                return full_path
+            else:
+                err_msg = stderr.read().decode().strip()
+                # 检查是否是目录已存在
+                if "File exists" in err_msg or "already exists" in err_msg:
+                    console.print(f"[yellow]目录名冲突，重试中...[/yellow]")
+                    continue
+                else:
+                    self._log(f"Failed to create car: {err_msg}", success=False)
+                    raise RuntimeError(f"创建远程目录失败: {err_msg}")
+        
+        raise RuntimeError(f"在 {retries} 次尝试后无法生成唯一的远程目录")
+
     def upload_data(self, local_path, remote_filename):
-        raw_remote_dir = self.get_config_value("remote_dir_base")
+        # 确保工作目录已创建
+        self.setup_remote_workspace()
         
-        # Resolve ~ in path for SFTP usage
-        remote_dir = self._resolve_remote_path(raw_remote_dir)
-        
-        # Ensure remote dir exists (mkdir -p handles ~ fine usually, but we use the resolved one to be safe and consistent)
-        stdin, stdout, stderr = self.ssh_client.exec_command(f"mkdir -p {remote_dir}")
-        exit_status = stdout.channel.recv_exit_status()
-        if exit_status != 0:
-             raise RuntimeError(f"Failed to create remote directory: {stderr.read().decode()}")
+        # 使用生成的 remote_work_dir
+        remote_dir = self.remote_work_dir
+
 
         remote_path = f"{remote_dir}/{remote_filename}".replace("//", "/")
         file_size = os.path.getsize(local_path)
@@ -298,7 +395,10 @@ class OnlineTrainer:
         return remote_path
 
     def run_remote_training(self, remote_tar_path, model_name=None):
-        remote_dir = self.get_config_value("remote_dir_base")
+        remote_dir = self.remote_work_dir
+        if not remote_dir:
+             raise RuntimeError("Remote workspace not initialized. Please upload data first.")
+
         if model_name is None:
             model_name = self.get_config_value("model_name")
         python_path = self.get_config_value("python_path")
@@ -433,13 +533,20 @@ class OnlineTrainer:
                                       新规范下应为 '{base_name}-YYMMDD-XXX' 格式。
                                       如果为 None，则回退到配置文件中的 'model_name'（旧规范）。
         """
-        remote_dir = self.get_config_value("remote_dir_base")
+        remote_dir = self.remote_work_dir
+        if not remote_dir:
+             # 如果未初始化工作目录，可能用户只想下载历史模型，
+             # 但由于现在 remote_dir_base 是父目录，我们无法自动得知具体的子目录。
+             # 除非我们允许用户手动指定，或者恢复旧逻辑（如果 remote_dir_base 看起来像完整路径）。
+             # 鉴于需求强制要求隔离，这里抛出错误提示用户。
+             raise RuntimeError("Remote workspace not initialized. Cannot determine source directory.")
         
         # Debug info
         console.print(f"[DEBUG] Current working directory: {os.getcwd()}")
         
-        # Resolve remote path (handle ~ expansion)
-        remote_dir = self._resolve_remote_path(remote_dir)
+        # remote_dir 已经是绝对路径（由 setup_remote_workspace 生成），不需要 resolve_remote_path
+        # 但为了保险（万一 setup 逻辑变了），还是可以用，但 setup 生成的是全路径。
+        # remote_dir = self._resolve_remote_path(remote_dir) 
         
         # 如果未传入 model_name，则从配置获取（兼容旧逻辑，但训练流程应传入完整名称）
         # 新命名规范要求 model_name 格式为：{base_name}-YYMMDD-XXX
