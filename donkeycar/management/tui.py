@@ -14,6 +14,7 @@ import shutil
 import getpass
 import tarfile
 import re
+from donkeycar.management.data_migrator import DataMigrator
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from pathlib import Path
@@ -164,7 +165,22 @@ def _delete_directory_contents(trash_dir: Path, progress_callback: Callable[[int
     return errors
 
 def _get_data_cache_dir() -> Path:
-    return Path("/home/dkc/projects/mycar/data_cache")
+    """获取数据备份缓存目录 (当前工作目录下的 data_cache)"""
+    return Path.cwd() / "data_cache"
+
+def _is_valid_archive(path: Path) -> bool:
+    """检查是否为有效的 tar.gz 文件"""
+    if not path.exists() or not path.is_file():
+        return False
+    try:
+        if not tarfile.is_tarfile(path):
+            return False
+        # 尝试打开并读取第一个成员以确认完整性
+        with tarfile.open(path, "r:gz") as tar:
+            tar.next()
+        return True
+    except Exception:
+        return False
 
 def _get_next_backup_path(cache_dir: Path, date_str: str) -> Path:
     pattern = re.compile(rf"^data-{date_str}-(\d{{3}})\.tar\.gz$")
@@ -178,28 +194,41 @@ def _get_next_backup_path(cache_dir: Path, date_str: str) -> Path:
     return cache_dir / f"data-{date_str}-{next_idx:03d}.tar.gz"
 
 def _list_backup_archives(cache_dir: Path) -> List[Dict[str, Any]]:
-    pattern = re.compile(r"^data-(\d{6})-(\d{3})\.tar\.gz$")
     items = []
     if not cache_dir.exists():
         return items
-    for item in cache_dir.iterdir():
+    
+    # 查找所有 .tar.gz 文件
+    for item in cache_dir.glob("*.tar.gz"):
         if not item.is_file():
             continue
-        match = pattern.match(item.name)
-        if not match:
-            continue
-        date_str, seq = match.groups()
+            
+        # 尝试匹配标准格式
+        match = re.match(r"^data-(\d{6})-(\d{3})\.tar\.gz$", item.name)
+        if match:
+            date_str, seq = match.groups()
+        else:
+            # 非标准命名，尝试从文件修改时间获取日期
+            try:
+                mtime = datetime.fromtimestamp(item.stat().st_mtime)
+                date_str = mtime.strftime("%y%m%d")
+            except Exception:
+                date_str = "Unknown"
+            seq = "N/A"
+            
         size = 0
         try:
             size = item.stat().st_size
         except OSError:
             size = 0
+            
         items.append({
             "path": item,
             "date": date_str,
             "seq": seq,
             "size": size
         })
+        
     items.sort(key=lambda x: x["path"].name)
     return items
 
@@ -726,9 +755,9 @@ class RestoreDataCommand(DonkeyCommand):
             return
 
         cache_dir = _get_data_cache_dir()
-        if not cache_dir.exists():
-            console.print(Panel(f"[yellow]备份目录不存在: {cache_dir}[/yellow]", title="状态提示"))
-            self.history_mgr.add_action_log("restore_data", "failed", {"reason": "cache_dir_missing"})
+        if not cache_dir.exists() or not cache_dir.is_dir():
+            console.print(Panel(f"[yellow]备份目录不存在或无效: {cache_dir}[/yellow]", title="状态提示"))
+            self.history_mgr.add_action_log("restore_data", "failed", {"reason": "cache_dir_missing_or_invalid"})
             Prompt.ask("按回车键返回菜单...")
             return
 
@@ -761,6 +790,18 @@ class RestoreDataCommand(DonkeyCommand):
                     selected = backups[idx - 1]["path"]
                     break
             console.print("[red]无效的选择，请重新输入[/red]")
+
+        # 验证文件格式和完整性
+        if not _is_valid_archive(selected):
+            console.print(Panel(
+                f"[red]文件校验失败: {selected.name}[/red]\n"
+                "该文件不是有效的 gzip 压缩 tar 归档，或已损坏。",
+                title="错误",
+                border_style="red"
+            ))
+            self.history_mgr.add_action_log("restore_data", "failed", {"reason": "invalid_archive", "file": selected.name})
+            Prompt.ask("按回车键返回菜单...")
+            return
 
         if not Confirm.ask(f"确认从 {selected.name} 恢复?", default=False):
             self.history_mgr.add_action_log("restore_data", "cancelled")
@@ -820,15 +861,24 @@ class RestoreDataCommand(DonkeyCommand):
         def worker():
             try:
                 with tarfile.open(selected, "r:gz") as tar:
-                    for member in tar.getmembers():
+                    members = tar.getmembers()
+                    # Check if archive members are prefixed with 'data/'
+                    # This handles archives created with 'tar czf backup.tar.gz data/'
+                    has_data_prefix = False
+                    if members:
+                        has_data_prefix = all(m.name == 'data' or m.name.startswith('data/') for m in members)
+                    
+                    extract_path = data_dir.parent if has_data_prefix else data_dir
+
+                    for member in members:
                         if not _is_safe_member(member):
                             errors.append(f"{member.name}: unsafe_path")
                             continue
                         if member.isdir():
-                            target_dir = data_dir / member.name
+                            target_dir = extract_path / member.name
                             target_dir.mkdir(parents=True, exist_ok=True)
                         else:
-                            tar.extract(member, data_dir)
+                            tar.extract(member, extract_path)
                             if member.isfile():
                                 progress_queue.put(("progress", 1))
             except Exception as e:
@@ -859,6 +909,21 @@ class RestoreDataCommand(DonkeyCommand):
             if total_files == 0:
                 progress.advance(task_id, 1)
 
+        # 完整性检查：自动修复嵌套的 data 目录
+        migrator = DataMigrator()
+        migration_report = {}
+        try:
+            with console.status("[bold green]正在检查数据完整性并整理目录..."):
+                migration_report = migrator.flatten_nested_data(data_dir)
+            
+            if migration_report.get("moved_files", 0) > 0:
+                console.print(f"[yellow]提示: 检测到嵌套的 data 目录，已自动迁移 {migration_report['moved_files']} 个文件[/yellow]")
+                if migration_report.get("errors"):
+                     console.print(f"[red]迁移警告: {migration_report['errors']}[/red]")
+        except Exception as e:
+            errors.append(f"Data migration failed: {e}")
+            console.print(f"[red]数据完整性检查失败: {e}[/red]")
+
         restored_files, _ = _scan_directory(data_dir)
         if errors or (total_files > 0 and restored_files == 0):
             _restore_from_trash(trash_dir, data_dir)
@@ -866,28 +931,35 @@ class RestoreDataCommand(DonkeyCommand):
                 "[red]恢复过程中出现错误，已尝试回滚。[/red]\n"
                 "建议:\n"
                 "- 检查备份文件是否损坏\n"
-                "- 检查目录权限\n",
+                "- 检查目录权限\n"
+                + (f"- 迁移错误: {migration_report.get('errors')}" if migration_report.get('errors') else ""),
                 title="恢复失败",
                 border_style="red"
             ))
             self.history_mgr.add_action_log("restore_data", "failed", {
                 "errors": errors[:20],
-                "restored_files": restored_files
+                "restored_files": restored_files,
+                "migration_errors": migration_report.get("errors")
             })
         else:
             try:
                 shutil.rmtree(trash_dir, ignore_errors=True)
             except Exception:
                 pass
+            
+            success_msg = f"[bold green]✓ 恢复完成[/bold green]\n文件数量: {restored_files}"
+            if migration_report.get("moved_files", 0) > 0:
+                success_msg += f"\n[dim]自动修复嵌套目录，迁移文件: {migration_report['moved_files']}[/dim]"
+                
             console.print(Panel(
-                f"[bold green]✓ 恢复完成[/bold green]\n"
-                f"文件数量: {restored_files}",
+                success_msg,
                 title="操作完成",
                 border_style="green"
             ))
             self.history_mgr.add_action_log("restore_data", "success", {
                 "backup": selected.name,
-                "files": restored_files
+                "files": restored_files,
+                "migrated_files": migration_report.get("moved_files", 0)
             })
 
         Prompt.ask("按回车键返回菜单...")
