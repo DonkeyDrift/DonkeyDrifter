@@ -739,25 +739,50 @@ class OnlineTrainer:
         if os.path.exists(local_model_path):
             console.print(f"[yellow]检测到本地模型 {local_model_path} 已存在，跳过下载[/yellow]")
             self._log(f"Local model {local_model_path} exists, skipping download")
-            return local_model_path
-        
-        console.print(f"正在下载模型 {remote_model_path} ...")
-        try:
-            self.sftp_client.get(remote_model_path, local_model_path)
-            console.print(f"[bold green][OK] 模型已下载至 {local_model_path}[/bold green]")
-            self._log(f"Downloaded model to {local_model_path}")
-            
-            # Verify Model
-            if self._verify_local_model(local_model_path):
-                console.print(f"[bold green][OK] 模型校验通过[/bold green]")
-            else:
-                console.print(f"[bold red][FAIL] 模型校验失败，文件可能损坏[/bold red]")
-            
-            return local_model_path
-        except Exception as e:
-            console.print(f"[red]下载模型失败: {e}[/red]")
-            self._log(f"Model download failed: {e}", success=False)
-            raise
+        else:
+            console.print(f"正在下载模型 {remote_model_path} ...")
+            try:
+                self.sftp_client.get(remote_model_path, local_model_path)
+                console.print(f"[bold green][OK] 模型已下载至 {local_model_path}[/bold green]")
+                self._log(f"Downloaded model to {local_model_path}")
+                
+                # Verify Model
+                if self._verify_local_model(local_model_path):
+                    console.print(f"[bold green][OK] 模型校验通过[/bold green]")
+                else:
+                    console.print(f"[bold red][FAIL] 模型校验失败，文件可能损坏[/bold red]")
+                
+            except Exception as e:
+                console.print(f"[red]下载模型失败: {e}[/red]")
+                self._log(f"Model download failed: {e}", success=False)
+                raise
+
+        # Try to download the model plot (.png)
+        remote_png_path = f"{remote_dir}/models/{model_name}.png".replace("//", "/")
+        local_png_path = os.path.join(local_models_dir, f"{model_name}.png")
+        local_png_path = os.path.abspath(local_png_path)
+
+        if not os.path.exists(local_png_path):
+            console.print(f"尝试下载模型说明图片 {remote_png_path} ...")
+            try:
+                # Check if remote file exists first
+                try:
+                    self.sftp_client.stat(remote_png_path)
+                    remote_png_exists = True
+                except IOError:
+                    remote_png_exists = False
+                
+                if remote_png_exists:
+                    self.sftp_client.get(remote_png_path, local_png_path)
+                    console.print(f"[green]模型说明图片已下载至 {local_png_path}[/green]")
+                    self._log(f"Downloaded model plot to {local_png_path}")
+                else:
+                    console.print(f"[dim]远程未找到模型说明图片，跳过[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]下载模型说明图片失败 (非致命): {e}[/yellow]")
+                self._log(f"Model plot download failed: {e}", success=False)
+
+        return local_model_path
 
     def _verify_local_model(self, model_path):
         """
