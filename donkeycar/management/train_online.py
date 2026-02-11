@@ -3,6 +3,11 @@ import os
 import sys
 import subprocess
 import tarfile
+
+# Suppress TensorFlow logs locally
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import paramiko
 import configparser
 import time
