@@ -14,11 +14,37 @@ import string
 from datetime import datetime
 from pathlib import Path
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, ProgressColumn, TimeRemainingColumn
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
+from rich.text import Text
 
 console = Console()
+
+class KerasBarColumn(ProgressColumn):
+    """Renders a visual progress bar with an arrow animation like Keras: [=====>.......]"""
+    
+    def render(self, task) -> Text:
+        total = task.total or 100
+        completed = task.completed
+        
+        # Calculate percentage (0.0 to 1.0)
+        percentage = min(1.0, completed / total) if total > 0 else 0
+        
+        # Width of the bar (excluding brackets)
+        bar_width = 30
+        
+        filled = int(percentage * bar_width)
+        
+        if filled == 0:
+            bar_content = "." * bar_width
+        elif filled >= bar_width:
+            bar_content = "=" * bar_width
+        else:
+            # Arrow animation: [=====>.......]
+            bar_content = "=" * (filled - 1) + ">" + "." * (bar_width - filled)
+            
+        return Text(f"[{bar_content}]", style="bold cyan")
 
 class OnlineTrainer:
     def __init__(self, config_file="train_online.conf"):
@@ -437,12 +463,22 @@ class OnlineTrainer:
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
+            KerasBarColumn(),
             TaskProgressColumn(),
+            TimeRemainingColumn(),
             TextColumn("{task.fields[info]}"),
             console=console
         ) as progress:
+            # We use task total=100 for overall Epoch progress, but visually we might abuse it for steps
+            # Actually, to show Keras-like flow, we should probably track total steps if possible.
+            # But let's stick to Epoch progress for the main bar, but try to interpolate if we get step info.
+            # Or better: The bar represents "Current Epoch Progress" if we know steps.
+            # Let's try to track global progress (Epochs).
             train_task = progress.add_task("训练进度", total=100, info="Waiting...")
+            
+            # State for progress parsing
+            self.current_epoch = 0
+            self.total_epochs = 0
             
             while not stdout.channel.exit_status_ready():
                 if time.time() - start_time > timeout:
@@ -499,7 +535,7 @@ class OnlineTrainer:
                             is_tf_noise = "Unsupported signature for serialization" in clean_line or "tensorflow.python.framework.func_graph" in clean_line or "INFO:tensorflow:" in clean_line
                             
                             if not is_progress_bar and not is_tf_noise:
-                                progress.console.print(f"[red]{clean_line}[/red]")
+                                progress.console.print(f"[green]{clean_line}[/green]")
                 
                 time.sleep(0.1)
                 
@@ -512,7 +548,7 @@ class OnlineTrainer:
                     training_finished = True
         
         if stderr_buffer:
-            progress.console.print(f"[red]{stderr_buffer.strip()}[/red]")
+            progress.console.print(f"[green]{stderr_buffer.strip()}[/green]")
 
         end_time = time.time()
         duration = end_time - start_time
@@ -548,22 +584,52 @@ class OnlineTrainer:
                  console.print(f"[green]内存状态良好 (可用 {available_mem} MB)[/green]")
 
     def _parse_training_output(self, line, progress, task_id):
-        # Example Keras output: 50/100 [=====>....] - loss: 0.123
-        # Or Epoch 5/20
+        # Example Keras output: 
+        # Epoch 1/20
+        # 50/100 [=====>....] - loss: 0.123
         try:
-            # Match Epoch
+            # Match Epoch Header
             epoch_match = re.search(r"Epoch (\d+)/(\d+)", line)
             if epoch_match:
-                current = int(epoch_match.group(1))
-                total = int(epoch_match.group(2))
-                percent = (current / total) * 100
-                progress.update(task_id, completed=percent, info=f"Epoch {current}/{total}")
+                self.current_epoch = int(epoch_match.group(1))
+                self.total_epochs = int(epoch_match.group(2))
+                # Reset or update info, but don't change progress yet, wait for steps
+                progress.update(task_id, info=f"Epoch {self.current_epoch}/{self.total_epochs} - Waiting...")
+                return
+
+            # Build info string
+            info_parts = [f"Epoch {self.current_epoch}/{self.total_epochs}"]
+
+            # Match Step Progress: 1/100 [=====>...]
+            # Regex: Start with numbers, slash, numbers, then [
+            step_match = re.match(r"^\s*(\d+)/(\d+)\s+\[", line)
+            if step_match:
+                current_step = int(step_match.group(1))
+                total_steps = int(step_match.group(2))
+                
+                info_parts.append(f"Step {current_step}/{total_steps}")
+                
+                # Calculate Global Progress
+                if self.total_epochs > 0:
+                    # Previous epochs
+                    completed_epochs_progress = (self.current_epoch - 1) / self.total_epochs
+                    
+                    # Current epoch progress fraction
+                    current_epoch_progress = (current_step / total_steps) / self.total_epochs
+                    
+                    total_progress = (completed_epochs_progress + current_epoch_progress) * 100
+                    progress.update(task_id, completed=total_progress)
             
-            # Match Loss
+            # Match Loss (update info)
             loss_match = re.search(r"loss: (\d+\.\d+)", line)
             if loss_match:
                 loss = loss_match.group(1)
-                progress.update(task_id, info=f"Loss: {loss}")
+                info_parts.append(f"Loss: {loss}")
+            
+            # Only update info if we have more than just Epoch info (to avoid flickering)
+            if len(info_parts) > 1:
+                progress.update(task_id, info=" - ".join(info_parts))
+                
         except Exception:
             pass # Ignore parsing errors
 
