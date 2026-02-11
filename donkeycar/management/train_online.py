@@ -516,6 +516,13 @@ class OnlineTrainer:
                             is_tf_noise = "Unsupported signature for serialization" in clean_line or "tensorflow.python.framework.func_graph" in clean_line or "INFO:tensorflow:" in clean_line
                             
                             if not is_progress_bar and not is_tf_noise:
+                                # Highlight file paths in green
+                                # Match unix-style paths starting with / or ./ or ~/ and containing at least one slash
+                                # Also include potential windows paths if cross-platform needed, but server is linux.
+                                # Regex explanation:
+                                # (?<!\[) : Lookbehind to ensure we don't double-wrap if already wrapped (though clean_line is raw)
+                                # (?:/|./|~/)[a-zA-Z0-9_\-\./]+ : Path pattern
+                                clean_line = re.sub(r'((?:/|\./|~/)[a-zA-Z0-9_\-\./]+)', r'[green]\1[/green]', clean_line)
                                 progress.console.print(clean_line)
                         else:
                             break
