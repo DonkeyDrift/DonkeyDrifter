@@ -513,7 +513,31 @@ class OnlineTrainer:
                             # 1. Hide Keras progress bars (contains ETA or [==]) to avoid flooding
                             # 2. Hide verbose TensorFlow serialization warnings and INFO logs
                             is_progress_bar = "ETA:" in clean_line or ("[" in clean_line and "]" in clean_line and "=" in clean_line)
-                            is_tf_noise = "Unsupported signature for serialization" in clean_line or "tensorflow.python.framework.func_graph" in clean_line or "INFO:tensorflow:" in clean_line
+                            
+                            tf_noise_keywords = [
+                                "Unsupported signature for serialization",
+                                "tensorflow.python.framework.func_graph",
+                                "INFO:tensorflow:",
+                                "oneDNN custom operations are on",
+                                "Could not find cuda drivers",
+                                "Unable to register cuDNN factory",
+                                "Unable to register cuFFT factory",
+                                "Unable to register cuBLAS factory",
+                                "This TensorFlow binary is optimized",
+                                "TF-TRT Warning: Could not find TensorRT",
+                                "Created TensorFlow Lite delegate",
+                                "could not open file to read NUMA node",
+                                "Cannot dlopen some GPU libraries",
+                                "Skipping registering GPU devices",
+                                "TfLiteFlexDelegate delegate",
+                                "Created TensorFlow Lite XNNPACK delegate",
+                                "To enable the following instructions",
+                                "Your kernel may have been built without NUMA support",
+                                "tensorflow/core/util/port.cc",
+                                "external/local_tsl/tsl/cuda/cudart_stub.cc",
+                                "external/local_xla/xla/stream_executor/cuda"
+                            ]
+                            is_tf_noise = any(keyword in clean_line for keyword in tf_noise_keywords)
                             
                             if not is_progress_bar and not is_tf_noise:
                                 # Highlight file paths in green
@@ -539,7 +563,33 @@ class OnlineTrainer:
                             # 1. Hide Keras progress bars (contains ETA or [==]) to avoid flooding
                             # 2. Hide verbose TensorFlow serialization warnings and INFO logs
                             is_progress_bar = "ETA:" in clean_line or ("[" in clean_line and "]" in clean_line and "=" in clean_line)
-                            is_tf_noise = "Unsupported signature for serialization" in clean_line or "tensorflow.python.framework.func_graph" in clean_line or "INFO:tensorflow:" in clean_line
+                            
+                            # Re-use the keyword list from stdout processing if possible, but here we are in a different scope or just repeat it for clarity/safety
+                            # Or better: Define it once in the class or method. But for now, let's just copy it to be safe and quick.
+                            tf_noise_keywords = [
+                                "Unsupported signature for serialization",
+                                "tensorflow.python.framework.func_graph",
+                                "INFO:tensorflow:",
+                                "oneDNN custom operations are on",
+                                "Could not find cuda drivers",
+                                "Unable to register cuDNN factory",
+                                "Unable to register cuFFT factory",
+                                "Unable to register cuBLAS factory",
+                                "This TensorFlow binary is optimized",
+                                "TF-TRT Warning: Could not find TensorRT",
+                                "Created TensorFlow Lite delegate",
+                                "could not open file to read NUMA node",
+                                "Cannot dlopen some GPU libraries",
+                                "Skipping registering GPU devices",
+                                "TfLiteFlexDelegate delegate",
+                                "Created TensorFlow Lite XNNPACK delegate",
+                                "To enable the following instructions",
+                                "Your kernel may have been built without NUMA support",
+                                "tensorflow/core/util/port.cc",
+                                "external/local_tsl/tsl/cuda/cudart_stub.cc",
+                                "external/local_xla/xla/stream_executor/cuda"
+                            ]
+                            is_tf_noise = any(keyword in clean_line for keyword in tf_noise_keywords)
                             
                             if not is_progress_bar and not is_tf_noise:
                                 progress.console.print(f"[green]{clean_line}[/green]")
