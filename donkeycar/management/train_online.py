@@ -20,15 +20,18 @@ console = Console()
 class OnlineTrainer:
     def __init__(self, config_file="train_online.conf"):
         self.config_file = config_file
+        self.config_dir = Path(self.config_file).resolve().parent
         self.config = self._load_config()
         self.ssh_client = None
         self.sftp_client = None
-        self.log_file = "train_online.log"
+        self.log_file = os.path.join("logs", "train_online.log")
 
     def _log(self, message, success=True):
         timestamp = datetime.now().isoformat()
         status = "SUCCESS" if success else "FAILED"
-        with open(self.log_file, "a", encoding="utf-8") as f:
+        log_path = self.config_dir / self.log_file
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] [{status}] {message}\n")
 
     def _get_interactive_model_name(self, no_interactive=False):
