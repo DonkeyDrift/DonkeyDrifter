@@ -430,6 +430,9 @@ class OnlineTrainer:
         training_finished = False
         timeout = 3600 # 1 hour timeout
         
+        stdout_buffer = ""
+        stderr_buffer = ""
+
         # Monitoring UI
         with Progress(
             SpinnerColumn(),
@@ -445,28 +448,71 @@ class OnlineTrainer:
                 if time.time() - start_time > timeout:
                     raise TimeoutError("训练超时 (超过 60 分钟)")
 
+                # Process stdout
                 if stdout.channel.recv_ready():
-                    line = stdout.channel.recv(1024).decode('utf-8', errors='ignore')
-                    # Parse progress
-                    self._parse_training_output(line, progress, train_task)
+                    chunk = stdout.channel.recv(1024).decode('utf-8', errors='ignore')
+                    stdout_buffer += chunk
                     
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
-                    if "Finished training" in line:
-                        training_finished = True
+                    while True:
+                        # Split by \r or \n to handle both lines and progress updates
+                        match = re.search(r'(\r|\n)', stdout_buffer)
+                        if match:
+                            end_pos = match.end()
+                            line = stdout_buffer[:match.start()]
+                            separator = stdout_buffer[match.start():match.end()]
+                            stdout_buffer = stdout_buffer[end_pos:]
+                            
+                            # Clean line for parsing
+                            clean_line = line.strip()
+                            if not clean_line:
+                                continue
+
+                            # Parse progress
+                            self._parse_training_output(clean_line, progress, train_task)
+                            
+                            if "Finished training" in clean_line:
+                                training_finished = True
+                            
+                            # Smart printing: 
+                            # 1. Hide Keras progress bars (contains ETA or [==]) to avoid flooding
+                            # 2. Hide verbose TensorFlow serialization warnings and INFO logs
+                            is_progress_bar = "ETA:" in clean_line or ("[" in clean_line and "]" in clean_line and "=" in clean_line)
+                            is_tf_noise = "Unsupported signature for serialization" in clean_line or "tensorflow.python.framework.func_graph" in clean_line or "INFO:tensorflow:" in clean_line
+                            
+                            if not is_progress_bar and not is_tf_noise:
+                                progress.console.print(clean_line)
+                        else:
+                            break
                 
+                # Process stderr
                 if stderr.channel.recv_ready():
-                    line = stderr.channel.recv(1024).decode('utf-8', errors='ignore')
-                    sys.stderr.write(line)
-                    sys.stderr.flush()
+                    chunk = stderr.channel.recv(1024).decode('utf-8', errors='ignore')
+                    stderr_buffer += chunk
+                    
+                    while '\n' in stderr_buffer:
+                        line, stderr_buffer = stderr_buffer.split('\n', 1)
+                        clean_line = line.strip()
+                        if clean_line:
+                            # 1. Hide Keras progress bars (contains ETA or [==]) to avoid flooding
+                            # 2. Hide verbose TensorFlow serialization warnings and INFO logs
+                            is_progress_bar = "ETA:" in clean_line or ("[" in clean_line and "]" in clean_line and "=" in clean_line)
+                            is_tf_noise = "Unsupported signature for serialization" in clean_line or "tensorflow.python.framework.func_graph" in clean_line or "INFO:tensorflow:" in clean_line
+                            
+                            if not is_progress_bar and not is_tf_noise:
+                                progress.console.print(f"[red]{clean_line}[/red]")
                 
                 time.sleep(0.1)
                 
         # Check remaining buffer
-        remaining = stdout.read().decode('utf-8', errors='ignore')
-        sys.stdout.write(remaining)
-        if "Finished training" in remaining:
-            training_finished = True
+        if stdout_buffer:
+            clean_line = stdout_buffer.strip()
+            if clean_line:
+                progress.console.print(clean_line)
+                if "Finished training" in clean_line:
+                    training_finished = True
+        
+        if stderr_buffer:
+            progress.console.print(f"[red]{stderr_buffer.strip()}[/red]")
 
         end_time = time.time()
         duration = end_time - start_time
