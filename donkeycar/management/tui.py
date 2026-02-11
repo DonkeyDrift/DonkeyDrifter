@@ -14,6 +14,7 @@ import shutil
 import getpass
 import tarfile
 import re
+from donkeycar.management.data_migrator import DataMigrator
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from pathlib import Path
@@ -908,6 +909,21 @@ class RestoreDataCommand(DonkeyCommand):
             if total_files == 0:
                 progress.advance(task_id, 1)
 
+        # 完整性检查：自动修复嵌套的 data 目录
+        migrator = DataMigrator()
+        migration_report = {}
+        try:
+            with console.status("[bold green]正在检查数据完整性并整理目录..."):
+                migration_report = migrator.flatten_nested_data(data_dir)
+            
+            if migration_report.get("moved_files", 0) > 0:
+                console.print(f"[yellow]提示: 检测到嵌套的 data 目录，已自动迁移 {migration_report['moved_files']} 个文件[/yellow]")
+                if migration_report.get("errors"):
+                     console.print(f"[red]迁移警告: {migration_report['errors']}[/red]")
+        except Exception as e:
+            errors.append(f"Data migration failed: {e}")
+            console.print(f"[red]数据完整性检查失败: {e}[/red]")
+
         restored_files, _ = _scan_directory(data_dir)
         if errors or (total_files > 0 and restored_files == 0):
             _restore_from_trash(trash_dir, data_dir)
@@ -915,28 +931,35 @@ class RestoreDataCommand(DonkeyCommand):
                 "[red]恢复过程中出现错误，已尝试回滚。[/red]\n"
                 "建议:\n"
                 "- 检查备份文件是否损坏\n"
-                "- 检查目录权限\n",
+                "- 检查目录权限\n"
+                + (f"- 迁移错误: {migration_report.get('errors')}" if migration_report.get('errors') else ""),
                 title="恢复失败",
                 border_style="red"
             ))
             self.history_mgr.add_action_log("restore_data", "failed", {
                 "errors": errors[:20],
-                "restored_files": restored_files
+                "restored_files": restored_files,
+                "migration_errors": migration_report.get("errors")
             })
         else:
             try:
                 shutil.rmtree(trash_dir, ignore_errors=True)
             except Exception:
                 pass
+            
+            success_msg = f"[bold green]✓ 恢复完成[/bold green]\n文件数量: {restored_files}"
+            if migration_report.get("moved_files", 0) > 0:
+                success_msg += f"\n[dim]自动修复嵌套目录，迁移文件: {migration_report['moved_files']}[/dim]"
+                
             console.print(Panel(
-                f"[bold green]✓ 恢复完成[/bold green]\n"
-                f"文件数量: {restored_files}",
+                success_msg,
                 title="操作完成",
                 border_style="green"
             ))
             self.history_mgr.add_action_log("restore_data", "success", {
                 "backup": selected.name,
-                "files": restored_files
+                "files": restored_files,
+                "migrated_files": migration_report.get("moved_files", 0)
             })
 
         Prompt.ask("按回车键返回菜单...")
