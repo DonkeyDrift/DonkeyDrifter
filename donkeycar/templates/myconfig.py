@@ -122,5 +122,7 @@ if _should_limit_gpu_memory():
     except Exception:
         pass
 
+MAX_EPOCHS = 60   # 最大训练轮数（默认：60）
 
 #--------------------------End 结尾
+
