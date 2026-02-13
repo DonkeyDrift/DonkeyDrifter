@@ -282,7 +282,7 @@ class DonkeyCommand:
 
     def execute(self):
         console.clear()
-        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
         
         # 检查是否需要有效的 mycar 目录
         if self.requires_mycar_folder and not is_valid_mycar_folder():
@@ -328,7 +328,7 @@ class DonkeyCommand:
         console.print(Panel(f"[green]{cmd_str}[/green]", title="Shell Command"))
 
         # 3. 确认执行
-        console.print("([green]y[/green]:执行 [red]n[/red]:取消 [blue]c[/blue]:复制命令)")
+        console.print("([green]y[/green]:执行 [red]n[/red]:取消 [orange1]c[/orange1]:复制命令)")
         action = Prompt.ask(
             "请选择操作", 
             choices=["y", "n", "c", "copy"], 
@@ -424,7 +424,7 @@ class OpenProjectCommand(DonkeyCommand):
 
     def execute(self):
         console.clear()
-        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
         
         base_dir = Path(os.path.expanduser("~/projects"))
         if not base_dir.exists():
@@ -487,7 +487,7 @@ class ClearDataCommand(DonkeyCommand):
 
     def execute(self):
         console.clear()
-        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
 
         if self.requires_mycar_folder and not is_valid_mycar_folder():
             console.print(Panel(
@@ -636,7 +636,7 @@ class BackupDataCommand(DonkeyCommand):
 
     def execute(self):
         console.clear()
-        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
 
         if self.requires_mycar_folder and not is_valid_mycar_folder():
             console.print(Panel(
@@ -741,7 +741,7 @@ class RestoreDataCommand(DonkeyCommand):
 
     def execute(self):
         console.clear()
-        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
 
         if self.requires_mycar_folder and not is_valid_mycar_folder():
             console.print(Panel(
@@ -1042,7 +1042,7 @@ class TrainOnlineCommand(DonkeyCommand):
 
     def execute(self):
         console.clear()
-        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
         
         # Check env
         if self.requires_mycar_folder and not is_valid_mycar_folder():
@@ -1078,7 +1078,7 @@ class DriveCommand(DonkeyCommand):
 
     def execute(self):
         console.clear()
-        console.print(Panel(f"[bold blue]{self.description}[/bold blue]", title=f"配置 {self.name}"))
+        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
         
         # 检查是否需要有效的 mycar 目录
         if self.requires_mycar_folder and not is_valid_mycar_folder():
@@ -1151,7 +1151,7 @@ class DriveCommand(DonkeyCommand):
         console.print(Panel(f"[green]{cmd_str}[/green]", title="Shell Command"))
 
         # Confirm execution
-        console.print("([green]y[/green]:执行 [red]n[/red]:取消 [blue]c[/blue]:复制命令)")
+        console.print("([green]y[/green]:执行 [red]n[/red]:取消 [orange1]c[/orange1]:复制命令)")
         action = Prompt.ask(
             "请选择操作", 
             choices=["y", "n", "c", "copy"], 
@@ -1379,8 +1379,8 @@ class MenuSystem:
                 time.sleep(1)
 
     def _print_header(self):
-        title = Text("Donkey Car 交互式管理终端", style="bold white on blue", justify="center")
-        console.print(Panel(title, style="blue"))
+        title = Text("Donkey Car 交互式管理终端", style="bold black on orange1", justify="center")
+        console.print(Panel(title, style="orange1"))
         console.print(f"[dim]当前目录: {os.getcwd()}[/dim]\n")
 
     def show_help(self):
