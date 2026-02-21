@@ -10,12 +10,15 @@ export const TubNavigator: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
   const playbackFps = Math.round(1000 / playbackSpeed);
+  const [actualFps, setActualFps] = useState(0);
   const [imageError, setImageError] = useState(false);
 
   const requestRef = useRef<number>();
   const lastTimeRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const fpsStartRef = useRef<number>(0);
+  const fpsFramesRef = useRef<number>(0);
 
   // Sync ref with state
   useEffect(() => {
@@ -32,6 +35,17 @@ export const TubNavigator: React.FC = () => {
   // Animation Loop
   const animate = useCallback((time: number) => {
     if (!isPlayingRef.current) return;
+
+    if (fpsStartRef.current === 0) {
+      fpsStartRef.current = time;
+    }
+    fpsFramesRef.current += 1;
+    const fpsElapsed = time - fpsStartRef.current;
+    if (fpsElapsed >= 1000) {
+      setActualFps(Math.round((fpsFramesRef.current * 1000) / fpsElapsed));
+      fpsStartRef.current = time;
+      fpsFramesRef.current = 0;
+    }
 
     if (lastTimeRef.current === 0) {
       lastTimeRef.current = time;
@@ -61,11 +75,14 @@ export const TubNavigator: React.FC = () => {
   useEffect(() => {
     if (isPlaying) {
       lastTimeRef.current = 0;
+      fpsStartRef.current = 0;
+      fpsFramesRef.current = 0;
       requestRef.current = requestAnimationFrame(animate);
     } else {
       if (requestRef.current) {
         cancelAnimationFrame(requestRef.current);
       }
+      setActualFps(0);
     }
     return () => {
       if (requestRef.current) {
@@ -201,7 +218,7 @@ export const TubNavigator: React.FC = () => {
                <div className="bg-zinc-800 p-3 rounded-md">
                  <div className="text-xs text-zinc-400 uppercase">FPS</div>
                  <div className="text-xl font-mono text-cyan-400">
-                   {playbackFps}
+                   {playbackFps} / {actualFps}
                  </div>
                </div>
             </div>
