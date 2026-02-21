@@ -1,19 +1,20 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { useStore } from '../store/useStore';
 import { getImageUrl } from '../services/api';
-import { Navigation, Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertCircle } from 'lucide-react';
+import { Navigation, Play, Pause, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertCircle } from 'lucide-react';
 
 export const TubNavigator: React.FC = () => {
   const { records, currentIndex, setCurrentIndex, totalRecords } = useStore();
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(100); // ms per frame, default faster
+  const playbackSpeed = 1000 / 60;
   const [imageError, setImageError] = useState(false);
 
   const requestRef = useRef<number>();
   const lastTimeRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   // Sync ref with state
   useEffect(() => {
@@ -25,6 +26,7 @@ export const TubNavigator: React.FC = () => {
   // Find image key
   const imageKey = currentRecord ? Object.keys(currentRecord).find(k => k.endsWith('image_array')) : null;
   const imagePath = imageKey && typeof currentRecord?.[imageKey] === 'string' ? currentRecord[imageKey] : null;
+  const imageUrl = useMemo(() => (imagePath ? getImageUrl(imagePath) : null), [imagePath]);
 
   // Animation Loop
   const animate = useCallback((time: number) => {
@@ -37,14 +39,19 @@ export const TubNavigator: React.FC = () => {
     const deltaTime = time - lastTimeRef.current;
 
     if (deltaTime >= playbackSpeed) {
+      const steps = Math.floor(deltaTime / playbackSpeed);
       setCurrentIndex((prev) => {
         if (prev >= totalRecords - 1) {
           setIsPlaying(false);
           return prev;
         }
-        return prev + 1;
+        const nextIndex = Math.min(totalRecords - 1, prev + steps);
+        if (nextIndex >= totalRecords - 1) {
+          setIsPlaying(false);
+        }
+        return nextIndex;
       });
-      lastTimeRef.current = time;
+      lastTimeRef.current = time - (deltaTime % playbackSpeed);
     }
     
     requestRef.current = requestAnimationFrame(animate);
@@ -70,6 +77,25 @@ export const TubNavigator: React.FC = () => {
   useEffect(() => {
     setImageError(false);
   }, [currentIndex]);
+
+  const preloadImage = useCallback((path: string | null) => {
+    if (!path) return;
+    if (imageCacheRef.current.has(path)) return;
+    const img = new Image();
+    img.src = getImageUrl(path);
+    imageCacheRef.current.set(path, img);
+  }, []);
+
+  useEffect(() => {
+    if (!records.length) return;
+    for (let offset = 1; offset <= 3; offset += 1) {
+      const nextRecord = records[currentIndex + offset];
+      if (!nextRecord) continue;
+      const nextKey = Object.keys(nextRecord).find((k) => k.endsWith('image_array'));
+      const nextPath = nextKey && typeof nextRecord?.[nextKey] === 'string' ? nextRecord[nextKey] : null;
+      preloadImage(nextPath);
+    }
+  }, [currentIndex, records, preloadImage]);
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCurrentIndex(parseInt(e.target.value));
@@ -132,7 +158,7 @@ export const TubNavigator: React.FC = () => {
           <div className="aspect-[4/3] bg-zinc-950 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative">
             {imagePath && !imageError ? (
               <img 
-                src={getImageUrl(imagePath)} 
+                src={imageUrl ?? undefined} 
                 alt={`Record ${currentIndex}`} 
                 className="w-full h-full object-contain"
                 onError={handleImageError}
