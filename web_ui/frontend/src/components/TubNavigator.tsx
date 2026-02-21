@@ -6,9 +6,10 @@ import { getImageUrl } from '../services/api';
 import { Navigation, Play, Pause, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertCircle } from 'lucide-react';
 
 export const TubNavigator: React.FC = () => {
-  const { records, currentIndex, setCurrentIndex, totalRecords } = useStore();
+  const { records, currentIndex, setCurrentIndex, totalRecords, config } = useStore();
   const [isPlaying, setIsPlaying] = useState(false);
-  const playbackSpeed = 1000 / 60;
+  const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
+  const playbackFps = Math.round(1000 / playbackSpeed);
   const [imageError, setImageError] = useState(false);
 
   const requestRef = useRef<number>();
@@ -183,7 +184,7 @@ export const TubNavigator: React.FC = () => {
 
           {/* Controls */}
           <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
                {/* Display key values */}
                <div className="bg-zinc-800 p-3 rounded-md">
                  <div className="text-xs text-zinc-400 uppercase">Angle</div>
@@ -195,6 +196,12 @@ export const TubNavigator: React.FC = () => {
                  <div className="text-xs text-zinc-400 uppercase">Throttle</div>
                  <div className="text-xl font-mono text-cyan-400">
                    {getRecordValue('user/throttle', 'pilot/throttle')}
+                 </div>
+               </div>
+               <div className="bg-zinc-800 p-3 rounded-md">
+                 <div className="text-xs text-zinc-400 uppercase">FPS</div>
+                 <div className="text-xl font-mono text-cyan-400">
+                   {playbackFps}
                  </div>
                </div>
             </div>
