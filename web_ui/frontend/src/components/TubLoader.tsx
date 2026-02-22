@@ -17,7 +17,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 };
 
 export const TubLoader: React.FC = () => {
-  const { tubPath, setTub, setError, setLoading, config } = useStore();
+  const { tubPath, setTub, setError, setLoading, config, totalRecords, fields } = useStore();
   const [path, setPath] = useState(tubPath);
 
   const handleLoad = async () => {
@@ -44,15 +44,32 @@ export const TubLoader: React.FC = () => {
       <CardContent>
         <div className="flex gap-4 items-end">
           <div className="flex-1 space-y-2">
-            <Input 
-              value={path} 
-              onChange={(e) => setPath(e.target.value)} 
-              placeholder="/home/dkc/projects/mycar/data"
+            <Input
+              aria-label="Tub path input field"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="Tub path, e.g. /home/dkc/projects/mycar/data"
             />
           </div>
-          <Button onClick={handleLoad} disabled={!config}>Load tub</Button>
+          <Button aria-label="Load tub" onClick={handleLoad} disabled={!config}>
+            Load tub
+          </Button>
         </div>
-        {!config && <p className="text-xs text-yellow-500 mt-2">Please load config first</p>}
+        {!config && (
+          <p className="text-xs text-yellow-500 mt-2">
+            Please load config first
+          </p>
+        )}
+        {config && totalRecords > 0 && (
+          <p className="text-xs text-emerald-400 mt-2">
+            Success: Loaded {totalRecords} records and {fields.length} fields
+          </p>
+        )}
+        {config && totalRecords === 0 && (
+          <p className="text-xs text-zinc-400 mt-2">
+            No tub loaded
+          </p>
+        )}
       </CardContent>
     </Card>
   );

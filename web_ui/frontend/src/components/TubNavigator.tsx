@@ -196,7 +196,6 @@ export const TubNavigator: React.FC = () => {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Image Preview */}
           <div className="aspect-[4/3] bg-zinc-950 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative">
             {imagePath && !imageError ? (
               <img 
@@ -223,7 +222,6 @@ export const TubNavigator: React.FC = () => {
             </div>
           </div>
 
-          {/* Controls */}
           <div className="space-y-6">
             <div className="grid grid-cols-3 gap-4">
                {/* Display key values */}
@@ -268,23 +266,52 @@ export const TubNavigator: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-4 gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setCurrentIndex(Math.max(0, currentIndex - 10))}>
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label="First record"
+                onClick={() => setCurrentIndex(0)}
+              >
                 <ChevronsLeft className="w-4 h-4" />
+                <span className="ml-1 text-xs">First</span>
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}>
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label="Previous record"
+                onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
+              >
                 <ChevronLeft className="w-4 h-4" />
+                <span className="ml-1 text-xs">Prev</span>
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setCurrentIndex(Math.min(totalRecords - 1, currentIndex + 1))}>
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label="Next record"
+                onClick={() => setCurrentIndex(Math.min(totalRecords - 1, currentIndex + 1))}
+              >
                 <ChevronRight className="w-4 h-4" />
+                <span className="ml-1 text-xs">Next</span>
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setCurrentIndex(Math.min(totalRecords - 1, currentIndex + 10))}>
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label="Last record"
+                onClick={() => setCurrentIndex(Math.max(0, totalRecords - 1))}
+              >
                 <ChevronsRight className="w-4 h-4" />
+                <span className="ml-1 text-xs">Last</span>
               </Button>
+            </div>
+
+            <div className="text-xs text-zinc-400">
+              Current record: {currentIndex + 1} of {totalRecords}
             </div>
             
             <Button 
               className={`w-full flex items-center justify-center gap-2 transition-colors ${isPlaying ? 'bg-red-600 hover:bg-red-700 text-white' : ''}`}
               variant={isPlaying ? "danger" : "primary"}
+              aria-label={isPlaying ? 'Stop playback' : 'Start playback'}
               onClick={() => setIsPlaying(!isPlaying)}
             >
               {isPlaying ? <><Pause className="w-4 h-4" /> Stop</> : <><Play className="w-4 h-4" /> Play</>}

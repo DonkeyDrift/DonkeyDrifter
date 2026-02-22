@@ -50,14 +50,27 @@ export const ConfigLoader: React.FC = () => {
       <CardContent>
         <div className="flex gap-4 items-end">
           <div className="flex-1 space-y-2">
-            <Input 
-              value={path} 
-              onChange={(e) => setPath(e.target.value)} 
-              placeholder="/home/dkc/projects/mycar"
+            <Input
+              aria-label="Config path input field"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="Config path, e.g. /home/dkc/projects/mycar"
             />
           </div>
-          <Button onClick={handleLoad}>Load config</Button>
+          <Button aria-label="Load configuration" onClick={handleLoad}>
+            Load
+          </Button>
         </div>
+        {config && (
+          <p className="mt-3 text-xs text-emerald-400">
+            Config loaded: {configPath}
+          </p>
+        )}
+        {!config && (
+          <p className="mt-3 text-xs text-zinc-400">
+            No config loaded
+          </p>
+        )}
       </CardContent>
     </Card>
   );

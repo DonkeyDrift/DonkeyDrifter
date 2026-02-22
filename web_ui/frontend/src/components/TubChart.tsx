@@ -159,7 +159,7 @@ export const TubChart: React.FC = () => {
         labels,
         datasets: [
           {
-            label: 'Angle',
+            label: 'Steering',
             data: angleData,
             borderColor: 'rgb(6, 182, 212)', // Cyan-500
             backgroundColor: 'rgba(6, 182, 212, 0.5)',
@@ -313,7 +313,27 @@ export const TubChart: React.FC = () => {
     };
   }, [currentIndex, isChartReady, hoverPosition]);
 
-  if (!records.length) return null;
+  if (!records.length) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LineChart className="w-5 h-5" />
+            Tub Chart
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div
+            id="empty-chart"
+            className="empty-chart-placeholder flex h-[300px] w-full items-center justify-center rounded-lg border border-dashed border-zinc-700 text-sm text-zinc-400"
+            aria-label="empty-chart placeholder"
+          >
+            No data
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // 计算同步状态信息
   const syncInfo = {
@@ -323,11 +343,11 @@ export const TubChart: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardHeader className="relative">
-        <CardTitle className="flex items-center gap-2">
-          <LineChart className="w-5 h-5" />
-          Data Graph
+      <Card>
+        <CardHeader className="relative">
+          <CardTitle className="flex items-center gap-2">
+            <LineChart className="w-5 h-5" />
+            Tub Chart
           {isDragging && (
             <span className="ml-2 px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded-full animate-pulse">
               Live Update
