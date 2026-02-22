@@ -81,7 +81,7 @@ export const TubChart: React.FC = () => {
     setTooltipData(null);
   }, []);
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+  const handleInteraction = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!chartRef.current || !containerRef.current || !records.length) return;
 
     const rect = containerRef.current.getBoundingClientRect();
@@ -101,6 +101,15 @@ export const TubChart: React.FC = () => {
 
     setCurrentIndex(clampedIndex);
   }, [records, setCurrentIndex]);
+
+  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    // 立即处理跳转
+    handleInteraction(event);
+  }, [handleInteraction]);
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    handleInteraction(event);
+  }, [handleInteraction]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     if (!records.length) return;
@@ -352,6 +361,7 @@ export const TubChart: React.FC = () => {
           className="h-[300px] w-full relative cursor-crosshair"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
+          onMouseDown={handleMouseDown}
           onClick={handleClick}
         >
           <Line 
