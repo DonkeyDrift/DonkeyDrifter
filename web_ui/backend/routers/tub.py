@@ -120,24 +120,36 @@ async def get_image(path: str):
 
 @router.post("/delete")
 async def delete_records(request: TubDeleteRequest):
-    global current_tub
+    global current_tub, current_records
     if not current_tub:
         raise HTTPException(status_code=400, detail="No tub loaded")
         
     try:
         current_tub.delete_records(request.indexes)
-        return {"status": True, "message": f"Deleted {len(request.indexes)} records"}
+        # Reload records so deleted indexes are reflected in subsequent reads
+        current_records = [record for record in current_tub]
+        return {
+            "status": True,
+            "message": f"Deleted {len(request.indexes)} records",
+            "record_count": len(current_records),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/restore")
 async def restore_records(request: TubDeleteRequest):
-    global current_tub
+    global current_tub, current_records
     if not current_tub:
         raise HTTPException(status_code=400, detail="No tub loaded")
         
     try:
         current_tub.restore_records(request.indexes)
-        return {"status": True, "message": f"Restored {len(request.indexes)} records"}
+        # Reload records so restored indexes are reflected in subsequent reads
+        current_records = [record for record in current_tub]
+        return {
+            "status": True,
+            "message": f"Restored {len(request.indexes)} records",
+            "record_count": len(current_records),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useStore } from '../store/useStore';
-import { deleteRecords, getRecords } from '../services/api';
+import { deleteRecords, getRecords, restoreRecords } from '../services/api';
 
 const parseFilterExpression = (expression: string) => {
   const trimmed = expression.trim();
@@ -38,7 +38,8 @@ export const DataCleaner: React.FC = () => {
   const [startIndex, setStartIndex] = useState('');
   const [endIndex, setEndIndex] = useState('');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [actionMode, setActionMode] = useState<'delete' | 'restore'>('delete');
 
   const filteredCount = useMemo(() => records.length, [records.length]);
   const totalCount = useMemo(() => originalRecords.length, [originalRecords.length]);
@@ -102,51 +103,68 @@ export const DataCleaner: React.FC = () => {
     return { start, end };
   }, [startIndex, endIndex]);
 
-  const handleOpenConfirm = useCallback(() => {
-    const range = parseRange();
-    if (!range) {
-      setFilterError('Invalid index range');
-      return;
-    }
-    setFilterError(null);
-    setIsConfirmOpen(true);
-  }, [parseRange]);
+  const handleOpenConfirm = useCallback(
+    (mode: 'delete' | 'restore') => {
+      const range = parseRange();
+      if (!range) {
+        setFilterError('Invalid index range');
+        return;
+      }
+      setFilterError(null);
+      setActionMode(mode);
+      setIsConfirmOpen(true);
+    },
+    [parseRange]
+  );
+
+  const handleOpenDeleteConfirm = useCallback(() => {
+    handleOpenConfirm('delete');
+  }, [handleOpenConfirm]);
+
+  const handleOpenRestoreConfirm = useCallback(() => {
+    handleOpenConfirm('restore');
+  }, [handleOpenConfirm]);
 
   const handleCancelConfirm = useCallback(() => {
     setIsConfirmOpen(false);
   }, []);
 
-  const handleConfirmDelete = useCallback(async () => {
+  const handleConfirmAction = useCallback(async () => {
     const range = parseRange();
     if (!range) {
       setFilterError('Invalid index range');
       return;
     }
 
-    setIsDeleting(true);
-    try {
-      const indexes = originalRecords
-        .filter((record) => record._index >= range.start && record._index <= range.end)
-        .map((record) => record._index);
+    const indexes: number[] = [];
+    for (let i = range.start; i < range.end; i += 1) {
+      indexes.push(i);
+    }
 
-      if (indexes.length === 0) {
-        setFilterError('No records in selected range');
-        setIsDeleting(false);
-        return;
+    if (indexes.length === 0) {
+      setFilterError('No records in selected range');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      if (actionMode === 'delete') {
+        await deleteRecords(indexes);
+      } else {
+        await restoreRecords(indexes);
       }
 
-      await deleteRecords(indexes);
-      const data = await getRecords(0, 10000);
+      const data = await getRecords(0, 100000);
       const nextRecords = data.records || [];
       setAllRecords(nextRecords);
       setIsConfirmOpen(false);
       setFilterError(null);
     } catch {
-      setFilterError('Delete failed');
+      setFilterError(actionMode === 'delete' ? 'Delete failed' : 'Restore failed');
     } finally {
-      setIsDeleting(false);
+      setIsProcessing(false);
     }
-  }, [originalRecords, setAllRecords, parseRange]);
+  }, [actionMode, parseRange, setAllRecords]);
 
   if (!originalRecords.length) {
     return null;
@@ -197,7 +215,7 @@ export const DataCleaner: React.FC = () => {
 
         <div className="space-y-2">
           <div className="text-xs text-zinc-400">
-            Index range to delete
+            Index range to delete / restore
           </div>
           <div className="flex gap-2 items-center">
             <Input
@@ -215,8 +233,11 @@ export const DataCleaner: React.FC = () => {
               onChange={(e) => setEndIndex(e.target.value)}
               className="w-24"
             />
-            <Button variant="danger" onClick={handleOpenConfirm}>
+            <Button variant="danger" onClick={handleOpenDeleteConfirm}>
               Delete
+            </Button>
+            <Button variant="secondary" onClick={handleOpenRestoreConfirm}>
+              Restore
             </Button>
           </div>
         </div>
@@ -231,21 +252,25 @@ export const DataCleaner: React.FC = () => {
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
             <div className="rounded-lg bg-zinc-900 border border-zinc-700 p-6 w-full max-w-sm space-y-4">
               <div className="text-sm font-semibold">
-                Confirm deletion
+                {actionMode === 'delete' ? 'Confirm deletion' : 'Confirm restore'}
               </div>
               <div className="text-xs text-zinc-300">
-                This will delete records in the selected index range. This action cannot be undone. Continue?
+                {actionMode === 'delete'
+                  ? 'This will delete records in the selected index range. This action cannot be undone. Continue?'
+                  : 'This will restore records in the selected index range back into the active dataset. Continue?'}
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="secondary" onClick={handleCancelConfirm} disabled={isDeleting}>
+                <Button variant="secondary" onClick={handleCancelConfirm} disabled={isProcessing}>
                   Cancel
                 </Button>
-                <Button variant="danger" onClick={handleConfirmDelete} disabled={isDeleting}>
-                  {isDeleting ? 'Deleting...' : 'Confirm'}
+                <Button variant="danger" onClick={handleConfirmAction} disabled={isProcessing}>
+                  {isProcessing ? (actionMode === 'delete' ? 'Deleting...' : 'Restoring...') : 'Confirm'}
                 </Button>
               </div>
               <div className="text-[11px] text-emerald-400">
-                Success: Records in range will be removed from the tub and chart after confirmation.
+                {actionMode === 'delete'
+                  ? 'Success: Records in range will be removed from the tub and chart after confirmation.'
+                  : 'Success: Records in range will be restored into the tub and chart after confirmation.'}
               </div>
             </div>
           </div>
