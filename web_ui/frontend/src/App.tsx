@@ -4,6 +4,7 @@ import { ConfigLoader } from './components/ConfigLoader';
 import { TubLoader } from './components/TubLoader';
 import { TubNavigator } from './components/TubNavigator';
 import { TubChart } from './components/TubChart';
+import { DataCleaner } from './components/DataCleaner';
 import { StatusBar } from './components/StatusBar';
 import { useStore } from './store/useStore';
 
@@ -68,6 +69,7 @@ function App() {
         <div className="space-y-6">
           <TubNavigator />
           <TubChart />
+          <DataCleaner />
         </div>
 
         <StatusBar />
