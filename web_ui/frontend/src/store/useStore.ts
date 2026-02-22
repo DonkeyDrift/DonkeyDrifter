@@ -18,6 +18,10 @@ interface AppState {
   isLoading: boolean;
   isDragging: boolean;
   error: string | null;
+  selectionStartIndex: number | null;
+  selectionEndIndex: number | null;
+  selectionHistory: { startIndex: number; endIndex: number }[];
+  selectionHistoryIndex: number;
 
   setConfig: (config: Record<string, unknown>, path: string) => void;
   setTub: (path: string, records: TubRecord[], fields: string[]) => void;
@@ -27,6 +31,14 @@ interface AppState {
   setIsDragging: (isDragging: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setSelectionRange: (startIndex: number, endIndex: number) => void;
+  clearSelectionRange: () => void;
+  undoSelectionRange: () => void;
+  redoSelectionRange: () => void;
+  onSelectionChange?: (startIndex: number | null, endIndex: number | null) => void;
+  setSelectionChangeHandler: (
+    handler: ((startIndex: number | null, endIndex: number | null) => void) | undefined
+  ) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -41,6 +53,11 @@ export const useStore = create<AppState>((set) => ({
   isLoading: false,
   isDragging: false,
   error: null,
+  selectionStartIndex: null,
+  selectionEndIndex: null,
+  selectionHistory: [],
+  selectionHistoryIndex: -1,
+  onSelectionChange: undefined,
 
   setConfig: (config, path) => set({ config, configPath: path }),
   setTub: (path, records, fields) =>
@@ -59,6 +76,10 @@ export const useStore = create<AppState>((set) => ({
       originalRecords: records,
       totalRecords: records.length,
       currentIndex: 0,
+      selectionStartIndex: null,
+      selectionEndIndex: null,
+      selectionHistory: [],
+      selectionHistoryIndex: -1,
     }),
   setCurrentIndex: (index) =>
     set((state) => ({
@@ -67,4 +88,70 @@ export const useStore = create<AppState>((set) => ({
   setIsDragging: (isDragging) => set({ isDragging }),
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
+  setSelectionRange: (startIndex, endIndex) =>
+    set((state) => {
+      const clampedStart = Math.max(0, Math.min(startIndex, state.totalRecords));
+      const clampedEnd = Math.max(clampedStart + 1, Math.min(endIndex, state.totalRecords));
+      const entry = { startIndex: clampedStart, endIndex: clampedEnd };
+      const baseHistory =
+        state.selectionHistoryIndex >= 0
+          ? state.selectionHistory.slice(0, state.selectionHistoryIndex + 1)
+          : [];
+      const nextHistory = [...baseHistory, entry];
+      if (state.onSelectionChange) {
+        state.onSelectionChange(clampedStart, clampedEnd);
+      }
+      return {
+        selectionStartIndex: clampedStart,
+        selectionEndIndex: clampedEnd,
+        selectionHistory: nextHistory,
+        selectionHistoryIndex: nextHistory.length - 1,
+      };
+    }),
+  clearSelectionRange: () =>
+    set((state) => {
+      if (state.onSelectionChange) {
+        state.onSelectionChange(null, null);
+      }
+      return {
+        selectionStartIndex: null,
+        selectionEndIndex: null,
+      };
+    }),
+  undoSelectionRange: () =>
+    set((state) => {
+      if (state.selectionHistoryIndex <= 0) {
+        return state;
+      }
+      const nextIndex = state.selectionHistoryIndex - 1;
+      const entry = state.selectionHistory[nextIndex];
+      if (state.onSelectionChange) {
+        state.onSelectionChange(entry.startIndex, entry.endIndex);
+      }
+      return {
+        selectionStartIndex: entry.startIndex,
+        selectionEndIndex: entry.endIndex,
+        selectionHistoryIndex: nextIndex,
+      };
+    }),
+  redoSelectionRange: () =>
+    set((state) => {
+      if (
+        state.selectionHistoryIndex < 0 ||
+        state.selectionHistoryIndex >= state.selectionHistory.length - 1
+      ) {
+        return state;
+      }
+      const nextIndex = state.selectionHistoryIndex + 1;
+      const entry = state.selectionHistory[nextIndex];
+      if (state.onSelectionChange) {
+        state.onSelectionChange(entry.startIndex, entry.endIndex);
+      }
+      return {
+        selectionStartIndex: entry.startIndex,
+        selectionEndIndex: entry.endIndex,
+        selectionHistoryIndex: nextIndex,
+      };
+    }),
+  setSelectionChangeHandler: (handler) => set({ onSelectionChange: handler }),
 }));

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -32,7 +32,17 @@ const parseFilterExpression = (expression: string) => {
 };
 
 export const DataCleaner: React.FC = () => {
-  const { originalRecords, records, setRecords, setAllRecords, setError } = useStore();
+  const {
+    originalRecords,
+    records,
+    setRecords,
+    setAllRecords,
+    setError,
+    selectionStartIndex,
+    selectionEndIndex,
+    setSelectionRange,
+    clearSelectionRange,
+  } = useStore();
   const [filterExpression, setFilterExpression] = useState('');
   const [filterError, setFilterError] = useState<string | null>(null);
   const [startIndex, setStartIndex] = useState('');
@@ -43,6 +53,19 @@ export const DataCleaner: React.FC = () => {
 
   const filteredCount = useMemo(() => records.length, [records.length]);
   const totalCount = useMemo(() => originalRecords.length, [originalRecords.length]);
+
+  useEffect(() => {
+    if (selectionStartIndex != null) {
+      setStartIndex(String(selectionStartIndex));
+    }
+    if (selectionEndIndex != null) {
+      setEndIndex(String(selectionEndIndex));
+    }
+    if (selectionStartIndex == null && selectionEndIndex == null) {
+      setStartIndex('');
+      setEndIndex('');
+    }
+  }, [selectionStartIndex, selectionEndIndex]);
 
   const handleApplyFilter = useCallback(() => {
     setFilterError(null);
@@ -90,7 +113,8 @@ export const DataCleaner: React.FC = () => {
     setFilterError(null);
     setFilterExpression('');
     setRecords(originalRecords);
-  }, [originalRecords, setRecords]);
+    clearSelectionRange();
+  }, [originalRecords, setRecords, clearSelectionRange]);
 
   const parseRange = useCallback(() => {
     const start = Number(startIndex);
@@ -136,6 +160,8 @@ export const DataCleaner: React.FC = () => {
       return;
     }
 
+    setSelectionRange(range.start, range.end);
+
     const indexes: number[] = [];
     for (let i = range.start; i < range.end; i += 1) {
       indexes.push(i);
@@ -164,7 +190,7 @@ export const DataCleaner: React.FC = () => {
     } finally {
       setIsProcessing(false);
     }
-  }, [actionMode, parseRange, setAllRecords]);
+  }, [actionMode, parseRange, setAllRecords, setSelectionRange]);
 
   if (!originalRecords.length) {
     return null;

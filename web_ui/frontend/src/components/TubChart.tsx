@@ -26,7 +26,18 @@ ChartJS.register(
 );
 
 export const TubChart: React.FC = () => {
-  const { records, currentIndex, isDragging, setCurrentIndex } = useStore();
+  const {
+    records,
+    currentIndex,
+    isDragging,
+    setCurrentIndex,
+    selectionStartIndex,
+    selectionEndIndex,
+    setSelectionRange,
+    clearSelectionRange,
+    undoSelectionRange,
+    redoSelectionRange,
+  } = useStore();
   const chartRef = useRef<ChartInstance<'line'> | null>(null);
   const [isChartReady, setIsChartReady] = useState(false);
   const animationFrameRef = useRef<number | null>(null);
@@ -34,47 +45,70 @@ export const TubChart: React.FC = () => {
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; dataIndex: number } | null>(null);
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; steering: number; throttle: number; index: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [selectionDraft, setSelectionDraft] = useState<{
+    startX: number;
+    currentX: number;
+    startIndex: number;
+    currentIndex: number;
+  } | null>(null);
+  const hydrateSelectionRef = useRef(false);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
 
-  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!chartRef.current || !containerRef.current || !records.length) return;
+  const handleMouseMove = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!chartRef.current || !containerRef.current || !records.length) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
 
-    const chart = chartRef.current;
-    const chartArea = chart.chartArea;
+      const chart = chartRef.current;
+      const chartArea = chart.chartArea;
 
-    if (x < chartArea.left || x > chartArea.right || y < chartArea.top || y > chartArea.bottom) {
-      setHoverPosition(null);
-      setTooltipData(null);
-      return;
-    }
+      if (x < chartArea.left || x > chartArea.right || y < chartArea.top || y > chartArea.bottom) {
+        setHoverPosition(null);
+        setTooltipData(null);
+        return;
+      }
 
-    const relativeX = x - chartArea.left;
-    const chartWidth = chartArea.right - chartArea.left;
-    const progress = relativeX / chartWidth;
+      const clampedX = Math.max(chartArea.left, Math.min(x, chartArea.right));
+      const relativeX = clampedX - chartArea.left;
+      const chartWidth = chartArea.right - chartArea.left;
+      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
 
-    const dataIndex = Math.round(progress * (records.length - 1));
-    const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+      const dataIndex = Math.round(progress * (records.length - 1));
+      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
 
-    const record = records[clampedIndex];
-    const steering = record['user/angle'] as number ?? 0;
-    const throttle = record['user/throttle'] as number ?? 0;
+      const record = records[clampedIndex];
+      const steering = (record['user/angle'] as number) ?? 0;
+      const throttle = (record['user/throttle'] as number) ?? 0;
 
-    setHoverPosition({ x, y, dataIndex: clampedIndex });
-    setTooltipData({
-      x: event.clientX,
-      y: event.clientY,
-      steering,
-      throttle,
-      index: clampedIndex
-    });
-  }, [records]);
+      setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
+      setTooltipData({
+        x: event.clientX,
+        y: event.clientY,
+        steering,
+        throttle,
+        index: clampedIndex,
+      });
+
+      if (selectionDraft) {
+        setSelectionDraft((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentX: clampedX,
+                currentIndex: clampedIndex,
+              }
+            : null
+        );
+      }
+    },
+    [records, selectionDraft]
+  );
 
   const handleMouseLeave = useCallback(() => {
     setHoverPosition(null);
@@ -102,44 +136,195 @@ export const TubChart: React.FC = () => {
     setCurrentIndex(clampedIndex);
   }, [records, setCurrentIndex]);
 
-  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    // 立即处理跳转
-    handleInteraction(event);
-  }, [handleInteraction]);
+  const handleMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!chartRef.current || !containerRef.current || !records.length) return;
+      if (event.button !== 0) return;
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    handleInteraction(event);
-  }, [handleInteraction]);
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = event.clientX - rect.left;
 
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (!records.length) return;
+      const chart = chartRef.current;
+      const chartArea = chart.chartArea;
 
-    const step = event.shiftKey ? 10 : 1;
+      if (x < chartArea.left || x > chartArea.right) return;
 
-    switch (event.key) {
-      case 'ArrowLeft':
+      const relativeX = x - chartArea.left;
+      const chartWidth = chartArea.right - chartArea.left;
+      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
+
+      const dataIndex = Math.round(progress * (records.length - 1));
+      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+
+      setSelectionDraft({
+        startX: x,
+        currentX: x,
+        startIndex: clampedIndex,
+        currentIndex: clampedIndex,
+      });
+
+      setCurrentIndex(clampedIndex);
+    },
+    [records.length, setCurrentIndex]
+  );
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (selectionDraft) return;
+      handleInteraction(event);
+    },
+    [handleInteraction, selectionDraft]
+  );
+
+  const handleMouseUp = useCallback(
+    () => {
+      if (!selectionDraft || !records.length) {
+        setSelectionDraft(null);
+        return;
+      }
+
+      const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
+      const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
+
+      const pixelDelta = Math.abs(selectionDraft.currentX - selectionDraft.startX);
+      const finalStart = startIndex;
+      const finalEnd = pixelDelta < 3 ? startIndex + 1 : endIndex;
+
+      setSelectionRange(finalStart, finalEnd);
+      setSelectionDraft(null);
+    },
+    [selectionDraft, setSelectionRange, records.length]
+  );
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!records.length) return;
+
+      if (event.key === 'Escape') {
         event.preventDefault();
-        setCurrentIndex((prev) => Math.max(0, prev - step));
-        break;
-      case 'ArrowRight':
+        clearSelectionRange();
+        setSelectionDraft(null);
+        return;
+      }
+
+      if ((event.key === 'z' || event.key === 'Z') && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        setCurrentIndex((prev) => Math.min(records.length - 1, prev + step));
-        break;
-      case 'Home':
+        if (event.shiftKey) {
+          redoSelectionRange();
+        } else {
+          undoSelectionRange();
+        }
+        return;
+      }
+
+      if ((event.key === 'y' || event.key === 'Y') && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        setCurrentIndex(0);
-        break;
-      case 'End':
+        redoSelectionRange();
+        return;
+      }
+
+      if (
+        selectionStartIndex != null &&
+        selectionEndIndex != null &&
+        event.shiftKey &&
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+      ) {
         event.preventDefault();
-        setCurrentIndex(records.length - 1);
-        break;
-    }
-  }, [records.length, setCurrentIndex]);
+        const delta = event.key === 'ArrowLeft' ? -1 : 1;
+        const start = selectionStartIndex;
+        const nextEnd = Math.max(start + 1, Math.min(selectionEndIndex + delta, records.length));
+        setSelectionRange(start, nextEnd);
+        return;
+      }
+
+      const step = event.shiftKey ? 10 : 1;
+
+      switch (event.key) {
+        case 'ArrowLeft':
+          event.preventDefault();
+          setCurrentIndex((prev) => Math.max(0, prev - step));
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          setCurrentIndex((prev) => Math.min(records.length - 1, prev + step));
+          break;
+        case 'Home':
+          event.preventDefault();
+          setCurrentIndex(0);
+          break;
+        case 'End':
+          event.preventDefault();
+          setCurrentIndex(records.length - 1);
+          break;
+      }
+    },
+    [
+      records.length,
+      setCurrentIndex,
+      clearSelectionRange,
+      selectionStartIndex,
+      selectionEndIndex,
+      setSelectionRange,
+      undoSelectionRange,
+      redoSelectionRange,
+    ]
+  );
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!records.length) return;
+
+    if (selectionStartIndex != null && selectionEndIndex != null) {
+      try {
+        window.localStorage.setItem(
+          'tubSelectionRange',
+          JSON.stringify({ start: selectionStartIndex, end: selectionEndIndex })
+        );
+      } catch {
+        // ignore
+      }
+    } else {
+      try {
+        window.localStorage.removeItem('tubSelectionRange');
+      } catch {
+        // ignore
+      }
+    }
+  }, [selectionStartIndex, selectionEndIndex, records.length]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (hydrateSelectionRef.current) return;
+    if (!records.length) return;
+
+    try {
+      const raw = window.localStorage.getItem('tubSelectionRange');
+      if (!raw) {
+        hydrateSelectionRef.current = true;
+        return;
+      }
+      const parsed = JSON.parse(raw) as { start: number; end: number };
+      if (
+        typeof parsed.start === 'number' &&
+        typeof parsed.end === 'number' &&
+        parsed.start >= 0 &&
+        parsed.end > parsed.start
+      ) {
+        const clampedStart = Math.max(0, Math.min(parsed.start, records.length - 1));
+        const clampedEnd = Math.max(clampedStart + 1, Math.min(parsed.end, records.length));
+        setSelectionRange(clampedStart, clampedEnd);
+      }
+    } catch {
+      // ignore
+    } finally {
+      hydrateSelectionRef.current = true;
+    }
+  }, [records.length, setSelectionRange]);
 
   const { data, sampledIndices } = useMemo(() => {
     if (!records.length) return { data: { labels: [], datasets: [] }, sampledIndices: [] as number[] };
@@ -233,8 +418,8 @@ export const TubChart: React.FC = () => {
         
         const latestIndex = currentIndexRef.current;
         const totalRecords = records.length;
-        const progress = totalRecords > 1 ? latestIndex / (totalRecords - 1) : 0;
         const chartWidth = chartArea.right - chartArea.left;
+        const progress = totalRecords > 1 ? latestIndex / (totalRecords - 1) : 0;
         const currentX = chartArea.left + (progress * chartWidth);
         
         if (!isNaN(currentX) && currentX > 0 && currentX <= chartArea.right) {
@@ -261,6 +446,27 @@ export const TubChart: React.FC = () => {
           ctx.restore();
         }
 
+        if (selectionStartIndex != null && selectionEndIndex != null && totalRecords > 1) {
+          const clampedStart = Math.max(0, Math.min(selectionStartIndex, totalRecords - 1));
+          const clampedEndExclusive = Math.max(clampedStart + 1, Math.min(selectionEndIndex, totalRecords));
+          const startProgress = clampedStart / (totalRecords - 1);
+          const endProgress = (clampedEndExclusive - 1) / (totalRecords - 1);
+
+          const startX = chartArea.left + startProgress * chartWidth;
+          const endX = chartArea.left + endProgress * chartWidth;
+
+          if (endX > startX) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+            ctx.fillRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 3]);
+            ctx.strokeRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
+            ctx.restore();
+          }
+        }
+
         const hoverPos = hoverPositionRef.current;
         if (hoverPos && hoverPos.x >= chartArea.left && hoverPos.x <= chartArea.right) {
           ctx.save();
@@ -284,11 +490,26 @@ export const TubChart: React.FC = () => {
           
           ctx.restore();
         }
+
+        if (selectionDraft) {
+          const draftStartX = Math.min(selectionDraft.startX, selectionDraft.currentX);
+          const draftEndX = Math.max(selectionDraft.startX, selectionDraft.currentX);
+          if (draftEndX > draftStartX) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.12)';
+            ctx.fillRect(draftStartX, chartArea.top, draftEndX - draftStartX, chartArea.bottom - chartArea.top);
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 2]);
+            ctx.strokeRect(draftStartX, chartArea.top, draftEndX - draftStartX, chartArea.bottom - chartArea.top);
+            ctx.restore();
+          }
+        }
       } catch (error) {
         console.error('Vertical line plugin error:', error);
       }
     }
-  }), [sampledIndices, records]);
+  }), [sampledIndices, records, selectionStartIndex, selectionEndIndex, selectionDraft]);
 
   useEffect(() => {
     if (!chartRef.current || !isChartReady) return;
@@ -311,7 +532,172 @@ export const TubChart: React.FC = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [currentIndex, isChartReady, hoverPosition]);
+  }, [currentIndex, isChartReady, hoverPosition, selectionStartIndex, selectionEndIndex, selectionDraft]);
+
+  const selectionInfo = useMemo(() => {
+    if (!records.length) {
+      return null;
+    }
+
+    if (selectionDraft) {
+      const start = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
+      const endInclusive = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex);
+      const startRecord = records[start];
+      const endRecord = records[endInclusive];
+      const startTimeMs =
+        startRecord && typeof startRecord._timestamp_ms === 'number'
+          ? startRecord._timestamp_ms
+          : null;
+      const endTimeMs =
+        endRecord && typeof endRecord._timestamp_ms === 'number'
+          ? endRecord._timestamp_ms
+          : null;
+      const durationMs =
+        startTimeMs != null && endTimeMs != null ? Math.max(0, endTimeMs - startTimeMs) : null;
+
+      return {
+        startIndex: start,
+        endIndex: endInclusive,
+        startTimeMs,
+        endTimeMs,
+        durationMs,
+        isDraft: true,
+      };
+    }
+
+    if (selectionStartIndex != null && selectionEndIndex != null) {
+      const start = Math.min(selectionStartIndex, Math.max(0, records.length - 1));
+      const endInclusive = Math.min(
+        Math.max(selectionEndIndex - 1, start),
+        Math.max(0, records.length - 1)
+      );
+      const startRecord = records[start];
+      const endRecord = records[endInclusive];
+      const startTimeMs =
+        startRecord && typeof startRecord._timestamp_ms === 'number'
+          ? startRecord._timestamp_ms
+          : null;
+      const endTimeMs =
+        endRecord && typeof endRecord._timestamp_ms === 'number'
+          ? endRecord._timestamp_ms
+          : null;
+      const durationMs =
+        startTimeMs != null && endTimeMs != null ? Math.max(0, endTimeMs - startTimeMs) : null;
+
+      return {
+        startIndex: start,
+        endIndex: endInclusive,
+        startTimeMs,
+        endTimeMs,
+        durationMs,
+        isDraft: false,
+      };
+    }
+
+    return null;
+  }, [selectionDraft, selectionStartIndex, selectionEndIndex, records]);
+
+  const handleTouchStart = useCallback(
+    (event: React.TouchEvent<HTMLDivElement>) => {
+      if (!chartRef.current || !containerRef.current || !records.length) return;
+      if (event.touches.length === 0) return;
+
+      const touch = event.touches[0];
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+
+      const chart = chartRef.current;
+      const chartArea = chart.chartArea;
+
+      if (x < chartArea.left || x > chartArea.right) return;
+
+      const relativeX = x - chartArea.left;
+      const chartWidth = chartArea.right - chartArea.left;
+      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
+
+      const dataIndex = Math.round(progress * (records.length - 1));
+      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+
+      setSelectionDraft({
+        startX: x,
+        currentX: x,
+        startIndex: clampedIndex,
+        currentIndex: clampedIndex,
+      });
+
+      setCurrentIndex(clampedIndex);
+
+      event.preventDefault();
+    },
+    [records.length, setCurrentIndex]
+  );
+
+  const handleTouchMove = useCallback(
+    (event: React.TouchEvent<HTMLDivElement>) => {
+      if (!chartRef.current || !containerRef.current || !records.length) return;
+      if (!selectionDraft) return;
+      if (event.touches.length === 0) return;
+
+      const touch = event.touches[0];
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+
+      const chart = chartRef.current;
+      const chartArea = chart.chartArea;
+
+      const clampedX = Math.max(chartArea.left, Math.min(x, chartArea.right));
+      const relativeX = clampedX - chartArea.left;
+      const chartWidth = chartArea.right - chartArea.left;
+      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
+
+      const dataIndex = Math.round(progress * (records.length - 1));
+      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+
+      setSelectionDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentX: clampedX,
+              currentIndex: clampedIndex,
+            }
+          : null
+      );
+
+      const record = records[clampedIndex];
+      const steering = (record['user/angle'] as number) ?? 0;
+      const throttle = (record['user/throttle'] as number) ?? 0;
+
+      setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
+      setTooltipData({
+        x: touch.clientX,
+        y: touch.clientY,
+        steering,
+        throttle,
+        index: clampedIndex,
+      });
+
+      event.preventDefault();
+    },
+    [records, selectionDraft]
+  );
+
+  const handleTouchEnd = useCallback(
+    (event: React.TouchEvent<HTMLDivElement>) => {
+      if (!selectionDraft || !records.length) {
+        setSelectionDraft(null);
+        return;
+      }
+
+      const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
+      const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
+
+      setSelectionRange(startIndex, endIndex);
+      setSelectionDraft(null);
+      event.preventDefault();
+    },
+    [selectionDraft, setSelectionRange, records.length]
+  );
 
   if (!records.length) {
     return (
@@ -342,6 +728,8 @@ export const TubChart: React.FC = () => {
     progress: records.length > 1 ? (currentIndex / (records.length - 1) * 100).toFixed(1) : '0.0'
   };
 
+   const containerCursorClass = selectionDraft ? 'cursor-ew-resize' : 'cursor-crosshair';
+
   return (
       <Card>
         <CardHeader className="relative">
@@ -357,6 +745,25 @@ export const TubChart: React.FC = () => {
         <div className="text-xs text-zinc-400 mt-1">
           Index: {syncInfo.currentIndex} / {syncInfo.totalRecords - 1} ({syncInfo.progress}%)
         </div>
+        {selectionInfo && (
+          <div className="mt-1 text-[11px] text-cyan-300">
+            <span className="font-semibold mr-1">
+              {selectionInfo.isDraft ? 'Selecting' : 'Selected'}:
+            </span>
+            <span className="font-mono">
+              [{selectionInfo.startIndex} – {selectionInfo.endIndex}]
+            </span>
+            {selectionInfo.startTimeMs != null && selectionInfo.endTimeMs != null && (
+              <span className="ml-2 text-cyan-200/80">
+                {(selectionInfo.startTimeMs / 1000).toFixed(2)}s →{' '}
+                {(selectionInfo.endTimeMs / 1000).toFixed(2)}s
+                {selectionInfo.durationMs != null && (
+                  <> ({(selectionInfo.durationMs / 1000).toFixed(2)}s)</>
+                )}
+              </span>
+            )}
+          </div>
+        )}
         {tooltipData && (
           <div 
             className="absolute top-6 right-6 pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg p-3 shadow-xl text-xs z-50 backdrop-blur-sm"
@@ -378,11 +785,15 @@ export const TubChart: React.FC = () => {
       <CardContent>
         <div 
           ref={containerRef}
-          className="h-[300px] w-full relative cursor-crosshair"
+          className={`h-[300px] w-full relative ${containerCursorClass} touch-none`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
           onClick={handleClick}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
           <Line 
             ref={chartRef} 
