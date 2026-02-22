@@ -315,7 +315,7 @@ export const TubChart: React.FC = () => {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="relative">
         <CardTitle className="flex items-center gap-2">
           <LineChart className="w-5 h-5" />
           Data Graph
@@ -328,6 +328,23 @@ export const TubChart: React.FC = () => {
         <div className="text-xs text-zinc-400 mt-1">
           Index: {syncInfo.currentIndex} / {syncInfo.totalRecords - 1} ({syncInfo.progress}%)
         </div>
+        {tooltipData && (
+          <div 
+            className="absolute top-6 right-6 pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg p-3 shadow-xl text-xs z-50 backdrop-blur-sm"
+          >
+            <div className="font-semibold text-zinc-200 mb-2">Frame: {tooltipData.index}</div>
+            <div className="space-y-1">
+              <div className="flex justify-between gap-4">
+                <span className="text-zinc-400">Steering:</span>
+                <span className="text-cyan-400 font-mono">{tooltipData.steering.toFixed(3)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-zinc-400">Throttle:</span>
+                <span className="text-yellow-400 font-mono">{tooltipData.throttle.toFixed(3)}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <div 
@@ -347,23 +364,6 @@ export const TubChart: React.FC = () => {
             }}
             className="w-full h-full"
           />
-          {tooltipData && (
-            <div 
-              className="absolute top-2 right-2 pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg p-3 shadow-xl text-xs z-50 backdrop-blur-sm"
-            >
-              <div className="font-semibold text-zinc-200 mb-2">Frame: {tooltipData.index}</div>
-              <div className="space-y-1">
-                <div className="flex justify-between gap-4">
-                  <span className="text-zinc-400">Steering:</span>
-                  <span className="text-cyan-400 font-mono">{tooltipData.steering.toFixed(3)}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-zinc-400">Throttle:</span>
-                  <span className="text-yellow-400 font-mono">{tooltipData.throttle.toFixed(3)}</span>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>
