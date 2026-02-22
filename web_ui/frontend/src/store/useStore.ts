@@ -15,12 +15,14 @@ interface AppState {
   currentIndex: number;
   fields: string[];
   isLoading: boolean;
+  isDragging: boolean;
   error: string | null;
 
   setConfig: (config: Record<string, unknown>, path: string) => void;
   setTub: (path: string, records: TubRecord[], fields: string[]) => void;
   setRecords: (records: TubRecord[]) => void;
   setCurrentIndex: (index: number | ((prev: number) => number)) => void;
+  setIsDragging: (isDragging: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
 }
@@ -34,6 +36,7 @@ export const useStore = create<AppState>((set) => ({
   currentIndex: 0,
   fields: [],
   isLoading: false,
+  isDragging: false,
   error: null,
 
   setConfig: (config, path) => set({ config, configPath: path }),
@@ -43,6 +46,7 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({
       currentIndex: typeof index === 'function' ? index(state.currentIndex) : index,
     })),
+  setIsDragging: (isDragging) => set({ isDragging }),
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
 }));

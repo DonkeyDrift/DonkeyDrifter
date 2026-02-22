@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { AxiosError } from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
@@ -17,10 +17,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 };
 
 export const ConfigLoader: React.FC = () => {
-  const { configPath, setConfig, setError, setLoading } = useStore();
+  const { configPath, setConfig, setError, setLoading, config } = useStore();
   const [path, setPath] = useState(configPath);
 
-  const handleLoad = async () => {
+  const handleLoad = useCallback(async () => {
     setLoading(true);
     try {
       const data = await loadConfig(path);
@@ -30,7 +30,13 @@ export const ConfigLoader: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [path, setConfig, setError, setLoading]);
+
+  useEffect(() => {
+    if (!config) {
+      handleLoad();
+    }
+  }, [config, handleLoad]);
 
   return (
     <Card>
