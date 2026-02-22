@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { useStore } from '../store/useStore';
 import {
@@ -26,15 +26,111 @@ ChartJS.register(
 );
 
 export const TubChart: React.FC = () => {
-  const { records, currentIndex, isDragging } = useStore();
+  const { records, currentIndex, isDragging, setCurrentIndex } = useStore();
   const chartRef = useRef<ChartInstance<'line'> | null>(null);
   const [isChartReady, setIsChartReady] = useState(false);
   const animationFrameRef = useRef<number | null>(null);
   const currentIndexRef = useRef(currentIndex);
+  const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; dataIndex: number } | null>(null);
+  const [tooltipData, setTooltipData] = useState<{ x: number; y: number; steering: number; throttle: number; index: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!chartRef.current || !containerRef.current || !records.length) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const chart = chartRef.current;
+    const chartArea = chart.chartArea;
+
+    if (x < chartArea.left || x > chartArea.right || y < chartArea.top || y > chartArea.bottom) {
+      setHoverPosition(null);
+      setTooltipData(null);
+      return;
+    }
+
+    const relativeX = x - chartArea.left;
+    const chartWidth = chartArea.right - chartArea.left;
+    const progress = relativeX / chartWidth;
+
+    const dataIndex = Math.round(progress * (records.length - 1));
+    const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+
+    const record = records[clampedIndex];
+    const steering = record['user/angle'] as number ?? 0;
+    const throttle = record['user/throttle'] as number ?? 0;
+
+    setHoverPosition({ x, y, dataIndex: clampedIndex });
+    setTooltipData({
+      x: event.clientX,
+      y: event.clientY,
+      steering,
+      throttle,
+      index: clampedIndex
+    });
+  }, [records]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverPosition(null);
+    setTooltipData(null);
+  }, []);
+
+  const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!chartRef.current || !containerRef.current || !records.length) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+
+    const chart = chartRef.current;
+    const chartArea = chart.chartArea;
+
+    if (x < chartArea.left || x > chartArea.right) return;
+
+    const relativeX = x - chartArea.left;
+    const chartWidth = chartArea.right - chartArea.left;
+    const progress = relativeX / chartWidth;
+
+    const dataIndex = Math.round(progress * (records.length - 1));
+    const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+
+    setCurrentIndex(clampedIndex);
+  }, [records, setCurrentIndex]);
+
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!records.length) return;
+
+    const step = event.shiftKey ? 10 : 1;
+
+    switch (event.key) {
+      case 'ArrowLeft':
+        event.preventDefault();
+        setCurrentIndex((prev) => Math.max(0, prev - step));
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        setCurrentIndex((prev) => Math.min(records.length - 1, prev + step));
+        break;
+      case 'Home':
+        event.preventDefault();
+        setCurrentIndex(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        setCurrentIndex(records.length - 1);
+        break;
+    }
+  }, [records.length, setCurrentIndex]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   const { data, sampledIndices } = useMemo(() => {
     if (!records.length) return { data: { labels: [], datasets: [] }, sampledIndices: [] as number[] };
@@ -103,9 +199,12 @@ export const TubChart: React.FC = () => {
     }
   };
 
-  // 增强的垂直线插件 - 优化同步性能
-  // 注意：插件不再依赖currentIndex，而是通过ref获取最新值
-  // 这样可以避免插件频繁重新创建，提高性能和稳定性
+  const hoverPositionRef = useRef(hoverPosition);
+
+  useEffect(() => {
+    hoverPositionRef.current = hoverPosition;
+  }, [hoverPosition]);
+
   const verticalLinePlugin = useMemo<Plugin<'line'>>(() => ({
     id: 'verticalLine',
     afterDraw: (chart: ChartInstance<'line'>) => {
@@ -120,75 +219,82 @@ export const TubChart: React.FC = () => {
           return;
         }
         
-        // 从ref中获取最新的currentIndex值，而不是依赖闭包
-        const latestIndex = currentIndexRef.current;
+        const ctx = chart.ctx;
+        const chartArea = chart.chartArea;
         
-        // 基于比例位置计算，而不是依赖采样索引
-        // 这样可以确保与Timeline的完美同步
+        const latestIndex = currentIndexRef.current;
         const totalRecords = records.length;
         const progress = totalRecords > 1 ? latestIndex / (totalRecords - 1) : 0;
-        
-        // 计算在图表中的相对位置
-        const chartArea = chart.chartArea;
         const chartWidth = chartArea.right - chartArea.left;
-        const x = chartArea.left + (progress * chartWidth);
+        const currentX = chartArea.left + (progress * chartWidth);
         
-        if (isNaN(x) || x <= 0 || x > chartArea.right) {
-          return;
+        if (!isNaN(currentX) && currentX > 0 && currentX <= chartArea.right) {
+          ctx.save();
+          ctx.strokeStyle = 'rgb(239, 68, 68)';
+          ctx.lineWidth = 2;
+          ctx.globalAlpha = 0.9;
+          ctx.setLineDash([5, 3]);
+          
+          ctx.beginPath();
+          ctx.moveTo(currentX, yAxis.top);
+          ctx.lineTo(currentX, yAxis.bottom);
+          ctx.stroke();
+          
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgb(239, 68, 68)';
+          ctx.beginPath();
+          ctx.arc(currentX, yAxis.top, 3, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(currentX, yAxis.bottom, 3, 0, 2 * Math.PI);
+          ctx.fill();
+          
+          ctx.restore();
         }
-        
-        const ctx = chart.ctx;
-        ctx.save();
-        
-        // 增强样式：更粗的线条，更高的对比度
-        ctx.strokeStyle = 'rgb(239, 68, 68)';
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.9;
-        ctx.setLineDash([5, 3]);
-        
-        // 绘制垂直线
-        ctx.beginPath();
-        ctx.moveTo(x, yAxis.top);
-        ctx.lineTo(x, yAxis.bottom);
-        ctx.stroke();
-        
-        // 添加顶部和底部的标记点
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgb(239, 68, 68)';
-        ctx.beginPath();
-        ctx.arc(x, yAxis.top, 3, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, yAxis.bottom, 3, 0, 2 * Math.PI);
-        ctx.fill();
-        
-        ctx.restore();
+
+        const hoverPos = hoverPositionRef.current;
+        if (hoverPos && hoverPos.x >= chartArea.left && hoverPos.x <= chartArea.right) {
+          ctx.save();
+          ctx.strokeStyle = 'rgb(34, 197, 94)';
+          ctx.lineWidth = 2;
+          ctx.globalAlpha = 0.8;
+          ctx.setLineDash([]);
+          
+          ctx.beginPath();
+          ctx.moveTo(hoverPos.x, yAxis.top);
+          ctx.lineTo(hoverPos.x, yAxis.bottom);
+          ctx.stroke();
+          
+          ctx.fillStyle = 'rgb(34, 197, 94)';
+          ctx.beginPath();
+          ctx.arc(hoverPos.x, yAxis.top, 2, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(hoverPos.x, yAxis.bottom, 2, 0, 2 * Math.PI);
+          ctx.fill();
+          
+          ctx.restore();
+        }
       } catch (error) {
         console.error('Vertical line plugin error:', error);
       }
     }
   }), [sampledIndices, records]);
 
-  // 优化的同步更新机制 - 确保与Timeline完美同步
   useEffect(() => {
     if (!chartRef.current || !isChartReady) return;
     
-    // 使用requestAnimationFrame确保与浏览器刷新同步
     const updateChart = () => {
       if (chartRef.current) {
-        // 直接调用render()而不是update()，避免重新计算数据
-        // 插件会在render时自动读取最新的currentIndexRef.current值
         chartRef.current.render();
       }
       animationFrameRef.current = null;
     };
     
-    // 取消之前的动画帧请求
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
     
-    // 请求新的动画帧，确保与Timeline同步
     animationFrameRef.current = requestAnimationFrame(updateChart);
     
     return () => {
@@ -196,7 +302,7 @@ export const TubChart: React.FC = () => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [currentIndex, isChartReady]);
+  }, [currentIndex, isChartReady, hoverPosition]);
 
   if (!records.length) return null;
 
@@ -224,7 +330,13 @@ export const TubChart: React.FC = () => {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px] w-full relative">
+        <div 
+          ref={containerRef}
+          className="h-[300px] w-full relative cursor-crosshair"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+        >
           <Line 
             ref={chartRef} 
             options={options} 
@@ -235,6 +347,23 @@ export const TubChart: React.FC = () => {
             }}
             className="w-full h-full"
           />
+          {tooltipData && (
+            <div 
+              className="absolute top-2 right-2 pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg p-3 shadow-xl text-xs z-50 backdrop-blur-sm"
+            >
+              <div className="font-semibold text-zinc-200 mb-2">Frame: {tooltipData.index}</div>
+              <div className="space-y-1">
+                <div className="flex justify-between gap-4">
+                  <span className="text-zinc-400">Steering:</span>
+                  <span className="text-cyan-400 font-mono">{tooltipData.steering.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-zinc-400">Throttle:</span>
+                  <span className="text-yellow-400 font-mono">{tooltipData.throttle.toFixed(3)}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
