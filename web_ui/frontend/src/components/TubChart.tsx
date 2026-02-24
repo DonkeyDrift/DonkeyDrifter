@@ -486,9 +486,17 @@ export const TubChart: React.FC = () => {
                 ctx.clip(); // Clip to ensure we don't draw outside if endX > right
 
                 ctx.lineDashOffset = -lineDashOffsetRef.current;
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.15)'; 
+                
+                if (isDraft) {
+                    // 拖动过程中也使用绿色，确保用户体验一致
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.15)'; 
+                    ctx.strokeStyle = 'rgb(34, 197, 94)';
+                } else {
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.15)'; 
+                    ctx.strokeStyle = 'rgb(34, 197, 94)';
+                }
+
                 ctx.fillRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
-                ctx.strokeStyle = 'rgb(239, 68, 68)';
                 ctx.lineWidth = 2;
                 ctx.setLineDash([6, 4]);
                 ctx.strokeRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
