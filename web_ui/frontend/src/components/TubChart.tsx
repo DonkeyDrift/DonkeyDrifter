@@ -40,7 +40,9 @@ export const TubChart: React.FC = () => {
   } = useStore();
   const chartRef = useRef<ChartInstance<'line'> | null>(null);
   const [isChartReady, setIsChartReady] = useState(false);
-  const animationFrameRef = useRef<number | null>(null);
+  const lineDashOffsetRef = useRef(0);
+  const visualSelectionRef = useRef<{ startProgress: number; endProgress: number } | null>(null);
+  const isSelectingRef = useRef(false);
   const currentIndexRef = useRef(currentIndex);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; dataIndex: number } | null>(null);
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; steering: number; throttle: number; index: number } | null>(null);
@@ -149,6 +151,8 @@ export const TubChart: React.FC = () => {
 
       if (x < chartArea.left || x > chartArea.right) return;
 
+      isSelectingRef.current = true;
+
       const relativeX = x - chartArea.left;
       const chartWidth = chartArea.right - chartArea.left;
       const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
@@ -178,9 +182,34 @@ export const TubChart: React.FC = () => {
 
   const handleMouseUp = useCallback(
     () => {
+      isSelectingRef.current = false;
       if (!selectionDraft || !records.length) {
         setSelectionDraft(null);
         return;
+      }
+
+      // Calculate Visual Selection
+      if (chartRef.current) {
+        const chart = chartRef.current;
+        const chartArea = chart.chartArea;
+        const chartWidth = chartArea.right - chartArea.left;
+        
+        const sX = Math.min(selectionDraft.startX, selectionDraft.currentX);
+        const eX = Math.max(selectionDraft.startX, selectionDraft.currentX);
+        const pixelDelta = Math.abs(selectionDraft.currentX - selectionDraft.startX);
+        
+        if (pixelDelta < 3) {
+           // Snap to grid if it's a click
+           const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
+           const pStart = startIndex / (records.length - 1);
+           const pEnd = (startIndex + 1) / (records.length - 1);
+           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
+        } else {
+           // Use exact drag position
+           const pStart = Math.max(0, (sX - chartArea.left) / chartWidth);
+           const pEnd = Math.min(1, (eX - chartArea.left) / chartWidth);
+           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
+        }
       }
 
       const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
@@ -415,10 +444,10 @@ export const TubChart: React.FC = () => {
         
         const ctx = chart.ctx;
         const chartArea = chart.chartArea;
+        const chartWidth = chartArea.right - chartArea.left;
         
         const latestIndex = currentIndexRef.current;
         const totalRecords = records.length;
-        const chartWidth = chartArea.right - chartArea.left;
         const progress = totalRecords > 1 ? latestIndex / (totalRecords - 1) : 0;
         const currentX = chartArea.left + (progress * chartWidth);
         
@@ -446,25 +475,41 @@ export const TubChart: React.FC = () => {
           ctx.restore();
         }
 
-        if (selectionStartIndex != null && selectionEndIndex != null && totalRecords > 1) {
-          const clampedStart = Math.max(0, Math.min(selectionStartIndex, totalRecords - 1));
-          const clampedEndExclusive = Math.max(clampedStart + 1, Math.min(selectionEndIndex, totalRecords));
-          const startProgress = clampedStart / (totalRecords - 1);
-          const endProgress = (clampedEndExclusive - 1) / (totalRecords - 1);
+        const drawSelectionBox = (sP: number, eP: number, isDraft: boolean) => {
+            const startX = chartArea.left + sP * chartWidth;
+            const endX = chartArea.left + eP * chartWidth;
+            
+            if (endX > startX) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
+                ctx.clip(); // Clip to ensure we don't draw outside if endX > right
 
-          const startX = chartArea.left + startProgress * chartWidth;
-          const endX = chartArea.left + endProgress * chartWidth;
+                ctx.lineDashOffset = -lineDashOffsetRef.current;
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.15)'; 
+                ctx.fillRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
+                ctx.strokeStyle = 'rgb(239, 68, 68)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.strokeRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
+                ctx.restore();
+            }
+        };
 
-          if (endX > startX) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
-            ctx.fillRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([6, 3]);
-            ctx.strokeRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
-            ctx.restore();
-          }
+        if (selectionDraft) {
+            const draftStartX = Math.min(selectionDraft.startX, selectionDraft.currentX);
+            const draftEndX = Math.max(selectionDraft.startX, selectionDraft.currentX);
+            // Convert to progress
+            const sP = Math.max(0, (draftStartX - chartArea.left) / chartWidth);
+            const eP = Math.min(1, (draftEndX - chartArea.left) / chartWidth); // draft is clamped to area in handleMove
+            drawSelectionBox(sP, eP, true);
+        } else if (visualSelectionRef.current) {
+            drawSelectionBox(visualSelectionRef.current.startProgress, visualSelectionRef.current.endProgress, false);
+        } else if (selectionStartIndex != null && selectionEndIndex != null && totalRecords > 1) {
+             // Fallback
+             const startP = Math.max(0, Math.min(selectionStartIndex, totalRecords - 1)) / (totalRecords - 1);
+             const endP = Math.max(0, Math.min(selectionEndIndex, totalRecords)) / (totalRecords - 1); // Allow > 1 for last segment
+             drawSelectionBox(startP, endP, false);
         }
 
         const hoverPos = hoverPositionRef.current;
@@ -490,47 +535,58 @@ export const TubChart: React.FC = () => {
           
           ctx.restore();
         }
-
-        if (selectionDraft) {
-          const draftStartX = Math.min(selectionDraft.startX, selectionDraft.currentX);
-          const draftEndX = Math.max(selectionDraft.startX, selectionDraft.currentX);
-          if (draftEndX > draftStartX) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.12)';
-            ctx.fillRect(draftStartX, chartArea.top, draftEndX - draftStartX, chartArea.bottom - chartArea.top);
-            ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)';
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([4, 2]);
-            ctx.strokeRect(draftStartX, chartArea.top, draftEndX - draftStartX, chartArea.bottom - chartArea.top);
-            ctx.restore();
-          }
-        }
       } catch (error) {
         console.error('Vertical line plugin error:', error);
       }
     }
   }), [sampledIndices, records, selectionStartIndex, selectionEndIndex, selectionDraft]);
 
+  // Sync Visual Selection Ref
+  useEffect(() => {
+    if (!records.length) return;
+    if (isSelectingRef.current) return;
+
+    if (selectionStartIndex != null && selectionEndIndex != null) {
+        const total = records.length;
+        let shouldUpdate = false;
+        
+        if (!visualSelectionRef.current) {
+            shouldUpdate = true;
+        } else {
+            const vStartIdx = Math.round(visualSelectionRef.current.startProgress * (total - 1));
+            if (vStartIdx !== selectionStartIndex) {
+                shouldUpdate = true;
+            }
+        }
+        
+        if (shouldUpdate) {
+            const startP = Math.max(0, Math.min(selectionStartIndex, total - 1)) / (total - 1);
+            const endP = Math.max(0, Math.min(selectionEndIndex, total)) / (total - 1);
+            visualSelectionRef.current = { startProgress: startP, endProgress: endP };
+        }
+    } else {
+        visualSelectionRef.current = null;
+    }
+  }, [selectionStartIndex, selectionEndIndex, records.length]);
+
   useEffect(() => {
     if (!chartRef.current || !isChartReady) return;
     
-    const updateChart = () => {
-      if (chartRef.current) {
-        chartRef.current.render();
+    let frameId: number;
+    const animate = () => {
+      if (selectionDraft || visualSelectionRef.current) {
+          lineDashOffsetRef.current = (lineDashOffsetRef.current - 0.5) % 20;
+          chartRef.current?.render();
+          frameId = requestAnimationFrame(animate);
+      } else {
+          chartRef.current?.render();
       }
-      animationFrameRef.current = null;
     };
     
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    
-    animationFrameRef.current = requestAnimationFrame(updateChart);
+    animate();
     
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      cancelAnimationFrame(frameId);
     };
   }, [currentIndex, isChartReady, hoverPosition, selectionStartIndex, selectionEndIndex, selectionDraft]);
 
@@ -611,6 +667,8 @@ export const TubChart: React.FC = () => {
 
       if (x < chartArea.left || x > chartArea.right) return;
 
+      isSelectingRef.current = true;
+
       const relativeX = x - chartArea.left;
       const chartWidth = chartArea.right - chartArea.left;
       const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
@@ -684,9 +742,35 @@ export const TubChart: React.FC = () => {
 
   const handleTouchEnd = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
+      isSelectingRef.current = false;
       if (!selectionDraft || !records.length) {
         setSelectionDraft(null);
         return;
+      }
+      
+      // Calculate Visual Selection
+      if (chartRef.current) {
+        const chart = chartRef.current;
+        const chartArea = chart.chartArea;
+        const chartWidth = chartArea.right - chartArea.left;
+        
+        const sX = Math.min(selectionDraft.startX, selectionDraft.currentX);
+        const eX = Math.max(selectionDraft.startX, selectionDraft.currentX);
+        
+        // Touch drags usually don't have the pixelDelta < 3 check for clicks in the same way as mouse
+        // But let's assume if it's a very small drag it's a tap
+        const pixelDelta = Math.abs(selectionDraft.currentX - selectionDraft.startX);
+        
+        if (pixelDelta < 3) {
+           const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
+           const pStart = startIndex / (records.length - 1);
+           const pEnd = (startIndex + 1) / (records.length - 1);
+           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
+        } else {
+           const pStart = Math.max(0, (sX - chartArea.left) / chartWidth);
+           const pEnd = Math.min(1, (eX - chartArea.left) / chartWidth);
+           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
+        }
       }
 
       const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
