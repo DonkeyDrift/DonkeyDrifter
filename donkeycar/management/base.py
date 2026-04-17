@@ -652,7 +652,10 @@ class Web(BaseCommand):
         if backend_port != args.backend_port:
             print(f'后端端口 {args.backend_port} 已被占用，已切换到 {backend_port}')
 
-        frontend_cmd = ['npm', 'run', 'dev', '--', '--host', '--port', str(frontend_port)]
+        npm_exe = shutil.which('npm')
+        if not npm_exe:
+            raise SystemExit('找不到 npm 命令，请确保已安装 Node.js 并且 npm 在环境变量中')
+        frontend_cmd = [npm_exe, 'run', 'dev', '--', '--host', '--port', str(frontend_port)]
         backend_cmd = [
             sys.executable, '-m', 'uvicorn', 'main:app',
             '--host', str(args.backend_host),
@@ -679,8 +682,16 @@ class Web(BaseCommand):
         signal.signal(signal.SIGTERM, _handle_stop_signal)
 
         try:
-            backend_proc = subprocess.Popen(backend_cmd, cwd=backend_path, start_new_session=True)
-            frontend_proc = subprocess.Popen(frontend_cmd, cwd=frontend_path, start_new_session=True)
+            popen_kwargs = {}
+            if os.name == 'nt':
+                # On Windows, use shell=True to handle .cmd files and avoid FileNotFoundError
+                # and creationflags to manage process groups if needed.
+                popen_kwargs['shell'] = True
+            else:
+                popen_kwargs['start_new_session'] = True
+
+            backend_proc = subprocess.Popen(backend_cmd, cwd=backend_path, **popen_kwargs)
+            frontend_proc = subprocess.Popen(frontend_cmd, cwd=frontend_path, **popen_kwargs)
             while True:
                 if stop_requested['value']:
                     raise SystemExit(0)
