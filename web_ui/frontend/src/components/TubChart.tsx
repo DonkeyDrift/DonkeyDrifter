@@ -1012,6 +1012,16 @@ export const TubChart: React.FC = () => {
             <Button
               size="sm"
               variant="secondary"
+              onClick={handleZoomReset}
+              disabled={zoomPercent === MIN_ZOOM_PERCENT}
+              className="h-full text-xs"
+              aria-label="还原图表缩放"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={handleZoomOut}
               disabled={zoomPercent <= MIN_ZOOM_PERCENT}
               className="h-full text-xs"
@@ -1028,16 +1038,6 @@ export const TubChart: React.FC = () => {
               aria-label="放大图表"
             >
               <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={handleZoomReset}
-              disabled={zoomPercent === MIN_ZOOM_PERCENT}
-              className="h-full text-xs"
-              aria-label="还原图表缩放"
-            >
-              <RotateCcw className="h-4 w-4" />
             </Button>
             <div className="flex h-[18px] box-content items-center gap-2 rounded-md bg-zinc-800 px-3 text-left rotate-0">
               <div className="h-4 box-content text-xs text-zinc-400 uppercase">ZOOM</div>
