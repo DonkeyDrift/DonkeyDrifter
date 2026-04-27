@@ -1183,15 +1183,19 @@ export const TubEditor: React.FC = () => {
             )}
           </div>
           <div className="order-first flex min-h-[30px] items-center justify-start gap-2">
+            <div className="flex h-[30px] box-content items-center gap-2 rounded-md bg-zinc-800 px-3 text-left rotate-0">
+              <div className="h-4 box-content text-xs text-zinc-400 uppercase">ZOOM</div>
+              <div className="h-4 box-content text-[15px] font-mono text-cyan-400 leading-none">{zoomMultiplier}x</div>
+            </div>
             <Button
               size="sm"
               variant="secondary"
-              onClick={handleZoomReset}
-              disabled={zoomPercent === MIN_ZOOM_PERCENT}
+              onClick={handleZoomIn}
+              disabled={zoomPercent >= MAX_ZOOM_PERCENT}
               className="h-full text-xs"
-              aria-label="还原图表缩放"
+              aria-label="放大图表"
             >
-              <RotateCcw className="h-4 w-4" />
+              <ZoomIn className="h-4 w-4" />
             </Button>
             <Button
               size="sm"
@@ -1206,17 +1210,13 @@ export const TubEditor: React.FC = () => {
             <Button
               size="sm"
               variant="secondary"
-              onClick={handleZoomIn}
-              disabled={zoomPercent >= MAX_ZOOM_PERCENT}
+              onClick={handleZoomReset}
+              disabled={zoomPercent === MIN_ZOOM_PERCENT}
               className="h-full text-xs"
-              aria-label="放大图表"
+              aria-label="还原图表缩放"
             >
-              <ZoomIn className="h-4 w-4" />
+              <RotateCcw className="h-4 w-4" />
             </Button>
-            <div className="flex h-[30px] box-content items-center gap-2 rounded-md bg-zinc-800 px-3 text-left rotate-0">
-              <div className="h-4 box-content text-xs text-zinc-400 uppercase">ZOOM</div>
-              <div className="h-4 box-content text-[15px] font-mono text-cyan-400 leading-none">{zoomMultiplier}x</div>
-            </div>
           </div>
         </div>
       </CardHeader>
