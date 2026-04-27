@@ -837,6 +837,43 @@ export const TubChart: React.FC = () => {
     return null;
   }, [selectionDraft, selectionStartIndex, selectionEndIndex, records]);
 
+  const sliderSelectionRange = useMemo(() => {
+    if (!records.length) {
+      return null;
+    }
+
+    if (selectionDraft) {
+      const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
+      const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
+      return { startIndex, endIndex };
+    }
+
+    if (selectionStartIndex != null && selectionEndIndex != null) {
+      return {
+        startIndex: Math.max(0, Math.min(selectionStartIndex, records.length - 1)),
+        endIndex: Math.max(selectionStartIndex + 1, Math.min(selectionEndIndex, records.length)),
+      };
+    }
+
+    return null;
+  }, [records.length, selectionDraft, selectionStartIndex, selectionEndIndex]);
+
+  const sliderSelectionStyle = useMemo<React.CSSProperties | null>(() => {
+    if (!sliderSelectionRange || !records.length) {
+      return null;
+    }
+
+    const total = records.length;
+    const leftPercent = (sliderSelectionRange.startIndex / total) * 100;
+    const widthPercent =
+      ((sliderSelectionRange.endIndex - sliderSelectionRange.startIndex) / total) * 100;
+
+    return {
+      left: `${leftPercent}%`,
+      width: `max(${widthPercent}%, 2px)`,
+    };
+  }, [records.length, sliderSelectionRange]);
+
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       if (!chartRef.current || !containerRef.current || !records.length) return;
@@ -1095,7 +1132,16 @@ export const TubChart: React.FC = () => {
             </div>
           )}
         </div>
-        <div className="mt-3 shrink-0">
+        <div className="relative mt-3 shrink-0">
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 rounded-lg bg-zinc-700" />
+          {sliderSelectionStyle && (
+            <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 h-2 -translate-y-1/2">
+              <div
+                className="absolute h-full rounded-lg border border-emerald-400/70 bg-emerald-500/25"
+                style={sliderSelectionStyle}
+              />
+            </div>
+          )}
           <input
             type="range"
             min="0"
@@ -1105,7 +1151,7 @@ export const TubChart: React.FC = () => {
             onChange={handleScrollSliderChange}
             disabled={zoomPercent === MIN_ZOOM_PERCENT || records.length <= visibleRange.visibleCount}
             aria-label="图表横向滚动"
-            className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="relative z-20 h-2 w-full appearance-none cursor-pointer bg-transparent accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
           />
         </div>
         {isConfirmOpen && (
