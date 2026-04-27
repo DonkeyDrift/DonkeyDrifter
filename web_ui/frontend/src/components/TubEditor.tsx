@@ -1103,7 +1103,7 @@ export const TubEditor: React.FC = () => {
 
   return (
     <Card className={chartCardClassName}>
-      <CardHeader className="relative flex flex-row items-start justify-between gap-4 space-y-0">
+      <CardHeader className="relative flex flex-col items-start justify-between gap-4 space-y-0">
         <CardTitle className="flex items-center gap-2">
           <LineChart className="w-5 h-5" />
           Tub Editor
@@ -1113,8 +1113,8 @@ export const TubEditor: React.FC = () => {
             </span>
           )}
         </CardTitle>
-        <div className="flex max-w-full flex-col items-end gap-2">
-          <div className="flex flex-col items-end gap-1">
+        <div className="flex w-full max-w-full items-start justify-between gap-2">
+          <div className="ml-auto flex flex-col items-end gap-1">
             <div className="flex min-h-[30px] flex-wrap items-center justify-end gap-2">
               <Input
                 aria-label="Start index"
@@ -1182,7 +1182,7 @@ export const TubEditor: React.FC = () => {
               </span>
             )}
           </div>
-          <div className="flex min-h-[30px] flex-wrap items-center justify-end gap-2">
+          <div className="order-first flex min-h-[30px] items-center justify-start gap-2">
             <Button
               size="sm"
               variant="secondary"
