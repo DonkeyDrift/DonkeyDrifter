@@ -3,7 +3,6 @@ import { Layout } from './components/Layout';
 import { SidePanel } from './components/SidePanel';
 import { TubNavigator } from './components/TubNavigator';
 import { TubChart } from './components/TubChart';
-import { StatusBar } from './components/StatusBar';
 import { useStore } from './store/useStore';
 
 type ErrorBoundaryProps = {
@@ -64,8 +63,6 @@ function App() {
           <TubNavigator />
           <TubChart />
         </div>
-
-        <StatusBar />
       </Layout>
     </ErrorBoundary>
   );
