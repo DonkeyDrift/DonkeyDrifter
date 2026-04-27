@@ -876,13 +876,6 @@ export const TubChart: React.FC = () => {
     );
   }
 
-  // 计算同步状态信息
-  const syncInfo = {
-    currentIndex,
-    totalRecords: records.length,
-    progress: records.length > 1 ? (currentIndex / (records.length - 1) * 100).toFixed(1) : '0.0'
-  };
-
    const containerCursorClass = selectionDraft ? 'cursor-ew-resize' : 'cursor-crosshair';
 
   return (
@@ -897,28 +890,6 @@ export const TubChart: React.FC = () => {
             </span>
           )}
         </CardTitle>
-        <div className="text-xs text-zinc-400 mt-1">
-          Index: {syncInfo.currentIndex} / {syncInfo.totalRecords - 1} ({syncInfo.progress}%)
-        </div>
-        {selectionInfo && (
-          <div className="mt-1 text-[11px] text-cyan-300">
-            <span className="font-semibold mr-1">
-              {selectionInfo.isDraft ? 'Selecting' : 'Selected'}:
-            </span>
-            <span className="font-mono">
-              [{selectionInfo.startIndex} – {selectionInfo.endIndex}]
-            </span>
-            {selectionInfo.startTimeMs != null && selectionInfo.endTimeMs != null && (
-              <span className="ml-2 text-cyan-200/80">
-                {(selectionInfo.startTimeMs / 1000).toFixed(2)}s →{' '}
-                {(selectionInfo.endTimeMs / 1000).toFixed(2)}s
-                {selectionInfo.durationMs != null && (
-                  <> ({(selectionInfo.durationMs / 1000).toFixed(2)}s)</>
-                )}
-              </span>
-            )}
-          </div>
-        )}
       </CardHeader>
       <CardContent>
         <div 
