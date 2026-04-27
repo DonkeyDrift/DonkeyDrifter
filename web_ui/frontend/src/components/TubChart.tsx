@@ -47,13 +47,12 @@ export const TubChart: React.FC = () => {
   const chartRef = useRef<ChartInstance<'line'> | null>(null);
   const [isChartReady, setIsChartReady] = useState(false);
   const lineDashOffsetRef = useRef(0);
-  const visualSelectionRef = useRef<{ startProgress: number; endProgress: number } | null>(null);
+  const visualSelectionRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
   const isSelectingRef = useRef(false);
   const currentIndexRef = useRef(currentIndex);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; dataIndex: number } | null>(null);
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; steering: number; throttle: number; index: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [selectionDraft, setSelectionDraft] = useState<{
     startX: number;
     currentX: number;
@@ -70,6 +69,7 @@ export const TubChart: React.FC = () => {
   const [actionMode, setActionMode] = useState<'delete' | 'restore'>('delete');
   const [actionError, setActionError] = useState<string | null>(null);
   const [zoomPercent, setZoomPercent] = useState(MIN_ZOOM_PERCENT);
+  const [scrollProgress, setScrollProgress] = useState(0);
 
   const clampZoomPercent = useCallback((value: number) => {
     return Math.max(MIN_ZOOM_PERCENT, Math.min(MAX_ZOOM_PERCENT, value));
@@ -92,9 +92,7 @@ export const TubChart: React.FC = () => {
 
   const handleZoomReset = useCallback(() => {
     applyZoomPercent(MIN_ZOOM_PERCENT);
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
-    }
+    setScrollProgress(0);
   }, [applyZoomPercent]);
 
   useEffect(() => {
@@ -191,27 +189,67 @@ export const TubChart: React.FC = () => {
   }, [currentIndex]);
 
   useEffect(() => {
-    if (!isChartReady || !chartRef.current || !scrollContainerRef.current || !records.length) return;
-    if (zoomPercent === MIN_ZOOM_PERCENT) return;
+    if (!isChartReady || !records.length || zoomPercent === MIN_ZOOM_PERCENT) return;
 
-    const chart = chartRef.current;
-    const chartArea = chart.chartArea;
     const totalRecords = records.length;
-    const progress = totalRecords > 1 ? currentIndexRef.current / (totalRecords - 1) : 0;
-    const currentX = chartArea.left + progress * (chartArea.right - chartArea.left);
-    const viewport = scrollContainerRef.current;
-    const targetLeft = Math.max(0, currentX - viewport.clientWidth / 2);
+    const visibleCount = Math.max(
+      2,
+      Math.min(totalRecords, Math.ceil((totalRecords * MIN_ZOOM_PERCENT) / zoomPercent))
+    );
+    const maxStartIndex = Math.max(0, totalRecords - visibleCount);
 
-    viewport.scrollTo({ left: targetLeft, behavior: 'smooth' });
+    if (maxStartIndex <= 0) {
+      setScrollProgress(0);
+      return;
+    }
+
+    const centeredStartIndex = currentIndexRef.current - Math.floor(visibleCount / 2);
+    const targetStartIndex = Math.max(0, Math.min(centeredStartIndex, maxStartIndex));
+    setScrollProgress(targetStartIndex / maxStartIndex);
   }, [isChartReady, records.length, zoomPercent]);
+
+  const visibleRange = useMemo(() => {
+    if (!records.length) {
+      return { startIndex: 0, endIndex: 0, visibleCount: 0 };
+    }
+
+    const totalRecords = records.length;
+    const visibleCount = Math.max(
+      2,
+      Math.min(totalRecords, Math.ceil((totalRecords * MIN_ZOOM_PERCENT) / zoomPercent))
+    );
+    const maxStartIndex = Math.max(0, totalRecords - visibleCount);
+    const startIndex = Math.round(maxStartIndex * scrollProgress);
+    const endIndex = Math.min(totalRecords - 1, startIndex + visibleCount - 1);
+
+    return { startIndex, endIndex, visibleCount };
+  }, [records.length, scrollProgress, zoomPercent]);
+
+  const getIndexFromPointerX = useCallback(
+    (x: number, chart: ChartInstance<'line'>) => {
+      const chartArea = chart.chartArea;
+      const chartWidth = chartArea.right - chartArea.left;
+      const relativeX = Math.max(0, Math.min(x - chartArea.left, chartWidth));
+      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
+      const span = Math.max(1, visibleRange.endIndex - visibleRange.startIndex);
+      const dataIndex = Math.round(visibleRange.startIndex + progress * span);
+
+      return Math.max(0, Math.min(dataIndex, records.length - 1));
+    },
+    [records.length, visibleRange.endIndex, visibleRange.startIndex]
+  );
+
+  const handleScrollSliderChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextProgress = Number(event.target.value) / 1000;
+    setScrollProgress(Math.max(0, Math.min(1, nextProgress)));
+  }, []);
 
   const handleMouseMove = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (!chartRef.current || !containerRef.current || !records.length) return;
 
       const rect = containerRef.current.getBoundingClientRect();
-      const scrollLeft = containerRef.current.scrollLeft;
-      const x = event.clientX - rect.left + scrollLeft;
+      const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
 
       const chart = chartRef.current;
@@ -224,12 +262,7 @@ export const TubChart: React.FC = () => {
       }
 
       const clampedX = Math.max(chartArea.left, Math.min(x, chartArea.right));
-      const relativeX = clampedX - chartArea.left;
-      const chartWidth = chartArea.right - chartArea.left;
-      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
-
-      const dataIndex = Math.round(progress * (records.length - 1));
-      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+      const clampedIndex = getIndexFromPointerX(clampedX, chart);
 
       const record = records[clampedIndex];
       const steering = (record['user/angle'] as number) ?? 0;
@@ -237,7 +270,7 @@ export const TubChart: React.FC = () => {
 
       setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
       setTooltipData({
-        x: clampedX - scrollLeft,
+        x: clampedX,
         y,
         steering,
         throttle,
@@ -246,10 +279,9 @@ export const TubChart: React.FC = () => {
 
       // Update tooltip position via ref for maximum performance
       if (tooltipRef.current && containerRef.current) {
-        const visibleX = clampedX - scrollLeft;
-        const isRightHalf = visibleX > containerRef.current.clientWidth / 2;
+        const isRightHalf = clampedX > containerRef.current.clientWidth / 2;
         const isBottomHalf = y > containerRef.current.clientHeight / 2;
-        tooltipRef.current.style.left = `${visibleX}px`;
+        tooltipRef.current.style.left = `${clampedX}px`;
         tooltipRef.current.style.top = `${y}px`;
         tooltipRef.current.style.transform = `translate(${isRightHalf ? 'calc(-100% - 15px)' : '15px'}, ${isBottomHalf ? 'calc(-100% - 15px)' : '15px'})`;
       }
@@ -266,7 +298,7 @@ export const TubChart: React.FC = () => {
         );
       }
     },
-    [records, selectionDraft]
+    [getIndexFromPointerX, records, selectionDraft]
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -278,22 +310,16 @@ export const TubChart: React.FC = () => {
     if (!chartRef.current || !containerRef.current || !records.length) return;
 
     const rect = containerRef.current.getBoundingClientRect();
-    const x = event.clientX - rect.left + containerRef.current.scrollLeft;
+    const x = event.clientX - rect.left;
 
     const chart = chartRef.current;
     const chartArea = chart.chartArea;
 
     if (x < chartArea.left || x > chartArea.right) return;
-
-    const relativeX = x - chartArea.left;
-    const chartWidth = chartArea.right - chartArea.left;
-    const progress = relativeX / chartWidth;
-
-    const dataIndex = Math.round(progress * (records.length - 1));
-    const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+    const clampedIndex = getIndexFromPointerX(x, chart);
 
     setCurrentIndex(clampedIndex);
-  }, [records, setCurrentIndex]);
+  }, [getIndexFromPointerX, records, setCurrentIndex]);
 
   const handleMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -301,7 +327,7 @@ export const TubChart: React.FC = () => {
       if (event.button !== 0) return;
 
       const rect = containerRef.current.getBoundingClientRect();
-      const x = event.clientX - rect.left + containerRef.current.scrollLeft;
+      const x = event.clientX - rect.left;
 
       const chart = chartRef.current;
       const chartArea = chart.chartArea;
@@ -309,13 +335,7 @@ export const TubChart: React.FC = () => {
       if (x < chartArea.left || x > chartArea.right) return;
 
       isSelectingRef.current = true;
-
-      const relativeX = x - chartArea.left;
-      const chartWidth = chartArea.right - chartArea.left;
-      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
-
-      const dataIndex = Math.round(progress * (records.length - 1));
-      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+      const clampedIndex = getIndexFromPointerX(x, chart);
 
       setSelectionDraft({
         startX: x,
@@ -326,7 +346,7 @@ export const TubChart: React.FC = () => {
 
       setCurrentIndex(clampedIndex);
     },
-    [records.length, setCurrentIndex]
+    [getIndexFromPointerX, records.length, setCurrentIndex]
   );
 
   const handleClick = useCallback(
@@ -345,38 +365,6 @@ export const TubChart: React.FC = () => {
         return;
       }
 
-      // Calculate Visual Selection
-      if (chartRef.current) {
-        const chart = chartRef.current;
-        const chartArea = chart.chartArea;
-        const chartWidth = chartArea.right - chartArea.left;
-        
-        const sX = Math.min(selectionDraft.startX, selectionDraft.currentX);
-        const eX = Math.max(selectionDraft.startX, selectionDraft.currentX);
-        const pixelDelta = Math.abs(selectionDraft.currentX - selectionDraft.startX);
-        
-        if (pixelDelta < 3) {
-           // Snap to grid if it's a click
-           const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
-           const total = records.length;
-           let pStart = startIndex / (total - 1);
-           let pEnd = (startIndex + 1) / (total - 1);
-           
-           // If last frame, show the segment before it to make it visible
-           if (startIndex === total - 1 && total > 1) {
-              pStart = (total - 2) / (total - 1);
-              pEnd = 1.0;
-           }
-           
-           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
-        } else {
-           // Use exact drag position
-           const pStart = Math.max(0, (sX - chartArea.left) / chartWidth);
-           const pEnd = Math.min(1, (eX - chartArea.left) / chartWidth);
-           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
-        }
-      }
-
       const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
       const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
 
@@ -384,6 +372,7 @@ export const TubChart: React.FC = () => {
       const finalStart = startIndex;
       const finalEnd = pixelDelta < 3 ? startIndex + 1 : endIndex;
 
+      visualSelectionRef.current = { startIndex: finalStart, endIndex: finalEnd };
       setSelectionRange(finalStart, finalEnd);
       setSelectionDraft(null);
     },
@@ -521,45 +510,49 @@ export const TubChart: React.FC = () => {
   }, [records.length, setSelectionRange]);
 
   const { data, sampledIndices } = useMemo(() => {
-    if (!records.length) return { data: { labels: [], datasets: [] }, sampledIndices: [] as number[] };
+    if (!records.length) return { data: { datasets: [] }, sampledIndices: [] as number[] };
 
-    // Use a subset of records for performance if needed, but charting 10k points might be heavy
-    // Let's sample if too many
-    const maxPoints = 1000;
-    const step = Math.ceil(records.length / maxPoints);
-    const sampledRecords = records.filter((_, i) => i % step === 0);
+    // Increase point density while zooming in so horizontal zoom reveals more detail.
+    const maxPoints = Math.min(records.length, Math.max(1000, zoomPercent * 10));
+    const step = Math.max(1, Math.ceil(records.length / maxPoints));
+    const sampledRecords = records.filter((_, i) => i % step === 0 || i === records.length - 1);
 
-    const labels = sampledRecords.map(r => r._index);
-    const angleData = sampledRecords.map(r => r['user/angle']);
-    const throttleData = sampledRecords.map(r => r['user/throttle']);
+    const sampledX = sampledRecords.map((record) => record._index);
+    const angleData = sampledRecords.map((record) => ({
+      x: record._index,
+      y: Number(record['user/angle'] ?? 0),
+    }));
+    const throttleData = sampledRecords.map((record) => ({
+      x: record._index,
+      y: Number(record['user/throttle'] ?? 0),
+    }));
 
     return {
       data: {
-        labels,
         datasets: [
           {
             label: 'Steering',
             data: angleData,
-            borderColor: 'rgb(6, 182, 212)', // Cyan-500
+            borderColor: 'rgb(6, 182, 212)',
             backgroundColor: 'rgba(6, 182, 212, 0.5)',
             borderWidth: 1,
             pointRadius: 0,
-            tension: 0.1
+            tension: 0.1,
           },
           {
             label: 'Throttle',
             data: throttleData,
-            borderColor: 'rgb(234, 179, 8)', // Yellow-500
+            borderColor: 'rgb(234, 179, 8)',
             backgroundColor: 'rgba(234, 179, 8, 0.5)',
             borderWidth: 1,
             pointRadius: 0,
-             tension: 0.1
+            tension: 0.1,
           },
         ],
       },
-      sampledIndices: labels,
+      sampledIndices: sampledX,
     };
-  }, [records]);
+  }, [records, zoomPercent]);
 
   const options = {
     responsive: true,
@@ -577,8 +570,14 @@ export const TubChart: React.FC = () => {
     },
     scales: {
         x: {
-            ticks: { color: '#71717a' }, // zinc-500
-            grid: { color: '#27272a' } // zinc-800
+            type: 'linear' as const,
+            min: visibleRange.startIndex,
+            max: visibleRange.endIndex,
+            ticks: {
+              color: '#71717a',
+              callback: (value: string | number) => `${Math.round(Number(value))}`,
+            },
+            grid: { color: '#27272a' }
         },
         y: {
             ticks: { color: '#71717a' },
@@ -612,14 +611,11 @@ export const TubChart: React.FC = () => {
         
         const ctx = chart.ctx;
         const chartArea = chart.chartArea;
-        const chartWidth = chartArea.right - chartArea.left;
-        
         const latestIndex = currentIndexRef.current;
         const totalRecords = records.length;
-        const progress = totalRecords > 1 ? latestIndex / (totalRecords - 1) : 0;
-        const currentX = chartArea.left + (progress * chartWidth);
+        const currentX = xAxis.getPixelForValue(latestIndex);
         
-        if (!isNaN(currentX) && currentX > 0 && currentX <= chartArea.right) {
+        if (!isNaN(currentX) && currentX >= chart.chartArea.left && currentX <= chart.chartArea.right) {
           ctx.save();
           ctx.strokeStyle = 'rgb(239, 68, 68)';
           ctx.lineWidth = 2;
@@ -643,11 +639,12 @@ export const TubChart: React.FC = () => {
           ctx.restore();
         }
 
-        const drawSelectionBox = (sP: number, eP: number, isDraft: boolean) => {
-            const startX = chartArea.left + sP * chartWidth;
-            const endX = chartArea.left + eP * chartWidth;
+        const drawSelectionBox = (startValue: number, endValue: number, isDraft: boolean) => {
+            const chartArea = chart.chartArea;
+            const startX = xAxis.getPixelForValue(startValue);
+            const endX = xAxis.getPixelForValue(endValue);
             
-            if (endX > startX) {
+            if (!isNaN(startX) && !isNaN(endX) && endX > startX) {
                 ctx.save();
                 ctx.beginPath();
                 ctx.rect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
@@ -673,28 +670,13 @@ export const TubChart: React.FC = () => {
         };
 
         if (selectionDraft) {
-            const draftStartX = Math.min(selectionDraft.startX, selectionDraft.currentX);
-            const draftEndX = Math.max(selectionDraft.startX, selectionDraft.currentX);
-            // Convert to progress
-            const sP = Math.max(0, (draftStartX - chartArea.left) / chartWidth);
-            const eP = Math.min(1, (draftEndX - chartArea.left) / chartWidth); // draft is clamped to area in handleMove
-            drawSelectionBox(sP, eP, true);
+            const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
+            const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
+            drawSelectionBox(startIndex, endIndex, true);
         } else if (visualSelectionRef.current) {
-            drawSelectionBox(visualSelectionRef.current.startProgress, visualSelectionRef.current.endProgress, false);
+            drawSelectionBox(visualSelectionRef.current.startIndex, visualSelectionRef.current.endIndex, false);
         } else if (selectionStartIndex != null && selectionEndIndex != null && totalRecords > 1) {
-             // Fallback
-             let startP = Math.max(0, Math.min(selectionStartIndex, totalRecords - 1)) / (totalRecords - 1);
-             let endP = Math.max(0, Math.min(selectionEndIndex, totalRecords)) / (totalRecords - 1);
-             
-             // Ensure the last frame selection is visible
-             if (selectionEndIndex === totalRecords) {
-                 endP = 1.0;
-                 if (selectionStartIndex === totalRecords - 1) {
-                     startP = (totalRecords - 2) / (totalRecords - 1);
-                 }
-             }
-             
-             drawSelectionBox(startP, endP, false);
+             drawSelectionBox(selectionStartIndex, selectionEndIndex, false);
         }
 
         const hoverPos = hoverPositionRef.current;
@@ -738,25 +720,17 @@ export const TubChart: React.FC = () => {
         if (!visualSelectionRef.current) {
             shouldUpdate = true;
         } else {
-            const vStartIdx = Math.round(visualSelectionRef.current.startProgress * (total - 1));
+            const vStartIdx = Math.round(visualSelectionRef.current.startIndex);
             if (vStartIdx !== selectionStartIndex) {
                 shouldUpdate = true;
             }
         }
         
         if (shouldUpdate) {
-            let startP = Math.max(0, Math.min(selectionStartIndex, total - 1)) / (total - 1);
-            let endP = Math.max(0, Math.min(selectionEndIndex, total)) / (total - 1);
-            
-            // Ensure the last frame selection is visible
-            if (selectionEndIndex === total) {
-                endP = 1.0;
-                if (selectionStartIndex === total - 1 && total > 1) {
-                    startP = (total - 2) / (total - 1);
-                }
-            }
-            
-            visualSelectionRef.current = { startProgress: startP, endProgress: endP };
+            visualSelectionRef.current = {
+              startIndex: Math.max(0, Math.min(selectionStartIndex, total - 1)),
+              endIndex: Math.max(selectionStartIndex + 1, Math.min(selectionEndIndex, total)),
+            };
         }
     } else {
         visualSelectionRef.current = null;
@@ -864,7 +838,7 @@ export const TubChart: React.FC = () => {
 
       const touch = event.touches[0];
       const rect = containerRef.current.getBoundingClientRect();
-      const x = touch.clientX - rect.left + containerRef.current.scrollLeft;
+      const x = touch.clientX - rect.left;
 
       const chart = chartRef.current;
       const chartArea = chart.chartArea;
@@ -872,13 +846,7 @@ export const TubChart: React.FC = () => {
       if (x < chartArea.left || x > chartArea.right) return;
 
       isSelectingRef.current = true;
-
-      const relativeX = x - chartArea.left;
-      const chartWidth = chartArea.right - chartArea.left;
-      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
-
-      const dataIndex = Math.round(progress * (records.length - 1));
-      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+      const clampedIndex = getIndexFromPointerX(x, chart);
 
       setSelectionDraft({
         startX: x,
@@ -891,7 +859,7 @@ export const TubChart: React.FC = () => {
 
       event.preventDefault();
     },
-    [records.length, setCurrentIndex]
+    [getIndexFromPointerX, records.length, setCurrentIndex]
   );
 
   const handleTouchMove = useCallback(
@@ -902,20 +870,14 @@ export const TubChart: React.FC = () => {
 
       const touch = event.touches[0];
       const rect = containerRef.current.getBoundingClientRect();
-      const scrollLeft = containerRef.current.scrollLeft;
-      const x = touch.clientX - rect.left + scrollLeft;
+      const x = touch.clientX - rect.left;
       const y = touch.clientY - rect.top;
 
       const chart = chartRef.current;
       const chartArea = chart.chartArea;
 
       const clampedX = Math.max(chartArea.left, Math.min(x, chartArea.right));
-      const relativeX = clampedX - chartArea.left;
-      const chartWidth = chartArea.right - chartArea.left;
-      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
-
-      const dataIndex = Math.round(progress * (records.length - 1));
-      const clampedIndex = Math.max(0, Math.min(dataIndex, records.length - 1));
+      const clampedIndex = getIndexFromPointerX(clampedX, chart);
 
       setSelectionDraft((prev) =>
         prev
@@ -933,7 +895,7 @@ export const TubChart: React.FC = () => {
 
       setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
       setTooltipData({
-        x: clampedX - scrollLeft,
+        x: clampedX,
         y,
         steering,
         throttle,
@@ -942,16 +904,16 @@ export const TubChart: React.FC = () => {
 
       // Update tooltip position via ref for maximum performance
       if (tooltipRef.current && containerRef.current) {
-        const isRightHalf = x > containerRef.current.clientWidth / 2;
+        const isRightHalf = clampedX > containerRef.current.clientWidth / 2;
         const isBottomHalf = y > containerRef.current.clientHeight / 2;
-        tooltipRef.current.style.left = `${x}px`;
+        tooltipRef.current.style.left = `${clampedX}px`;
         tooltipRef.current.style.top = `${y}px`;
         tooltipRef.current.style.transform = `translate(${isRightHalf ? 'calc(-100% - 15px)' : '15px'}, ${isBottomHalf ? 'calc(-100% - 15px)' : '15px'})`;
       }
 
       event.preventDefault();
     },
-    [records, selectionDraft]
+    [getIndexFromPointerX, records, selectionDraft]
   );
 
   const handleTouchEnd = useCallback(
@@ -962,42 +924,10 @@ export const TubChart: React.FC = () => {
         return;
       }
       
-      // Calculate Visual Selection
-      if (chartRef.current) {
-        const chart = chartRef.current;
-        const chartArea = chart.chartArea;
-        const chartWidth = chartArea.right - chartArea.left;
-        
-        const sX = Math.min(selectionDraft.startX, selectionDraft.currentX);
-        const eX = Math.max(selectionDraft.startX, selectionDraft.currentX);
-        
-        // Touch drags usually don't have the pixelDelta < 3 check for clicks in the same way as mouse
-        // But let's assume if it's a very small drag it's a tap
-        const pixelDelta = Math.abs(selectionDraft.currentX - selectionDraft.startX);
-        
-        if (pixelDelta < 3) {
-           const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
-           const total = records.length;
-           let pStart = startIndex / (total - 1);
-           let pEnd = (startIndex + 1) / (total - 1);
-           
-           // If last frame, show the segment before it to make it visible
-           if (startIndex === total - 1 && total > 1) {
-              pStart = (total - 2) / (total - 1);
-              pEnd = 1.0;
-           }
-           
-           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
-        } else {
-           const pStart = Math.max(0, (sX - chartArea.left) / chartWidth);
-           const pEnd = Math.min(1, (eX - chartArea.left) / chartWidth);
-           visualSelectionRef.current = { startProgress: pStart, endProgress: pEnd };
-        }
-      }
-
       const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
       const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
 
+      visualSelectionRef.current = { startIndex, endIndex };
       setSelectionRange(startIndex, endIndex);
       setSelectionDraft(null);
       event.preventDefault();
@@ -1005,7 +935,7 @@ export const TubChart: React.FC = () => {
     [selectionDraft, setSelectionRange, records.length]
   );
 
-  const chartCardClassName = 'relative flex flex-col h-[clamp(12rem,30vh,22rem)]';
+  const chartCardClassName = 'relative flex min-h-[clamp(20rem,48vh,34rem)] flex-col';
 
   if (!records.length) {
     return (
@@ -1109,13 +1039,10 @@ export const TubChart: React.FC = () => {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 min-h-0 relative overflow-hidden">
-        <div 
-          ref={(node) => {
-            containerRef.current = node;
-            scrollContainerRef.current = node;
-          }}
-          className={`relative h-full min-h-0 w-full overflow-x-auto overflow-y-hidden ${containerCursorClass} touch-none`}
+      <CardContent className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={containerRef}
+          className={`relative min-h-[12rem] w-full flex-1 ${containerCursorClass} touch-none`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onMouseDown={handleMouseDown}
@@ -1125,13 +1052,7 @@ export const TubChart: React.FC = () => {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          <div
-            className="relative h-full min-h-0"
-            style={{
-              width: `${zoomPercent}%`,
-              minWidth: '100%',
-            }}
-          >
+          <div className="pointer-events-none absolute inset-0 h-full min-h-0 w-full">
             <Line 
               ref={chartRef} 
               options={options} 
@@ -1166,6 +1087,19 @@ export const TubChart: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+        <div className="mt-3 shrink-0">
+          <input
+            type="range"
+            min="0"
+            max="1000"
+            step="1"
+            value={Math.round(scrollProgress * 1000)}
+            onChange={handleScrollSliderChange}
+            disabled={zoomPercent === MIN_ZOOM_PERCENT || records.length <= visibleRange.visibleCount}
+            aria-label="图表横向滚动"
+            className="h-2 w-full cursor-pointer accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
+          />
         </div>
         {isConfirmOpen && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
