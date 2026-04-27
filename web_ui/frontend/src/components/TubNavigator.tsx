@@ -72,7 +72,8 @@ export const TubNavigator: React.FC = () => {
   const config = useStore((state) => state.config);
   const isDragging = useStore((state) => state.isDragging);
   const setIsDragging = useStore((state) => state.setIsDragging);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const isPlaying = useStore((state) => state.isPlaying);
+  const setIsPlaying = useStore((state) => state.setIsPlaying);
   const [isLooping, setIsLooping] = useState(false);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
   const [actualFps, setActualFps] = useState(0);
@@ -311,7 +312,7 @@ export const TubNavigator: React.FC = () => {
         // Prevent page scroll and default button/range behavior
         e.preventDefault(); 
         
-        setIsPlaying(prev => !prev);
+        setIsPlaying(!isPlayingRef.current);
       }
     };
 
@@ -556,6 +557,7 @@ export const TubNavigator: React.FC = () => {
                 variant="secondary"
                 size="sm"
                 aria-label="First record"
+                disabled={isPlaying}
                 onClick={() => {
                   setLocalIndex(0);
                   displayIndexRef.current = 0;
@@ -569,6 +571,7 @@ export const TubNavigator: React.FC = () => {
                 variant="secondary"
                 size="sm"
                 aria-label="Previous record"
+                disabled={isPlaying}
                 onClick={() => {
                   const newIndex = Math.max(0, localIndex - 1);
                   setLocalIndex(newIndex);
@@ -583,6 +586,7 @@ export const TubNavigator: React.FC = () => {
                 variant="secondary"
                 size="sm"
                 aria-label="Next record"
+                disabled={isPlaying}
                 onClick={() => {
                   const newIndex = Math.min(totalRecords - 1, localIndex + 1);
                   setLocalIndex(newIndex);
@@ -597,6 +601,7 @@ export const TubNavigator: React.FC = () => {
                 variant="secondary"
                 size="sm"
                 aria-label="Last record"
+                disabled={isPlaying}
                 onClick={() => {
                   const newIndex = Math.max(0, totalRecords - 1);
                   setLocalIndex(newIndex);

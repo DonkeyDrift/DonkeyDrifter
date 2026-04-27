@@ -39,6 +39,7 @@ type RecordAction = {
 export const TubEditor: React.FC = () => {
   const records = useStore((state) => state.records);
   const isDragging = useStore((state) => state.isDragging);
+  const isPlaying = useStore((state) => state.isPlaying);
   const setCurrentIndex = useStore((state) => state.setCurrentIndex);
   const selectionStartIndex = useStore((state) => state.selectionStartIndex);
   const selectionEndIndex = useStore((state) => state.selectionEndIndex);
@@ -754,18 +755,22 @@ export const TubEditor: React.FC = () => {
 
       switch (event.key) {
         case 'ArrowLeft':
+          if (isPlaying) return;
           event.preventDefault();
           setCurrentIndex((prev) => Math.max(0, prev - step));
           break;
         case 'ArrowRight':
+          if (isPlaying) return;
           event.preventDefault();
           setCurrentIndex((prev) => Math.min(records.length - 1, prev + step));
           break;
         case 'Home':
+          if (isPlaying) return;
           event.preventDefault();
           setCurrentIndex(0);
           break;
         case 'End':
+          if (isPlaying) return;
           event.preventDefault();
           setCurrentIndex(records.length - 1);
           break;
@@ -773,6 +778,7 @@ export const TubEditor: React.FC = () => {
     },
     [
       records.length,
+      isPlaying,
       setCurrentIndex,
       clearSelectionRange,
       actionHistory.length,

@@ -21,6 +21,7 @@ interface AppState {
   fields: string[];
   isLoading: boolean;
   isDragging: boolean;
+  isPlaying: boolean;
   error: string | null;
   isSidePanelOpen: boolean;
   selectionStartIndex: number | null;
@@ -34,6 +35,7 @@ interface AppState {
   setAllRecords: (records: TubRecord[]) => void;
   setCurrentIndex: (index: number | ((prev: number) => number)) => void;
   setIsDragging: (isDragging: boolean) => void;
+  setIsPlaying: (isPlaying: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setSidePanelOpen: (isOpen: boolean) => void;
@@ -61,6 +63,7 @@ export const useStore = create<AppState>()(
       fields: [],
       isLoading: false,
       isDragging: false,
+      isPlaying: false,
       error: null,
       isSidePanelOpen: true, // Default open for first time use
       selectionStartIndex: null,
@@ -81,6 +84,7 @@ export const useStore = create<AppState>()(
           currentIndex: records.length > 0 ? 0 : 0, // Keep at 0 but ensure UI update
           error: null,
           isSidePanelOpen: false,
+          isPlaying: false,
         }),
       setRecords: (records) => set({ records, totalRecords: records.length }),
       setAllRecords: (records) =>
@@ -93,12 +97,14 @@ export const useStore = create<AppState>()(
           selectionEndIndex: null,
           selectionHistory: [],
           selectionHistoryIndex: -1,
+          isPlaying: false,
         }),
       setCurrentIndex: (index) =>
         set((state) => ({
           currentIndex: typeof index === 'function' ? index(state.currentIndex) : index,
         })),
       setIsDragging: (isDragging) => set({ isDragging }),
+      setIsPlaying: (isPlaying) => set({ isPlaying }),
       setLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => {
         const shouldOpenPanel = error && (error.includes('not found') || error.includes('Failed'));
