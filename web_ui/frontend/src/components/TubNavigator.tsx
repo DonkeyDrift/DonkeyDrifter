@@ -196,7 +196,7 @@ export const TubNavigator: React.FC = () => {
       let nextIndex = (displayIndexRef.current || 0) + steps;
       
       const { start, end } = selectionRangeRef.current;
-      const hasSelection = start !== null && end !== null;
+      const hasSelection = start !== null && end !== null && (end - start > 1);
 
       if (hasSelection) {
         if (isLoopingRef.current) {
@@ -248,11 +248,11 @@ export const TubNavigator: React.FC = () => {
 
   useEffect(() => {
     if (isPlaying) {
-      // If we have a selection and we're outside of it, jump to start
+      // If we have a selection > 1 frame and we're outside of it, jump to start
       const { start, end } = selectionRangeRef.current;
       const currentPos = displayIndexRef.current;
       
-      if (start !== null && end !== null) {
+      if (start !== null && end !== null && (end - start > 1)) {
         if (currentPos >= end - 1 || currentPos < start) {
           displayIndexRef.current = start;
           setLocalIndex(start);
