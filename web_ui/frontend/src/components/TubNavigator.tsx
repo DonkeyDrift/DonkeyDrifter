@@ -227,19 +227,19 @@ export const TubNavigator: React.FC = () => {
                {/* Display key values */}
                <div className="bg-zinc-800 p-3 rounded-md">
                  <div className="text-xs text-zinc-400 uppercase">Angle</div>
-                 <div className="text-xl font-mono text-cyan-400">
+                 <div className="text-lg font-mono text-cyan-400">
                    {getRecordValue('user/angle', 'pilot/angle')}
                  </div>
                </div>
                <div className="bg-zinc-800 p-3 rounded-md">
                  <div className="text-xs text-zinc-400 uppercase">Throttle</div>
-                 <div className="text-xl font-mono text-cyan-400">
+                 <div className="text-lg font-mono text-cyan-400">
                    {getRecordValue('user/throttle', 'pilot/throttle')}
                  </div>
                </div>
                <div className="bg-zinc-800 p-3 rounded-md">
                  <div className="text-xs text-zinc-400 uppercase">FPS</div>
-                 <div className="text-xl font-mono text-cyan-400">
+                 <div className="text-lg font-mono text-cyan-400">
                    {playbackFps} / {actualFps}
                  </div>
                </div>
@@ -304,10 +304,6 @@ export const TubNavigator: React.FC = () => {
               </Button>
             </div>
 
-            <div className="text-xs text-zinc-400">
-              Current record: {currentIndex + 1} of {totalRecords}
-            </div>
-            
             <Button 
               className="w-full"
               variant={isPlaying ? "danger" : "primary"}

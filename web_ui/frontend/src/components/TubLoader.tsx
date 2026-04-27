@@ -20,6 +20,11 @@ export const TubLoader: React.FC = () => {
   const { tubPath, setTub, setError, setLoading, config, totalRecords, fields } = useStore();
   const [path, setPath] = useState(tubPath);
 
+  // Sync local path state with store tubPath (e.g. when auto-loaded by ConfigLoader)
+  React.useEffect(() => {
+    setPath(tubPath);
+  }, [tubPath]);
+
   const handleLoad = async () => {
     setLoading(true);
     try {
