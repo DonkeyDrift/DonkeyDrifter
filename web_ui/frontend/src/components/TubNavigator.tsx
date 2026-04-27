@@ -188,11 +188,15 @@ export const TubNavigator: React.FC = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Navigation className="w-5 h-5" />
-          Tub Navigator
+        <CardTitle className="flex items-center w-fit group cursor-default">
+          <div className="flex items-center gap-2">
+            <Navigation className="w-5 h-5" />
+            <span>Tub Navigator</span>
+          </div>
+          <span className="text-sm text-zinc-400 font-normal max-w-0 opacity-0 overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out group-hover:max-w-[300px] group-hover:opacity-100 group-hover:ml-3">
+            Navigate through tub records
+          </span>
         </CardTitle>
-        <p className="text-sm text-zinc-400">Navigate through tub records</p>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

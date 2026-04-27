@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ConfigLoader } from './ConfigLoader';
 import { TubLoader } from './TubLoader';
 import { PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
@@ -17,13 +17,13 @@ export const SidePanel: React.FC = () => {
       {/* Trigger Tab */}
       <button
         onClick={() => setSidePanelOpen(!isSidePanelOpen)}
-        className="absolute left-full top-2 bg-zinc-900 border border-l-0 border-zinc-800 p-2 rounded-r-md text-zinc-400 hover:text-white transition-colors shadow-lg flex items-center gap-2 group"
+        className="absolute left-full top-2 bg-zinc-900 border border-l-0 border-zinc-800 p-2 rounded-r-md text-zinc-400 hover:text-white transition-all duration-300 shadow-lg flex items-center group"
       >
-        {isSidePanelOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
+        {isSidePanelOpen ? <PanelLeftClose className="w-5 h-5 shrink-0" /> : <PanelLeftOpen className="w-5 h-5 shrink-0" />}
         {!isSidePanelOpen && (
-          <span className="text-xs font-medium pr-1 flex items-center gap-1">
-            <Settings2 className="w-4 h-4" />
-            Loaders
+          <span className="text-xs font-medium flex items-center overflow-hidden transition-all duration-300 max-w-0 opacity-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2 group-hover:gap-1 group-hover:pr-1">
+            <Settings2 className="w-4 h-4 shrink-0" />
+            <span className="whitespace-nowrap">Loaders</span>
           </span>
         )}
       </button>

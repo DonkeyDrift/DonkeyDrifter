@@ -20,7 +20,12 @@ export const ConfigLoader: React.FC = () => {
   const { configPath, setConfig, setError, setLoading, config, setTub } = useStore();
   const [path, setPath] = useState(configPath);
 
-  const autoLoadTub = async (carPath: string) => {
+  // Sync local path state with store configPath
+  useEffect(() => {
+    setPath(configPath);
+  }, [configPath]);
+
+  const autoLoadTub = useCallback(async (carPath: string) => {
     try {
       // Normalize path and append /data
       const tubPath = carPath.endsWith('/') || carPath.endsWith('\\') 
@@ -29,10 +34,10 @@ export const ConfigLoader: React.FC = () => {
       
       const data = await loadTub(tubPath);
       setTub(data.path, data.records || [], data.fields || []);
-    } catch (err: unknown) {
+    } catch {
       console.warn('Auto-loading tub from ./data failed, user might need to select manually.');
     }
-  };
+  }, [setTub]);
 
   const handleLoad = useCallback(async () => {
     setLoading(true);
@@ -54,26 +59,38 @@ export const ConfigLoader: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [setConfig, setError, setLoading, setTub]);
+  }, [setConfig, setError, setLoading, autoLoadTub]);
 
-  const handleManualLoad = async () => {
+  const handleManualLoad = useCallback(async () => {
     setLoading(true);
     try {
       const data = await loadConfig(path);
       setConfig(data.config, path);
-      await autoLoadTub(path);
+      
+      const currentTubPath = useStore.getState().tubPath;
+      if (currentTubPath && currentTubPath !== '/home/dkc/projects/mycar/data') {
+        try {
+          const tubData = await loadTub(currentTubPath);
+          setTub(tubData.path, tubData.records || [], tubData.fields || []);
+        } catch (err) {
+          console.warn('Failed to load persisted tub path, falling back to auto-load', err);
+          await autoLoadTub(path);
+        }
+      } else {
+        await autoLoadTub(path);
+      }
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Failed to load config'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [path, autoLoadTub, setConfig, setError, setLoading, setTub]);
 
   useEffect(() => {
     if (!config && configPath) {
       handleManualLoad();
     }
-  }, [config, configPath]);
+  }, [config, configPath, handleManualLoad]);
 
   return (
     <Card>
