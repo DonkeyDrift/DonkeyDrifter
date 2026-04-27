@@ -999,7 +999,7 @@ export const TubChart: React.FC = () => {
             placeholder="Start"
             value={startIndex}
             onChange={(e) => setStartIndex(e.target.value)}
-            className="w-24 h-full text-xs"
+            className="w-[70px] h-full text-xs"
           />
           <span className="text-xs text-zinc-400">to</span>
           <Input
@@ -1007,7 +1007,7 @@ export const TubChart: React.FC = () => {
             placeholder="End"
             value={endIndex}
             onChange={(e) => setEndIndex(e.target.value)}
-            className="w-24 h-full text-xs"
+            className="w-[70px] h-full text-xs"
           />
           <Button size="sm" variant="danger" onClick={handleOpenDeleteConfirm} className="h-full text-xs">
             Delete
