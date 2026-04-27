@@ -112,7 +112,7 @@ export const TubEditor: React.FC = () => {
   }, [applyZoomPercent]);
 
   const ensureChartRenderLoop = useCallback(() => {
-    if (!isChartReady || chartRenderFrameRef.current != null) {
+    if (!chartRef.current || chartRenderFrameRef.current != null) {
       return;
     }
 
@@ -139,7 +139,7 @@ export const TubEditor: React.FC = () => {
     };
 
     chartRenderFrameRef.current = window.requestAnimationFrame(renderLoop);
-  }, [isChartReady]);
+  }, []);
 
   const requestChartRender = useCallback(
     (options?: { animateSelection?: boolean; markPlaybackActive?: boolean }) => {
@@ -384,6 +384,7 @@ export const TubEditor: React.FC = () => {
     await runRecordAction(mode, indexes, true);
     clearSelectionRange();
     visualSelectionRef.current = null;
+    selectionDraftRef.current = null;
     setSelectionDraft(null);
   }, [parseRange, runRecordAction, clearSelectionRange]);
 
@@ -560,19 +561,17 @@ export const TubEditor: React.FC = () => {
         };
       }
 
-      if (selectionDraft) {
-        setSelectionDraft((prev) =>
-          prev
-            ? {
-                ...prev,
-                currentX: clampedX,
-                currentIndex: clampedIndex,
-              }
-            : null
-        );
+      if (selectionDraftRef.current) {
+        const nextDraft = {
+          ...selectionDraftRef.current,
+          currentX: clampedX,
+          currentIndex: clampedIndex,
+        };
+        selectionDraftRef.current = nextDraft;
+        setSelectionDraft(nextDraft);
       }
     },
-    [getIndexFromPointerX, records, requestChartRender, selectionDraft, updateTooltipPosition]
+    [getIndexFromPointerX, records, requestChartRender, updateTooltipPosition]
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -599,6 +598,16 @@ export const TubEditor: React.FC = () => {
     const clampedIndex = getIndexFromPointerX(x, chart);
 
     setCurrentIndex(clampedIndex);
+
+    if (selectionDraftRef.current) {
+      const nextDraft = {
+        ...selectionDraftRef.current,
+        currentX: x,
+        currentIndex: clampedIndex,
+      };
+      selectionDraftRef.current = nextDraft;
+      setSelectionDraft(nextDraft);
+    }
   }, [getIndexFromPointerX, records, setCurrentIndex]);
 
   const handleMouseDown = useCallback(
@@ -617,12 +626,14 @@ export const TubEditor: React.FC = () => {
       isSelectingRef.current = true;
       const clampedIndex = getIndexFromPointerX(x, chart);
 
-      setSelectionDraft({
+      const draft = {
         startX: x,
         currentX: x,
         startIndex: clampedIndex,
         currentIndex: clampedIndex,
-      });
+      };
+      selectionDraftRef.current = draft;
+      setSelectionDraft(draft);
 
       setCurrentIndex(clampedIndex);
     },
@@ -631,32 +642,35 @@ export const TubEditor: React.FC = () => {
 
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
-      if (selectionDraft) return;
+      if (selectionDraftRef.current) return;
       handleInteraction(event);
     },
-    [handleInteraction, selectionDraft]
+    [handleInteraction]
   );
 
   const handleMouseUp = useCallback(
     () => {
       isSelectingRef.current = false;
-      if (!selectionDraft || !records.length) {
+      const draft = selectionDraftRef.current;
+      if (!draft || !records.length) {
+        selectionDraftRef.current = null;
         setSelectionDraft(null);
         return;
       }
 
-      const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
-      const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
+      const startIndex = Math.min(draft.startIndex, draft.currentIndex);
+      const endIndex = Math.max(draft.startIndex, draft.currentIndex) + 1;
 
-      const pixelDelta = Math.abs(selectionDraft.currentX - selectionDraft.startX);
+      const pixelDelta = Math.abs(draft.currentX - draft.startX);
       const finalStart = startIndex;
       const finalEnd = pixelDelta < 3 ? startIndex + 1 : endIndex;
 
       visualSelectionRef.current = { startIndex: finalStart, endIndex: finalEnd };
       setSelectionRange(finalStart, finalEnd);
+      selectionDraftRef.current = null;
       setSelectionDraft(null);
     },
-    [selectionDraft, setSelectionRange, records.length]
+    [setSelectionRange, records.length]
   );
 
   const isEditableTarget = (target: EventTarget | null) => {
@@ -680,6 +694,7 @@ export const TubEditor: React.FC = () => {
       if (event.key === 'Escape') {
         event.preventDefault();
         clearSelectionRange();
+        selectionDraftRef.current = null;
         setSelectionDraft(null);
         return;
       }
@@ -1034,14 +1049,15 @@ export const TubEditor: React.FC = () => {
             }
         };
 
-        if (selectionDraft) {
-            const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
-            const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
+        const currentSelectionDraft = selectionDraftRef.current;
+        if (currentSelectionDraft) {
+            const startIndex = Math.min(currentSelectionDraft.startIndex, currentSelectionDraft.currentIndex);
+            const endIndex = Math.max(currentSelectionDraft.startIndex, currentSelectionDraft.currentIndex) + 1;
             drawSelectionBox(startIndex, endIndex, true);
         } else if (visualSelectionRef.current) {
             drawSelectionBox(visualSelectionRef.current.startIndex, visualSelectionRef.current.endIndex, false);
-        } else if (selectionStartIndex != null && selectionEndIndex != null && totalRecords > 1) {
-             drawSelectionBox(selectionStartIndex, selectionEndIndex, false);
+        } else if (selectionRangeRef.current.startIndex != null && selectionRangeRef.current.endIndex != null && totalRecords > 1) {
+             drawSelectionBox(selectionRangeRef.current.startIndex, selectionRangeRef.current.endIndex, false);
         }
 
         const hoverPos = hoverPositionRef.current;
@@ -1071,7 +1087,7 @@ export const TubEditor: React.FC = () => {
         console.error('Vertical line plugin error:', error);
       }
     }
-  }), [sampledIndices, records, selectionStartIndex, selectionEndIndex, selectionDraft]);
+  }), [sampledIndices, records]);
 
   // Sync Visual Selection Ref
   useEffect(() => {
@@ -1229,12 +1245,14 @@ export const TubEditor: React.FC = () => {
       isSelectingRef.current = true;
       const clampedIndex = getIndexFromPointerX(x, chart);
 
-      setSelectionDraft({
+      const draft = {
         startX: x,
         currentX: x,
         startIndex: clampedIndex,
         currentIndex: clampedIndex,
-      });
+      };
+      selectionDraftRef.current = draft;
+      setSelectionDraft(draft);
 
       setCurrentIndex(clampedIndex);
 
@@ -1246,7 +1264,7 @@ export const TubEditor: React.FC = () => {
   const handleTouchMove = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       if (!chartRef.current || !containerRef.current || !records.length) return;
-      if (!selectionDraft) return;
+      if (!selectionDraftRef.current) return;
       if (event.touches.length === 0) return;
 
       const touch = event.touches[0];
@@ -1260,15 +1278,15 @@ export const TubEditor: React.FC = () => {
       const clampedX = Math.max(chartArea.left, Math.min(x, chartArea.right));
       const clampedIndex = getIndexFromPointerX(clampedX, chart);
 
-      setSelectionDraft((prev) =>
-        prev
-          ? {
-              ...prev,
-              currentX: clampedX,
-              currentIndex: clampedIndex,
-            }
-          : null
-      );
+      if (selectionDraftRef.current) {
+        const nextDraft = {
+          ...selectionDraftRef.current,
+          currentX: clampedX,
+          currentIndex: clampedIndex,
+        };
+        selectionDraftRef.current = nextDraft;
+        setSelectionDraft(nextDraft);
+      }
 
       const record = records[clampedIndex];
       const steering = (record['user/angle'] as number) ?? 0;
@@ -1305,26 +1323,29 @@ export const TubEditor: React.FC = () => {
 
       event.preventDefault();
     },
-    [getIndexFromPointerX, records, requestChartRender, selectionDraft, updateTooltipPosition]
+    [getIndexFromPointerX, records, requestChartRender, updateTooltipPosition]
   );
 
   const handleTouchEnd = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
       isSelectingRef.current = false;
-      if (!selectionDraft || !records.length) {
+      const draft = selectionDraftRef.current;
+      if (!draft || !records.length) {
+        selectionDraftRef.current = null;
         setSelectionDraft(null);
         return;
       }
       
-      const startIndex = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
-      const endIndex = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex) + 1;
+      const startIndex = Math.min(draft.startIndex, draft.currentIndex);
+      const endIndex = Math.max(draft.startIndex, draft.currentIndex) + 1;
 
       visualSelectionRef.current = { startIndex, endIndex };
       setSelectionRange(startIndex, endIndex);
+      selectionDraftRef.current = null;
       setSelectionDraft(null);
       event.preventDefault();
     },
-    [selectionDraft, setSelectionRange, records.length]
+    [setSelectionRange, records.length]
   );
 
   const chartCardClassName = 'relative flex min-h-[clamp(20rem,48vh,34rem)] flex-col';
