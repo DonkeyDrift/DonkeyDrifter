@@ -372,15 +372,20 @@ export const TubEditor: React.FC = () => {
       return;
     }
 
-    setSelectionRange(range.start, range.end + 1);
+    // Use current range before it gets cleared
+    const startIdx = range.start;
+    const endIdx = range.end;
 
     const indexes: number[] = [];
-    for (let i = range.start; i <= range.end; i += 1) {
+    for (let i = startIdx; i <= endIdx; i += 1) {
       indexes.push(i);
     }
 
     await runRecordAction(mode, indexes, true);
-  }, [parseRange, runRecordAction, setSelectionRange]);
+    clearSelectionRange();
+    visualSelectionRef.current = null;
+    setSelectionDraft(null);
+  }, [parseRange, runRecordAction, clearSelectionRange]);
 
   const handleUndoLastAction = useCallback(async () => {
     const lastAction = actionHistory[actionHistory.length - 1];

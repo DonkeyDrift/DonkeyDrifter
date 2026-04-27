@@ -289,10 +289,10 @@ export const TubNavigator: React.FC = () => {
     setImageError(false);
   }, [localIndex]);
 
-  // Handle spacebar shortcut for play/pause
+  // Handle spacebar shortcut for play/pause and M for loop mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
+      if (e.code === 'Space' || e.code === 'KeyM') {
         // Ignore if user is typing in a text input or textarea
         if (
           document.activeElement instanceof HTMLInputElement && 
@@ -312,7 +312,11 @@ export const TubNavigator: React.FC = () => {
         // Prevent page scroll and default button/range behavior
         e.preventDefault(); 
         
-        setIsPlaying(!isPlayingRef.current);
+        if (e.code === 'Space') {
+          setIsPlaying(!isPlayingRef.current);
+        } else if (e.code === 'KeyM') {
+          setIsLooping(!isLoopingRef.current);
+        }
       }
     };
 
@@ -630,7 +634,7 @@ export const TubNavigator: React.FC = () => {
                 variant={isLooping ? "primary" : "secondary"}
                 aria-label={isLooping ? 'Loop mode active' : 'Play once mode'}
                 onClick={() => setIsLooping(!isLooping)}
-                title={isLooping ? "循环播放" : "播放后停止"}
+                title={isLooping ? "循环播放 (M)" : "播放后停止 (M)"}
                 className="px-3 h-full"
               >
                 {isLooping ? <Repeat className="w-4 h-4" /> : <ArrowRightToLine className="w-4 h-4" />}
