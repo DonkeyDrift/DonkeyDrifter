@@ -63,7 +63,17 @@ const TimelineSlider = React.memo(({ max, value, isDragging, onInput, onChange, 
 ));
 
 export const TubNavigator: React.FC = () => {
-  const { records, currentIndex, setCurrentIndex, totalRecords, config, isDragging, setIsDragging } = useStore();
+  const { 
+    records, 
+    currentIndex, 
+    setCurrentIndex, 
+    totalRecords, 
+    config, 
+    isDragging, 
+    setIsDragging,
+    selectionStartIndex,
+    selectionEndIndex 
+  } = useStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
@@ -74,6 +84,10 @@ export const TubNavigator: React.FC = () => {
   const lastTimeRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
   const isLoopingRef = useRef(isLooping);
+  const selectionRangeRef = useRef<{ start: number | null; end: number | null }>({
+    start: selectionStartIndex,
+    end: selectionEndIndex,
+  });
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const fpsStartRef = useRef<number>(0);
   const fpsFramesRef = useRef<number>(0);
@@ -82,14 +96,27 @@ export const TubNavigator: React.FC = () => {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const lastSyncTimeRef = useRef<number>(0);
+
   // Sync ref with state
   useEffect(() => {
     isPlayingRef.current = isPlaying;
-  }, [isPlaying]);
+    if (!isPlaying) {
+      // Ensure final sync when stopping
+      setCurrentIndex(displayIndexRef.current);
+    }
+  }, [isPlaying, setCurrentIndex]);
 
   useEffect(() => {
     isLoopingRef.current = isLooping;
   }, [isLooping]);
+
+  useEffect(() => {
+    selectionRangeRef.current = {
+      start: selectionStartIndex,
+      end: selectionEndIndex,
+    };
+  }, [selectionStartIndex, selectionEndIndex]);
 
   // Sync currentIndex ref for performance optimization
   useEffect(() => {
@@ -107,17 +134,8 @@ export const TubNavigator: React.FC = () => {
     }
   }, [currentIndex, isDragging]);
 
-  // Throttled sync from localIndex to global store
-  useEffect(() => {
-    if (isPlaying) {
-      const interval = setInterval(() => {
-        setCurrentIndex(displayIndexRef.current);
-      }, 100); // Sync global state 10 times per second
-      return () => clearInterval(interval);
-    } else {
-      setCurrentIndex(localIndex);
-    }
-  }, [isPlaying, localIndex, setCurrentIndex]);
+  // Removed the throttled setInterval effect as we'll sync directly in the animation loop
+  // for better responsiveness and to avoid interval/animation-frame conflicts.
 
   const currentRecord = records[localIndex];
   
@@ -149,28 +167,68 @@ export const TubNavigator: React.FC = () => {
 
     if (deltaTime >= playbackSpeed) {
       const steps = Math.floor(deltaTime / playbackSpeed);
-      let nextIndex = displayIndexRef.current + steps;
+      let nextIndex = (displayIndexRef.current || 0) + steps;
       
-      if (nextIndex >= totalRecords - 1) {
+      const { start, end } = selectionRangeRef.current;
+      const hasSelection = start !== null && end !== null;
+
+      if (hasSelection) {
         if (isLoopingRef.current) {
-          nextIndex = nextIndex % totalRecords;
+          // Loop within selection range
+          const range = end - start;
+          if (range > 0 && (nextIndex >= end || nextIndex < start)) {
+            nextIndex = start + (Math.max(0, nextIndex - start) % range);
+          }
         } else {
-          nextIndex = totalRecords - 1;
-          setIsPlaying(false);
+          // Play once within selection range
+          if (nextIndex >= end) {
+            nextIndex = end - 1;
+            setIsPlaying(false);
+          } else if (nextIndex < start) {
+            nextIndex = start;
+          }
+        }
+      } else {
+        // Normal playback or loop (no selection)
+        if (nextIndex >= totalRecords) {
+          if (isLoopingRef.current && totalRecords > 0) {
+            nextIndex = nextIndex % totalRecords;
+          } else {
+            nextIndex = Math.max(0, totalRecords - 1);
+            setIsPlaying(false);
+          }
+        } else if (nextIndex < 0) {
+          nextIndex = 0;
         }
       }
       
+      // Final safety check
+      if (isNaN(nextIndex)) nextIndex = 0;
+      
       displayIndexRef.current = nextIndex;
       setLocalIndex(nextIndex);
+
+      // Sync to global store - throttled to ~30fps
+      if (time - lastSyncTimeRef.current > 30) {
+        setCurrentIndex(nextIndex);
+        lastSyncTimeRef.current = time;
+      }
       
       lastTimeRef.current = time - (deltaTime % playbackSpeed);
     }
     
     requestRef.current = requestAnimationFrame(animate);
-  }, [playbackSpeed, totalRecords]);
+  }, [playbackSpeed, totalRecords, setCurrentIndex]);
 
   useEffect(() => {
     if (isPlaying) {
+      // If we have a selection and we're outside of it, jump to start
+      const { start, end } = selectionRangeRef.current;
+      if (start !== null && end !== null && (displayIndexRef.current < start || displayIndexRef.current >= end)) {
+        displayIndexRef.current = start;
+        setLocalIndex(start);
+      }
+
       lastTimeRef.current = 0;
       fpsStartRef.current = 0;
       fpsFramesRef.current = 0;

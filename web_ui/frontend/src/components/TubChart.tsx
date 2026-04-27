@@ -613,26 +613,33 @@ export const TubChart: React.FC = () => {
     }
   }, [selectionStartIndex, selectionEndIndex, records.length]);
 
+  // Persistent render loop to ensure smooth red line and selection animation
   useEffect(() => {
-    if (!chartRef.current || !isChartReady) return;
+    if (!isChartReady) return;
     
     let frameId: number;
-    const animate = () => {
-      if (selectionDraft || visualSelectionRef.current) {
+    const renderLoop = () => {
+      if (chartRef.current) {
+        // Animate selection border if active
+        if (selectionDraft || (selectionStartIndex != null && selectionEndIndex != null)) {
           lineDashOffsetRef.current = (lineDashOffsetRef.current - 0.5) % 20;
-          chartRef.current?.render();
-          frameId = requestAnimationFrame(animate);
-      } else {
-          chartRef.current?.render();
+        }
+        // Use update('none') instead of render() to ensure plugins are re-evaluated 
+        // with latest ref values without triggering full layout animations
+        chartRef.current.update('none');
       }
+      frameId = requestAnimationFrame(renderLoop);
     };
     
-    animate();
+    frameId = requestAnimationFrame(renderLoop);
     
     return () => {
-      cancelAnimationFrame(frameId);
+      if (frameId) cancelAnimationFrame(frameId);
     };
-  }, [currentIndex, isChartReady, hoverPosition, selectionStartIndex, selectionEndIndex, selectionDraft]);
+  }, [isChartReady, selectionStartIndex, selectionEndIndex, selectionDraft]);
+
+  // Removed the previous useEffect that was tied to currentIndex to prevent constant restarts
+  // and potential "freezing" during high-frequency state updates.
 
   const selectionInfo = useMemo(() => {
     if (!records.length) {
