@@ -15,7 +15,7 @@ import {
 } from 'chart.js';
 import type { Chart as ChartInstance, Plugin } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { LineChart, RotateCcw, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
+import { LineChart, Redo2, RotateCcw, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
 
 ChartJS.register(
   CategoryScale,
@@ -73,6 +73,7 @@ export const TubEditor: React.FC = () => {
   const [processingMode, setProcessingMode] = useState<'delete' | 'restore' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionHistory, setActionHistory] = useState<RecordAction[]>([]);
+  const [redoHistory, setRedoHistory] = useState<RecordAction[]>([]);
   const [zoomPercent, setZoomPercent] = useState(MIN_ZOOM_PERCENT);
   const [scrollProgress, setScrollProgress] = useState(0);
   const zoomMultiplier = zoomPercent / MIN_ZOOM_PERCENT;
@@ -224,6 +225,7 @@ export const TubEditor: React.FC = () => {
             const nextHistory = [...prev, { mode, indexes: [...indexes] }];
             return nextHistory.slice(-MAX_UNDO_HISTORY);
           });
+          setRedoHistory([]);
         }
         return true;
       } catch {
@@ -264,8 +266,31 @@ export const TubEditor: React.FC = () => {
     const succeeded = await runRecordAction(inverseMode, lastAction.indexes, false);
     if (succeeded) {
       setActionHistory((prev) => prev.slice(0, -1));
+      setRedoHistory((prev) => {
+        const nextHistory = [...prev, { mode: lastAction.mode, indexes: [...lastAction.indexes] }];
+        return nextHistory.slice(-MAX_UNDO_HISTORY);
+      });
     }
   }, [actionHistory, runRecordAction]);
+
+  const handleRedoLastAction = useCallback(async () => {
+    const lastRedoAction = redoHistory[redoHistory.length - 1];
+    if (!lastRedoAction) {
+      return;
+    }
+
+    const succeeded = await runRecordAction(lastRedoAction.mode, lastRedoAction.indexes, false);
+    if (succeeded) {
+      setRedoHistory((prev) => prev.slice(0, -1));
+      setActionHistory((prev) => {
+        const nextHistory = [
+          ...prev,
+          { mode: lastRedoAction.mode, indexes: [...lastRedoAction.indexes] },
+        ];
+        return nextHistory.slice(-MAX_UNDO_HISTORY);
+      });
+    }
+  }, [redoHistory, runRecordAction]);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -492,14 +517,22 @@ export const TubEditor: React.FC = () => {
         if (!event.shiftKey && actionHistory.length > 0) {
           void handleUndoLastAction();
         } else if (event.shiftKey) {
-          redoSelectionRange();
+          if (redoHistory.length > 0) {
+            void handleRedoLastAction();
+          } else {
+            redoSelectionRange();
+          }
         }
         return;
       }
 
       if ((event.key === 'y' || event.key === 'Y') && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        redoSelectionRange();
+        if (redoHistory.length > 0) {
+          void handleRedoLastAction();
+        } else {
+          redoSelectionRange();
+        }
         return;
       }
 
@@ -544,6 +577,8 @@ export const TubEditor: React.FC = () => {
       clearSelectionRange,
       actionHistory.length,
       handleUndoLastAction,
+      redoHistory.length,
+      handleRedoLastAction,
       selectionStartIndex,
       selectionEndIndex,
       setSelectionRange,
@@ -1208,6 +1243,17 @@ export const TubEditor: React.FC = () => {
                 title={`撤销最近一次删除或恢复 (Ctrl+Z，最多 ${MAX_UNDO_HISTORY} 步)`}
               >
                 <Undo2 className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void handleRedoLastAction()}
+                disabled={isProcessing || redoHistory.length === 0}
+                className="h-full px-2"
+                aria-label="重做最近一次撤销的删除或恢复，最多 10 步，快捷键 Ctrl+Y"
+                title={`重做最近一次撤销的删除或恢复 (Ctrl+Y，最多 ${MAX_UNDO_HISTORY} 步)`}
+              >
+                <Redo2 className="h-4 w-4" />
               </Button>
             </div>
           </div>
