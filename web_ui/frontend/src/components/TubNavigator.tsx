@@ -8,11 +8,10 @@ import { Navigation, Play, Pause, ChevronLeft, ChevronRight, ChevronsLeft, Chevr
 interface RecordStatsProps {
   steering: string;
   throttle: string;
-  actualFps: number;
 }
 
-const RecordStats = React.memo(({ steering, throttle, actualFps }: RecordStatsProps) => (
-  <div className="grid grid-cols-3 gap-4">
+const RecordStats = React.memo(({ steering, throttle }: RecordStatsProps) => (
+  <div className="grid grid-cols-2 gap-4">
     <div className="bg-zinc-800 rounded-md flex h-[60px] w-[99px] flex-col items-center justify-center px-3 pt-[10px] pb-[10px] text-center">
       <div className="text-xs text-zinc-400 uppercase">STEERING</div>
       <div className="text-lg font-mono text-cyan-400">{steering}</div>
@@ -20,12 +19,6 @@ const RecordStats = React.memo(({ steering, throttle, actualFps }: RecordStatsPr
     <div className="bg-zinc-800 rounded-md flex h-[60px] w-[99px] flex-col items-center justify-center px-3 pt-[10px] pb-[10px] text-center">
       <div className="text-xs text-zinc-400 uppercase">Throttle</div>
       <div className="text-lg font-mono text-cyan-400">{throttle}</div>
-    </div>
-    <div className="bg-zinc-800 rounded-md flex h-[60px] w-[99px] flex-col items-center justify-center px-3 pt-[10px] pb-[10px] text-center">
-      <div className="text-xs text-zinc-400 uppercase">FPS</div>
-      <div className="text-lg font-mono text-cyan-400">
-        {actualFps}
-      </div>
     </div>
   </div>
 ));
@@ -501,6 +494,10 @@ export const TubNavigator: React.FC = () => {
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="w-full md:max-w-[40vw] aspect-[4/3] bg-zinc-950 rounded-lg overflow-hidden border border-zinc-800 flex items-center justify-center relative">
+            <div className="absolute right-2 top-2 z-10 rounded-md border border-white/10 bg-zinc-900/35 px-2 py-1 text-center shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md">
+              <div className="text-[10px] text-zinc-400 uppercase leading-none">FPS</div>
+              <div className="text-base font-mono leading-tight text-cyan-400">{actualFps}</div>
+            </div>
             {imagePath && !imageError ? (
               <canvas
                 ref={canvasRef}
@@ -526,7 +523,6 @@ export const TubNavigator: React.FC = () => {
             <RecordStats 
               steering={getRecordValue('user/angle', 'pilot/angle')}
               throttle={getRecordValue('user/throttle', 'pilot/throttle')}
-              actualFps={actualFps}
             />
 
             <TimelineSlider 
