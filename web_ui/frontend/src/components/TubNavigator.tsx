@@ -40,12 +40,15 @@ interface TimelineSliderProps {
   onMouseUp: () => void;
 }
 
-const TimelineSlider = React.memo(({ max, value, isDragging, onInput, onChange, onMouseDown, onMouseUp }: TimelineSliderProps) => (
+const TimelineSlider = React.memo(({ max, value, isDragging, onInput, onChange, onMouseDown, onMouseUp, recordIndex, totalRecords }: TimelineSliderProps & { recordIndex: number; totalRecords: number }) => (
   <div className="flex flex-col gap-2">
-    <label className="text-xs text-zinc-400 flex items-center gap-2">
-      Timeline
-      {isDragging && <span className="text-cyan-400 text-xs">(Dragging...)</span>}
-    </label>
+    <div className="w-full flex items-center gap-2 justify-between">
+      <label className="text-xs text-zinc-400 flex items-center gap-2">
+        Timeline
+        {isDragging && <span className="text-cyan-400 text-xs">(Dragging...)</span>}
+      </label>
+      <span className="text-xs text-white bg-black/70 px-2 py-1 rounded">Record {recordIndex} / {totalRecords - 1}</span>
+    </div>
     <input 
       type="range" 
       min="0" 
@@ -511,9 +514,6 @@ export const TubNavigator: React.FC = () => {
                 )}
               </div>
             )}
-            <div className="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded text-xs text-white">
-              Record {localIndex} / {totalRecords - 1}
-            </div>
           </div>
 
           <div className="space-y-6">
@@ -531,6 +531,8 @@ export const TubNavigator: React.FC = () => {
               onChange={handleSliderChange}
               onMouseDown={handleSliderMouseDown}
               onMouseUp={handleSliderMouseUp}
+              recordIndex={localIndex}
+              totalRecords={totalRecords}
             />
 
             <div className="grid grid-cols-4 gap-2">
