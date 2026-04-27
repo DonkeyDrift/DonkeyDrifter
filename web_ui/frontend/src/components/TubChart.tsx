@@ -54,6 +54,7 @@ export const TubChart: React.FC = () => {
     currentIndex: number;
   } | null>(null);
   const hydrateSelectionRef = useRef(false);
+  const tooltipRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -90,12 +91,21 @@ export const TubChart: React.FC = () => {
 
       setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
       setTooltipData({
-        x: event.clientX,
-        y: event.clientY,
+        x,
+        y,
         steering,
         throttle,
         index: clampedIndex,
       });
+
+      // Update tooltip position via ref for maximum performance
+      if (tooltipRef.current && containerRef.current) {
+        const isRightHalf = x > containerRef.current.clientWidth / 2;
+        const isBottomHalf = y > containerRef.current.clientHeight / 2;
+        tooltipRef.current.style.left = `${x}px`;
+        tooltipRef.current.style.top = `${y}px`;
+        tooltipRef.current.style.transform = `translate(${isRightHalf ? 'calc(-100% - 15px)' : '15px'}, ${isBottomHalf ? 'calc(-100% - 15px)' : '15px'})`;
+      }
 
       if (selectionDraft) {
         setSelectionDraft((prev) =>
@@ -765,12 +775,21 @@ export const TubChart: React.FC = () => {
 
       setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
       setTooltipData({
-        x: touch.clientX,
-        y: touch.clientY,
+        x,
+        y,
         steering,
         throttle,
         index: clampedIndex,
       });
+
+      // Update tooltip position via ref for maximum performance
+      if (tooltipRef.current && containerRef.current) {
+        const isRightHalf = x > containerRef.current.clientWidth / 2;
+        const isBottomHalf = y > containerRef.current.clientHeight / 2;
+        tooltipRef.current.style.left = `${x}px`;
+        tooltipRef.current.style.top = `${y}px`;
+        tooltipRef.current.style.transform = `translate(${isRightHalf ? 'calc(-100% - 15px)' : '15px'}, ${isBottomHalf ? 'calc(-100% - 15px)' : '15px'})`;
+      }
 
       event.preventDefault();
     },
@@ -893,23 +912,6 @@ export const TubChart: React.FC = () => {
             )}
           </div>
         )}
-        {tooltipData && (
-          <div 
-            className="absolute top-6 right-6 pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg p-3 shadow-xl text-xs z-50 backdrop-blur-sm"
-          >
-            <div className="font-semibold text-zinc-200 mb-2">Frame: {tooltipData.index}</div>
-            <div className="space-y-1">
-              <div className="flex justify-between gap-4">
-                <span className="text-zinc-400">Steering:</span>
-                <span className="text-cyan-400 font-mono">{tooltipData.steering.toFixed(3)}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-zinc-400">Throttle:</span>
-                <span className="text-yellow-400 font-mono">{tooltipData.throttle.toFixed(3)}</span>
-              </div>
-            </div>
-          </div>
-        )}
       </CardHeader>
       <CardContent>
         <div 
@@ -934,6 +936,29 @@ export const TubChart: React.FC = () => {
             }}
             className="w-full h-full"
           />
+          {tooltipData && (
+               <div 
+                 ref={tooltipRef}
+                 className="absolute pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg p-3 shadow-xl text-xs z-50 backdrop-blur-sm"
+                 style={{
+                   left: tooltipData.x,
+                   top: tooltipData.y,
+                   transform: `translate(${tooltipData.x > (containerRef.current?.clientWidth || 0) / 2 ? 'calc(-100% - 15px)' : '15px'}, ${tooltipData.y > (containerRef.current?.clientHeight || 0) / 2 ? 'calc(-100% - 15px)' : '15px'})`,
+                 }}
+               >
+              <div className="font-semibold text-zinc-200 mb-2 whitespace-nowrap">Frame: {tooltipData.index}</div>
+              <div className="space-y-1">
+                <div className="flex justify-between gap-4">
+                  <span className="text-zinc-400">Steering:</span>
+                  <span className="text-cyan-400 font-mono">{tooltipData.steering.toFixed(3)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-zinc-400">Throttle:</span>
+                  <span className="text-yellow-400 font-mono">{tooltipData.throttle.toFixed(3)}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
