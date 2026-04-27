@@ -500,7 +500,7 @@ export const TubNavigator: React.FC = () => {
                 ref={canvasRef}
                 className="w-full h-full object-contain"
                 width={640}
-                height={480}
+                height={240}
               />
             ) : (
               <div className="flex flex-col items-center justify-center text-zinc-600 gap-2">

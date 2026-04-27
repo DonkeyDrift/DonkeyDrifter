@@ -864,14 +864,14 @@ export const TubChart: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div
-            id="empty-chart"
-            className="empty-chart-placeholder flex h-[300px] w-full items-center justify-center rounded-lg border border-dashed border-zinc-700 text-sm text-zinc-400"
-            aria-label="empty-chart placeholder"
-          >
-            No data
-          </div>
-        </CardContent>
+            <div
+              id="empty-chart"
+              className="empty-chart-placeholder flex h-[150px] w-full items-center justify-center rounded-lg border border-dashed border-zinc-700 text-sm text-zinc-400"
+              aria-label="empty-chart placeholder"
+            >
+              Select files to view telemetry data
+            </div>
+          </CardContent>
       </Card>
     );
   }
@@ -923,7 +923,7 @@ export const TubChart: React.FC = () => {
       <CardContent>
         <div 
           ref={containerRef}
-          className={`h-[300px] w-full relative ${containerCursorClass} touch-none`}
+          className={`h-[150px] w-full relative ${containerCursorClass} touch-none`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onMouseDown={handleMouseDown}
