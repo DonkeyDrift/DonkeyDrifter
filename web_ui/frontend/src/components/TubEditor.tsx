@@ -1116,31 +1116,55 @@ export const TubEditor: React.FC = () => {
         <div className="flex w-full max-w-full items-start justify-between gap-2">
           <div className="ml-auto flex flex-col items-end gap-1">
             <div className="flex min-h-[30px] flex-wrap items-center justify-end gap-2">
-              <Input
-                aria-label="Start index"
-                aria-invalid={hasRangeInput && !!visibleRangeValidation.startError}
-                placeholder="Start"
-                value={startIndex}
-                onChange={(e) => setStartIndex(e.target.value)}
-                className={`w-[70px] h-full text-xs ${
-                  hasRangeInput && visibleRangeValidation.startError
-                    ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'
-                    : ''
-                }`}
-              />
+              <div className="relative">
+                <Input
+                  aria-label="Start index"
+                  aria-invalid={hasRangeInput && !!visibleRangeValidation.startError}
+                  placeholder="Start"
+                  value={startIndex}
+                  onChange={(e) => setStartIndex(e.target.value)}
+                  className={`w-[70px] h-full text-xs ${
+                    hasRangeInput && visibleRangeValidation.startError
+                      ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'
+                      : ''
+                  }`}
+                />
+                {hasRangeInput && visibleRangeValidation.startError && (
+                  <span
+                    className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-red-500/60 bg-zinc-950 px-2 py-1 text-xs text-red-300 shadow-lg"
+                    role="alert"
+                    aria-live="polite"
+                  >
+                    {visibleRangeValidation.startError}
+                    <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-red-500/60 bg-zinc-950" />
+                  </span>
+                )}
+              </div>
               <span className="text-xs text-zinc-400">to</span>
-              <Input
-                aria-label="End index"
-                aria-invalid={hasRangeInput && !!visibleRangeValidation.endError}
-                placeholder="End"
-                value={endIndex}
-                onChange={(e) => setEndIndex(e.target.value)}
-                className={`w-[70px] h-full text-xs ${
-                  hasRangeInput && visibleRangeValidation.endError
-                    ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'
-                    : ''
-                }`}
-              />
+              <div className="relative">
+                <Input
+                  aria-label="End index"
+                  aria-invalid={hasRangeInput && !!visibleRangeValidation.endError}
+                  placeholder="End"
+                  value={endIndex}
+                  onChange={(e) => setEndIndex(e.target.value)}
+                  className={`w-[70px] h-full text-xs ${
+                    hasRangeInput && visibleRangeValidation.endError
+                      ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'
+                      : ''
+                  }`}
+                />
+                {hasRangeInput && visibleRangeValidation.endError && (
+                  <span
+                    className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-red-500/60 bg-zinc-950 px-2 py-1 text-xs text-red-300 shadow-lg"
+                    role="alert"
+                    aria-live="polite"
+                  >
+                    {visibleRangeValidation.endError}
+                    <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-red-500/60 bg-zinc-950" />
+                  </span>
+                )}
+              </div>
               <Button
                 size="sm"
                 variant="danger"
@@ -1176,11 +1200,6 @@ export const TubEditor: React.FC = () => {
                 </span>
               )}
             </div>
-            {hasRangeInput && visibleRangeValidation.message && (
-              <span className="text-xs text-red-400" role="alert" aria-live="polite">
-                {visibleRangeValidation.message}
-              </span>
-            )}
           </div>
           <div className="order-first flex min-h-[30px] items-center justify-start gap-2">
             <div className="flex h-[30px] box-content items-center gap-2 rounded-md bg-zinc-800 px-3 text-left rotate-0">
