@@ -40,30 +40,36 @@ interface TimelineSliderProps {
   onMouseUp: () => void;
 }
 
-const TimelineSlider = React.memo(({ max, value, isDragging, onInput, onChange, onMouseDown, onMouseUp, recordIndex, totalRecords }: TimelineSliderProps & { recordIndex: number; totalRecords: number }) => (
-  <div className="flex flex-col gap-2">
-    <div className="w-full flex items-center gap-2 justify-between">
-      <label className="text-xs text-zinc-400 flex items-center gap-2">
-        Timeline
-        {isDragging && <span className="text-cyan-400 text-xs">(Dragging...)</span>}
-      </label>
-      <span className="text-xs text-white bg-black/70 px-2 py-1 rounded">Index {recordIndex} / {totalRecords - 1}</span>
+const TimelineSlider = React.memo(({ max, value, isDragging, onInput, onChange, onMouseDown, onMouseUp, recordIndex, totalRecords }: TimelineSliderProps & { recordIndex: number; totalRecords: number }) => {
+  const progress = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  const accentColor = isDragging ? '#22d3ee' : '#06b6d4';
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="w-full flex items-center gap-2 justify-between">
+        <label className="text-xs text-zinc-400 flex items-center gap-2">
+          Timeline
+          {isDragging && <span className="text-cyan-400 text-xs">(Dragging...)</span>}
+        </label>
+        <span className="text-xs text-white bg-black/70 px-2 py-1 rounded">Index {recordIndex} / {totalRecords - 1}</span>
+      </div>
+      <input 
+        type="range" 
+        min="0" 
+        max={max} 
+        value={value} 
+        onInput={onInput}
+        onChange={onChange}
+        onMouseDown={onMouseDown}
+        onMouseUp={onMouseUp}
+        onTouchStart={onMouseDown}
+        onTouchEnd={onMouseUp}
+        style={{ background: `linear-gradient(to right, ${accentColor} 0%, ${accentColor} ${progress}%, #3f3f46 ${progress}%, #3f3f46 100%)` }}
+        className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isDragging ? 'accent-cyan-400' : 'accent-cyan-500'}`}
+      />
     </div>
-    <input 
-      type="range" 
-      min="0" 
-      max={max} 
-      value={value} 
-      onInput={onInput}
-      onChange={onChange}
-      onMouseDown={onMouseDown}
-      onMouseUp={onMouseUp}
-      onTouchStart={onMouseDown}
-      onTouchEnd={onMouseUp}
-      className={`w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer ${isDragging ? 'accent-cyan-400' : 'accent-cyan-500'}`}
-    />
-  </div>
-));
+  );
+});
 
 export const TubNavigator: React.FC = () => {
   const { 

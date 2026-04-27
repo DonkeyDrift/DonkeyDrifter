@@ -1103,7 +1103,7 @@ export const TubChart: React.FC = () => {
             onChange={handleScrollSliderChange}
             disabled={zoomPercent === MIN_ZOOM_PERCENT || records.length <= visibleRange.visibleCount}
             aria-label="图表横向滚动"
-            className="h-2 w-full cursor-pointer accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
           />
         </div>
         {isConfirmOpen && (
