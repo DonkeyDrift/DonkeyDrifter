@@ -101,6 +101,30 @@ export const TubNavigator: React.FC = () => {
     setImageError(false);
   }, [currentIndex]);
 
+  // Handle spacebar shortcut for play/pause
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      if (
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      
+      if (e.code === 'Space') {
+        e.preventDefault(); // Prevent page scroll
+        setIsPlaying(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   const preloadImage = useCallback((path: string | null) => {
     if (!path) return;
     if (imageCacheRef.current.has(path)) return;

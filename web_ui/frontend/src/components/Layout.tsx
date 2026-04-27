@@ -1,4 +1,5 @@
 import React from 'react';
+import { HelpModal } from './HelpModal';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
@@ -22,6 +23,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           Donkey Car Web UI
         </div>
       </footer>
+      <HelpModal />
     </div>
   );
 };
