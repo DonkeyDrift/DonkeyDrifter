@@ -30,6 +30,7 @@ const MIN_ZOOM_PERCENT = 100;
 const MAX_ZOOM_PERCENT = 1000;
 const ZOOM_STEP_PERCENT = 100;
 const MAX_UNDO_HISTORY = 10;
+const PLAYHEAD_SCROLL_PADDING_RATIO = 0.15;
 
 type RecordAction = {
   mode: 'delete' | 'restore';
@@ -40,6 +41,7 @@ export const TubEditor: React.FC = () => {
   const records = useStore((state) => state.records);
   const isDragging = useStore((state) => state.isDragging);
   const isPlaying = useStore((state) => state.isPlaying);
+  const currentIndex = useStore((state) => state.currentIndex);
   const setCurrentIndex = useStore((state) => state.setCurrentIndex);
   const selectionStartIndex = useStore((state) => state.selectionStartIndex);
   const selectionEndIndex = useStore((state) => state.selectionEndIndex);
@@ -48,7 +50,6 @@ export const TubEditor: React.FC = () => {
   const redoSelectionRange = useStore((state) => state.redoSelectionRange);
   const setAllRecords = useStore((state) => state.setAllRecords);
   const chartRef = useRef<ChartInstance<'line'> | null>(null);
-  const [isChartReady, setIsChartReady] = useState(false);
   const lineDashOffsetRef = useRef(0);
   const visualSelectionRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
   const isSelectingRef = useRef(false);
@@ -437,7 +438,7 @@ export const TubEditor: React.FC = () => {
   }, [requestChartRender]);
 
   useEffect(() => {
-    if (!isChartReady || !records.length || zoomPercent === MIN_ZOOM_PERCENT) return;
+    if (!records.length || zoomPercent === MIN_ZOOM_PERCENT) return;
 
     const totalRecords = records.length;
     const visibleCount = Math.max(
@@ -454,7 +455,58 @@ export const TubEditor: React.FC = () => {
     const centeredStartIndex = currentIndexRef.current - Math.floor(visibleCount / 2);
     const targetStartIndex = Math.max(0, Math.min(centeredStartIndex, maxStartIndex));
     setScrollProgress(targetStartIndex / maxStartIndex);
-  }, [isChartReady, records.length, zoomPercent]);
+  }, [records.length, zoomPercent]);
+
+  useEffect(() => {
+    if (!isPlaying || !records.length || zoomPercent === MIN_ZOOM_PERCENT) {
+      return;
+    }
+
+    const totalRecords = records.length;
+    const visibleCount = Math.max(
+      2,
+      Math.min(totalRecords, Math.ceil((totalRecords * MIN_ZOOM_PERCENT) / zoomPercent))
+    );
+    const maxStartIndex = Math.max(0, totalRecords - visibleCount);
+
+    if (maxStartIndex <= 0) {
+      return;
+    }
+
+    const padding = Math.max(1, Math.floor(visibleCount * PLAYHEAD_SCROLL_PADDING_RATIO));
+    const currentStartIndex = Math.round(maxStartIndex * scrollProgress);
+    const currentEndIndex = Math.min(totalRecords - 1, currentStartIndex + visibleCount - 1);
+    const safeStartIndex = currentStartIndex + padding;
+    const safeEndIndex = currentEndIndex - padding;
+    let targetStartIndex: number | null = null;
+
+    if (currentIndex < safeStartIndex) {
+      targetStartIndex = currentIndex - padding;
+    } else if (currentIndex > safeEndIndex) {
+      targetStartIndex = currentIndex + padding - visibleCount + 1;
+    }
+
+    if (targetStartIndex == null) {
+      return;
+    }
+
+    const nextStartIndex = Math.max(0, Math.min(targetStartIndex, maxStartIndex));
+    const nextProgress = nextStartIndex / maxStartIndex;
+
+    setScrollProgress((previousProgress) => {
+      if (Math.abs(previousProgress - nextProgress) < 0.0005) {
+        return previousProgress;
+      }
+
+      return nextProgress;
+    });
+  }, [
+    currentIndex,
+    isPlaying,
+    records.length,
+    scrollProgress,
+    zoomPercent,
+  ]);
 
   const visibleRange = useMemo(() => {
     if (!records.length) {
@@ -1567,9 +1619,6 @@ export const TubEditor: React.FC = () => {
               options={options} 
               data={data} 
               plugins={[verticalLinePlugin]}
-              onLoad={() => {
-                setIsChartReady(true);
-              }}
               className="w-full h-full"
             />
           </div>
