@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const MAX_SELECTION_HISTORY = 120;
+
 interface TubRecord {
   _index: number;
   _timestamp_ms: number;
@@ -107,12 +109,18 @@ export const useStore = create<AppState>()(
         set((state) => {
           const clampedStart = Math.max(0, Math.min(startIndex, state.totalRecords));
           const clampedEnd = Math.max(clampedStart + 1, Math.min(endIndex, state.totalRecords));
+          if (
+            state.selectionStartIndex === clampedStart &&
+            state.selectionEndIndex === clampedEnd
+          ) {
+            return state;
+          }
           const entry = { startIndex: clampedStart, endIndex: clampedEnd };
           const baseHistory =
             state.selectionHistoryIndex >= 0
               ? state.selectionHistory.slice(0, state.selectionHistoryIndex + 1)
               : [];
-          const nextHistory = [...baseHistory, entry];
+          const nextHistory = [...baseHistory, entry].slice(-MAX_SELECTION_HISTORY);
           if (state.onSelectionChange) {
             state.onSelectionChange(clampedStart, clampedEnd);
           }

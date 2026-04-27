@@ -37,24 +37,21 @@ type RecordAction = {
 };
 
 export const TubEditor: React.FC = () => {
-  const {
-    records,
-    currentIndex,
-    isDragging,
-    setCurrentIndex,
-    selectionStartIndex,
-    selectionEndIndex,
-    setSelectionRange,
-    clearSelectionRange,
-    redoSelectionRange,
-    setAllRecords,
-  } = useStore();
+  const records = useStore((state) => state.records);
+  const isDragging = useStore((state) => state.isDragging);
+  const setCurrentIndex = useStore((state) => state.setCurrentIndex);
+  const selectionStartIndex = useStore((state) => state.selectionStartIndex);
+  const selectionEndIndex = useStore((state) => state.selectionEndIndex);
+  const setSelectionRange = useStore((state) => state.setSelectionRange);
+  const clearSelectionRange = useStore((state) => state.clearSelectionRange);
+  const redoSelectionRange = useStore((state) => state.redoSelectionRange);
+  const setAllRecords = useStore((state) => state.setAllRecords);
   const chartRef = useRef<ChartInstance<'line'> | null>(null);
   const [isChartReady, setIsChartReady] = useState(false);
   const lineDashOffsetRef = useRef(0);
   const visualSelectionRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
   const isSelectingRef = useRef(false);
-  const currentIndexRef = useRef(currentIndex);
+  const currentIndexRef = useRef(useStore.getState().currentIndex);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; dataIndex: number } | null>(null);
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; steering: number; throttle: number; index: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -293,8 +290,12 @@ export const TubEditor: React.FC = () => {
   }, [redoHistory, runRecordAction]);
 
   useEffect(() => {
-    currentIndexRef.current = currentIndex;
-  }, [currentIndex]);
+    const unsubscribe = useStore.subscribe((state) => {
+      currentIndexRef.current = state.currentIndex;
+    });
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (!isChartReady || !records.length || zoomPercent === MIN_ZOOM_PERCENT) return;
@@ -634,22 +635,26 @@ export const TubEditor: React.FC = () => {
     if (typeof window === 'undefined') return;
     if (!records.length) return;
 
-    if (selectionStartIndex != null && selectionEndIndex != null) {
-      try {
-        window.localStorage.setItem(
-          'tubSelectionRange',
-          JSON.stringify({ start: selectionStartIndex, end: selectionEndIndex })
-        );
-      } catch {
-        // ignore
+    const timeoutId = window.setTimeout(() => {
+      if (selectionStartIndex != null && selectionEndIndex != null) {
+        try {
+          window.localStorage.setItem(
+            'tubSelectionRange',
+            JSON.stringify({ start: selectionStartIndex, end: selectionEndIndex })
+          );
+        } catch {
+          // ignore
+        }
+      } else {
+        try {
+          window.localStorage.removeItem('tubSelectionRange');
+        } catch {
+          // ignore
+        }
       }
-    } else {
-      try {
-        window.localStorage.removeItem('tubSelectionRange');
-      } catch {
-        // ignore
-      }
-    }
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
   }, [selectionStartIndex, selectionEndIndex, records.length]);
 
   useEffect(() => {
