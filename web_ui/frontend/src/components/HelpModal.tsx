@@ -119,6 +119,18 @@ export const HelpModal: React.FC = () => {
                     <kbd className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 font-mono text-xs text-zinc-300">Esc</kbd>
                   </li>
                   <li className="flex items-center justify-between">
+                    <span>还原图表缩放</span>
+                    <kbd className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 font-mono text-xs text-zinc-300">P</kbd>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>缩小图表</span>
+                    <kbd className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 font-mono text-xs text-zinc-300">-</kbd>
+                  </li>
+                  <li className="flex items-center justify-between">
+                    <span>放大图表</span>
+                    <kbd className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 font-mono text-xs text-zinc-300">=</kbd>
+                  </li>
+                  <li className="flex items-center justify-between">
                     <span>撤销选区修改</span>
                     <div className="flex gap-1">
                       <kbd className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 font-mono text-xs text-zinc-300">Ctrl/Cmd</kbd>

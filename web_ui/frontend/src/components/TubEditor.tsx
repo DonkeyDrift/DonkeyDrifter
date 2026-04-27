@@ -536,6 +536,24 @@ export const TubEditor: React.FC = () => {
         return;
       }
 
+      if (event.key === 'p' || event.key === 'P') {
+        event.preventDefault();
+        handleZoomReset();
+        return;
+      }
+
+      if (event.key === '-' || event.key === '_') {
+        event.preventDefault();
+        handleZoomOut();
+        return;
+      }
+
+      if (event.key === '=' || event.key === '+') {
+        event.preventDefault();
+        handleZoomIn();
+        return;
+      }
+
       if (
         selectionStartIndex != null &&
         selectionEndIndex != null &&
@@ -579,6 +597,9 @@ export const TubEditor: React.FC = () => {
       handleUndoLastAction,
       redoHistory.length,
       handleRedoLastAction,
+      handleZoomIn,
+      handleZoomOut,
+      handleZoomReset,
       selectionStartIndex,
       selectionEndIndex,
       setSelectionRange,
@@ -1265,12 +1286,13 @@ export const TubEditor: React.FC = () => {
             <Button
               size="sm"
               variant="secondary"
-              onClick={handleZoomIn}
-              disabled={zoomPercent >= MAX_ZOOM_PERCENT}
+              onClick={handleZoomReset}
+              disabled={zoomPercent === MIN_ZOOM_PERCENT}
               className="h-full text-xs"
-              aria-label="放大图表"
+              aria-label="还原图表缩放"
+              title="还原图表缩放 (P)"
             >
-              <ZoomIn className="h-4 w-4" />
+              <RotateCcw className="h-4 w-4" />
             </Button>
             <Button
               size="sm"
@@ -1279,18 +1301,20 @@ export const TubEditor: React.FC = () => {
               disabled={zoomPercent <= MIN_ZOOM_PERCENT}
               className="h-full text-xs"
               aria-label="缩小图表"
+              title="缩小图表 (-)"
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
             <Button
               size="sm"
               variant="secondary"
-              onClick={handleZoomReset}
-              disabled={zoomPercent === MIN_ZOOM_PERCENT}
+              onClick={handleZoomIn}
+              disabled={zoomPercent >= MAX_ZOOM_PERCENT}
               className="h-full text-xs"
-              aria-label="还原图表缩放"
+              aria-label="放大图表"
+              title="放大图表 (=)"
             >
-              <RotateCcw className="h-4 w-4" />
+              <ZoomIn className="h-4 w-4" />
             </Button>
           </div>
         </div>
