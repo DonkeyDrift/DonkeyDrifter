@@ -47,7 +47,7 @@ const TimelineSlider = React.memo(({ max, value, isDragging, onInput, onChange, 
         Timeline
         {isDragging && <span className="text-cyan-400 text-xs">(Dragging...)</span>}
       </label>
-      <span className="text-xs text-white bg-black/70 px-2 py-1 rounded">Record {recordIndex} / {totalRecords - 1}</span>
+      <span className="text-xs text-white bg-black/70 px-2 py-1 rounded">Index {recordIndex} / {totalRecords - 1}</span>
     </div>
     <input 
       type="range" 
