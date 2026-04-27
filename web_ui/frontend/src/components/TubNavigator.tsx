@@ -224,9 +224,21 @@ export const TubNavigator: React.FC = () => {
     if (isPlaying) {
       // If we have a selection and we're outside of it, jump to start
       const { start, end } = selectionRangeRef.current;
-      if (start !== null && end !== null && (displayIndexRef.current < start || displayIndexRef.current >= end)) {
-        displayIndexRef.current = start;
-        setLocalIndex(start);
+      const currentPos = displayIndexRef.current;
+      
+      if (start !== null && end !== null) {
+        if (currentPos >= end - 1 || currentPos < start) {
+          displayIndexRef.current = start;
+          setLocalIndex(start);
+          setCurrentIndex(start);
+        }
+      } else {
+        // If no selection and at the very end, jump to beginning
+        if (currentPos >= totalRecords - 1) {
+          displayIndexRef.current = 0;
+          setLocalIndex(0);
+          setCurrentIndex(0);
+        }
       }
 
       lastTimeRef.current = 0;
@@ -244,7 +256,7 @@ export const TubNavigator: React.FC = () => {
         cancelAnimationFrame(requestRef.current);
       }
     };
-  }, [isPlaying, animate]);
+  }, [isPlaying, animate, totalRecords, setCurrentIndex]);
 
   // Reset error when index changes
   useEffect(() => {
@@ -274,32 +286,7 @@ export const TubNavigator: React.FC = () => {
         // Prevent page scroll and default button/range behavior
         e.preventDefault(); 
         
-        setIsPlaying(prev => {
-          const nextState = !prev;
-          // When clicking play (prev was false, nextState is true)
-          if (nextState) {
-            const { start, end } = selectionRangeRef.current;
-            const currentPos = displayIndexRef.current;
-            
-            if (start !== null && end !== null) {
-              // If we have a selection and we're at or beyond the end (or before start), 
-              // jump back to start
-              if (currentPos >= end - 1 || currentPos < start) {
-                displayIndexRef.current = start;
-                setLocalIndex(start);
-                setCurrentIndex(start);
-              }
-            } else {
-              // No selection, if at the very end of all records, jump to beginning
-              if (currentPos >= totalRecords - 1) {
-                displayIndexRef.current = 0;
-                setLocalIndex(0);
-                setCurrentIndex(0);
-              }
-            }
-          }
-          return nextState;
-        });
+        setIsPlaying(prev => !prev);
       }
     };
 
