@@ -15,7 +15,7 @@ import {
 } from 'chart.js';
 import type { Chart as ChartInstance, Plugin } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { LineChart, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { LineChart, RotateCcw, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
 
 ChartJS.register(
   CategoryScale,
@@ -40,7 +40,6 @@ export const TubChart: React.FC = () => {
     selectionEndIndex,
     setSelectionRange,
     clearSelectionRange,
-    undoSelectionRange,
     redoSelectionRange,
     setAllRecords,
   } = useStore();
@@ -67,6 +66,7 @@ export const TubChart: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMode, setProcessingMode] = useState<'delete' | 'restore' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<{ mode: 'delete' | 'restore'; indexes: number[] } | null>(null);
   const [zoomPercent, setZoomPercent] = useState(MIN_ZOOM_PERCENT);
   const [scrollProgress, setScrollProgress] = useState(0);
   const zoomMultiplier = zoomPercent / MIN_ZOOM_PERCENT;
@@ -119,20 +119,12 @@ export const TubChart: React.FC = () => {
     return { start, end };
   }, [startIndex, endIndex]);
 
-  const handleAction = useCallback(async (mode: 'delete' | 'restore') => {
-    const range = parseRange();
-    if (!range) {
-      setActionError('Invalid index range');
-      return;
-    }
-
-    setSelectionRange(range.start, range.end + 1);
-
-    const indexes: number[] = [];
-    for (let i = range.start; i <= range.end; i += 1) {
-      indexes.push(i);
-    }
-
+  const runRecordAction = useCallback(
+    async (
+      mode: 'delete' | 'restore',
+      indexes: number[],
+      rememberAction = true
+    ) => {
     if (indexes.length === 0) {
       setActionError('No records in selected range');
       return;
@@ -151,13 +143,46 @@ export const TubChart: React.FC = () => {
       const nextRecords = data.records || [];
       setAllRecords(nextRecords);
       setActionError(null);
+      if (rememberAction) {
+        setLastAction({ mode, indexes: [...indexes] });
+      } else {
+        setLastAction(null);
+      }
     } catch {
       setActionError(mode === 'delete' ? 'Delete failed' : 'Restore failed');
     } finally {
       setIsProcessing(false);
       setProcessingMode(null);
     }
-  }, [parseRange, setAllRecords, setSelectionRange]);
+    },
+    [setAllRecords]
+  );
+
+  const handleAction = useCallback(async (mode: 'delete' | 'restore') => {
+    const range = parseRange();
+    if (!range) {
+      setActionError('Invalid index range');
+      return;
+    }
+
+    setSelectionRange(range.start, range.end + 1);
+
+    const indexes: number[] = [];
+    for (let i = range.start; i <= range.end; i += 1) {
+      indexes.push(i);
+    }
+
+    await runRecordAction(mode, indexes, true);
+  }, [parseRange, runRecordAction, setSelectionRange]);
+
+  const handleUndoLastAction = useCallback(async () => {
+    if (!lastAction) {
+      return;
+    }
+
+    const inverseMode = lastAction.mode === 'delete' ? 'restore' : 'delete';
+    await runRecordAction(inverseMode, lastAction.indexes, false);
+  }, [lastAction, runRecordAction]);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -354,9 +379,23 @@ export const TubChart: React.FC = () => {
     [selectionDraft, setSelectionRange, records.length]
   );
 
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    return (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target.isContentEditable
+    );
+  };
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (!records.length) return;
+      if (isEditableTarget(event.target)) return;
 
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -367,10 +406,10 @@ export const TubChart: React.FC = () => {
 
       if ((event.key === 'z' || event.key === 'Z') && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        if (event.shiftKey) {
+        if (!event.shiftKey && lastAction) {
+          void handleUndoLastAction();
+        } else if (event.shiftKey) {
           redoSelectionRange();
-        } else {
-          undoSelectionRange();
         }
         return;
       }
@@ -420,10 +459,11 @@ export const TubChart: React.FC = () => {
       records.length,
       setCurrentIndex,
       clearSelectionRange,
+      handleUndoLastAction,
+      lastAction,
       selectionStartIndex,
       selectionEndIndex,
       setSelectionRange,
-      undoSelectionRange,
       redoSelectionRange,
     ]
   );
@@ -1015,6 +1055,17 @@ export const TubChart: React.FC = () => {
               className="h-full text-xs"
             >
               {isProcessing && processingMode === 'delete' ? 'Deleting...' : 'Delete'}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void handleUndoLastAction()}
+              disabled={isProcessing || !lastAction}
+              className="h-full px-2"
+              aria-label="撤销最近一次删除或恢复，快捷键 Ctrl+Z"
+              title="撤销最近一次删除或恢复 (Ctrl+Z)"
+            >
+              <Undo2 className="h-4 w-4" />
             </Button>
             <Button
               size="sm"
