@@ -64,9 +64,8 @@ export const TubChart: React.FC = () => {
 
   const [startIndex, setStartIndex] = useState('');
   const [endIndex, setEndIndex] = useState('');
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [actionMode, setActionMode] = useState<'delete' | 'restore'>('delete');
+  const [processingMode, setProcessingMode] = useState<'delete' | 'restore' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [zoomPercent, setZoomPercent] = useState(MIN_ZOOM_PERCENT);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -120,33 +119,7 @@ export const TubChart: React.FC = () => {
     return { start, end };
   }, [startIndex, endIndex]);
 
-  const handleOpenConfirm = useCallback(
-    (mode: 'delete' | 'restore') => {
-      const range = parseRange();
-      if (!range) {
-        setActionError('Invalid index range');
-        return;
-      }
-      setActionError(null);
-      setActionMode(mode);
-      setIsConfirmOpen(true);
-    },
-    [parseRange]
-  );
-
-  const handleOpenDeleteConfirm = useCallback(() => {
-    handleOpenConfirm('delete');
-  }, [handleOpenConfirm]);
-
-  const handleOpenRestoreConfirm = useCallback(() => {
-    handleOpenConfirm('restore');
-  }, [handleOpenConfirm]);
-
-  const handleCancelConfirm = useCallback(() => {
-    setIsConfirmOpen(false);
-  }, []);
-
-  const handleConfirmAction = useCallback(async () => {
+  const handleAction = useCallback(async (mode: 'delete' | 'restore') => {
     const range = parseRange();
     if (!range) {
       setActionError('Invalid index range');
@@ -166,8 +139,9 @@ export const TubChart: React.FC = () => {
     }
 
     setIsProcessing(true);
+    setProcessingMode(mode);
     try {
-      if (actionMode === 'delete') {
+      if (mode === 'delete') {
         await deleteRecords(indexes);
       } else {
         await restoreRecords(indexes);
@@ -176,14 +150,14 @@ export const TubChart: React.FC = () => {
       const data = await getRecords(0, 100000);
       const nextRecords = data.records || [];
       setAllRecords(nextRecords);
-      setIsConfirmOpen(false);
       setActionError(null);
     } catch {
-      setActionError(actionMode === 'delete' ? 'Delete failed' : 'Restore failed');
+      setActionError(mode === 'delete' ? 'Delete failed' : 'Restore failed');
     } finally {
       setIsProcessing(false);
+      setProcessingMode(null);
     }
-  }, [actionMode, parseRange, setAllRecords, setSelectionRange]);
+  }, [parseRange, setAllRecords, setSelectionRange]);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -1033,11 +1007,23 @@ export const TubChart: React.FC = () => {
               onChange={(e) => setEndIndex(e.target.value)}
               className="w-[70px] h-full text-xs"
             />
-            <Button size="sm" variant="danger" onClick={handleOpenDeleteConfirm} className="h-full text-xs">
-              Delete
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => void handleAction('delete')}
+              disabled={isProcessing}
+              className="h-full text-xs"
+            >
+              {isProcessing && processingMode === 'delete' ? 'Deleting...' : 'Delete'}
             </Button>
-            <Button size="sm" variant="secondary" onClick={handleOpenRestoreConfirm} className="h-full text-xs">
-              Restore
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void handleAction('restore')}
+              disabled={isProcessing}
+              className="h-full text-xs"
+            >
+              {isProcessing && processingMode === 'restore' ? 'Restoring...' : 'Restore'}
             </Button>
             {actionError && (
               <span className="ml-2 text-xs text-red-400">
@@ -1154,33 +1140,6 @@ export const TubChart: React.FC = () => {
             className="tub-chart-scroll-slider relative z-20 h-4 w-full appearance-none cursor-pointer bg-transparent accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
           />
         </div>
-        {isConfirmOpen && (
-          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
-            <div className="rounded-lg bg-zinc-900 border border-zinc-700 p-6 w-full max-w-sm space-y-4">
-              <div className="text-sm font-semibold">
-                {actionMode === 'delete' ? 'Confirm deletion' : 'Confirm restore'}
-              </div>
-              <div className="text-xs text-zinc-300">
-                {actionMode === 'delete'
-                  ? 'This will delete records in the selected index range. This action cannot be undone. Continue?'
-                  : 'This will restore records in the selected index range back into the active dataset. Continue?'}
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="secondary" onClick={handleCancelConfirm} disabled={isProcessing}>
-                  Cancel
-                </Button>
-                <Button variant="danger" onClick={handleConfirmAction} disabled={isProcessing}>
-                  {isProcessing ? (actionMode === 'delete' ? 'Deleting...' : 'Restoring...') : 'Confirm'}
-                </Button>
-              </div>
-              <div className="text-[11px] text-emerald-400">
-                {actionMode === 'delete'
-                  ? 'Success: Records in range will be removed from the tub and chart after confirmation.'
-                  : 'Success: Records in range will be restored into the tub and chart after confirmation.'}
-              </div>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
