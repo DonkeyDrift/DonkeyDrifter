@@ -15,7 +15,7 @@ import {
 } from 'chart.js';
 import type { Chart as ChartInstance, Plugin } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { LineChart } from 'lucide-react';
+import { LineChart, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 
 ChartJS.register(
   CategoryScale,
@@ -25,6 +25,10 @@ ChartJS.register(
   Title,
   Legend
 );
+
+const MIN_ZOOM_PERCENT = 100;
+const MAX_ZOOM_PERCENT = 1000;
+const ZOOM_STEP_PERCENT = 50;
 
 export const TubChart: React.FC = () => {
   const {
@@ -49,6 +53,7 @@ export const TubChart: React.FC = () => {
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; dataIndex: number } | null>(null);
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; steering: number; throttle: number; index: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [selectionDraft, setSelectionDraft] = useState<{
     startX: number;
     currentX: number;
@@ -64,6 +69,33 @@ export const TubChart: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionMode, setActionMode] = useState<'delete' | 'restore'>('delete');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [zoomPercent, setZoomPercent] = useState(MIN_ZOOM_PERCENT);
+
+  const clampZoomPercent = useCallback((value: number) => {
+    return Math.max(MIN_ZOOM_PERCENT, Math.min(MAX_ZOOM_PERCENT, value));
+  }, []);
+
+  const applyZoomPercent = useCallback(
+    (value: number) => {
+      setZoomPercent(clampZoomPercent(value));
+    },
+    [clampZoomPercent]
+  );
+
+  const handleZoomOut = useCallback(() => {
+    applyZoomPercent(zoomPercent - ZOOM_STEP_PERCENT);
+  }, [applyZoomPercent, zoomPercent]);
+
+  const handleZoomIn = useCallback(() => {
+    applyZoomPercent(zoomPercent + ZOOM_STEP_PERCENT);
+  }, [applyZoomPercent, zoomPercent]);
+
+  const handleZoomReset = useCallback(() => {
+    applyZoomPercent(MIN_ZOOM_PERCENT);
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+    }
+  }, [applyZoomPercent]);
 
   useEffect(() => {
     if (selectionStartIndex != null) {
@@ -158,12 +190,28 @@ export const TubChart: React.FC = () => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
 
+  useEffect(() => {
+    if (!isChartReady || !chartRef.current || !scrollContainerRef.current || !records.length) return;
+    if (zoomPercent === MIN_ZOOM_PERCENT) return;
+
+    const chart = chartRef.current;
+    const chartArea = chart.chartArea;
+    const totalRecords = records.length;
+    const progress = totalRecords > 1 ? currentIndexRef.current / (totalRecords - 1) : 0;
+    const currentX = chartArea.left + progress * (chartArea.right - chartArea.left);
+    const viewport = scrollContainerRef.current;
+    const targetLeft = Math.max(0, currentX - viewport.clientWidth / 2);
+
+    viewport.scrollTo({ left: targetLeft, behavior: 'smooth' });
+  }, [isChartReady, records.length, zoomPercent]);
+
   const handleMouseMove = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (!chartRef.current || !containerRef.current || !records.length) return;
 
       const rect = containerRef.current.getBoundingClientRect();
-      const x = event.clientX - rect.left;
+      const scrollLeft = containerRef.current.scrollLeft;
+      const x = event.clientX - rect.left + scrollLeft;
       const y = event.clientY - rect.top;
 
       const chart = chartRef.current;
@@ -189,7 +237,7 @@ export const TubChart: React.FC = () => {
 
       setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
       setTooltipData({
-        x,
+        x: clampedX - scrollLeft,
         y,
         steering,
         throttle,
@@ -198,9 +246,10 @@ export const TubChart: React.FC = () => {
 
       // Update tooltip position via ref for maximum performance
       if (tooltipRef.current && containerRef.current) {
-        const isRightHalf = x > containerRef.current.clientWidth / 2;
+        const visibleX = clampedX - scrollLeft;
+        const isRightHalf = visibleX > containerRef.current.clientWidth / 2;
         const isBottomHalf = y > containerRef.current.clientHeight / 2;
-        tooltipRef.current.style.left = `${x}px`;
+        tooltipRef.current.style.left = `${visibleX}px`;
         tooltipRef.current.style.top = `${y}px`;
         tooltipRef.current.style.transform = `translate(${isRightHalf ? 'calc(-100% - 15px)' : '15px'}, ${isBottomHalf ? 'calc(-100% - 15px)' : '15px'})`;
       }
@@ -229,7 +278,7 @@ export const TubChart: React.FC = () => {
     if (!chartRef.current || !containerRef.current || !records.length) return;
 
     const rect = containerRef.current.getBoundingClientRect();
-    const x = event.clientX - rect.left;
+    const x = event.clientX - rect.left + containerRef.current.scrollLeft;
 
     const chart = chartRef.current;
     const chartArea = chart.chartArea;
@@ -252,7 +301,7 @@ export const TubChart: React.FC = () => {
       if (event.button !== 0) return;
 
       const rect = containerRef.current.getBoundingClientRect();
-      const x = event.clientX - rect.left;
+      const x = event.clientX - rect.left + containerRef.current.scrollLeft;
 
       const chart = chartRef.current;
       const chartArea = chart.chartArea;
@@ -815,7 +864,7 @@ export const TubChart: React.FC = () => {
 
       const touch = event.touches[0];
       const rect = containerRef.current.getBoundingClientRect();
-      const x = touch.clientX - rect.left;
+      const x = touch.clientX - rect.left + containerRef.current.scrollLeft;
 
       const chart = chartRef.current;
       const chartArea = chart.chartArea;
@@ -853,7 +902,8 @@ export const TubChart: React.FC = () => {
 
       const touch = event.touches[0];
       const rect = containerRef.current.getBoundingClientRect();
-      const x = touch.clientX - rect.left;
+      const scrollLeft = containerRef.current.scrollLeft;
+      const x = touch.clientX - rect.left + scrollLeft;
       const y = touch.clientY - rect.top;
 
       const chart = chartRef.current;
@@ -883,7 +933,7 @@ export const TubChart: React.FC = () => {
 
       setHoverPosition({ x: clampedX, y, dataIndex: clampedIndex });
       setTooltipData({
-        x,
+        x: clampedX - scrollLeft,
         y,
         steering,
         throttle,
@@ -983,7 +1033,7 @@ export const TubChart: React.FC = () => {
 
   return (
     <Card className={chartCardClassName}>
-      <CardHeader className="relative flex flex-row items-center justify-between space-y-0">
+      <CardHeader className="relative flex flex-row items-start justify-between gap-4 space-y-0">
         <CardTitle className="flex items-center gap-2">
           <LineChart className="w-5 h-5" />
           Tub Chart
@@ -993,39 +1043,79 @@ export const TubChart: React.FC = () => {
             </span>
           )}
         </CardTitle>
-        <div className="flex gap-2 items-center h-[30px]">
-          <Input
-            aria-label="Start index"
-            placeholder="Start"
-            value={startIndex}
-            onChange={(e) => setStartIndex(e.target.value)}
-            className="w-[70px] h-full text-xs"
-          />
-          <span className="text-xs text-zinc-400">to</span>
-          <Input
-            aria-label="End index"
-            placeholder="End"
-            value={endIndex}
-            onChange={(e) => setEndIndex(e.target.value)}
-            className="w-[70px] h-full text-xs"
-          />
-          <Button size="sm" variant="danger" onClick={handleOpenDeleteConfirm} className="h-full text-xs">
-            Delete
-          </Button>
-          <Button size="sm" variant="secondary" onClick={handleOpenRestoreConfirm} className="h-full text-xs">
-            Restore
-          </Button>
-          {actionError && (
-            <span className="text-xs text-red-400 ml-2">
-              {actionError}
+        <div className="flex max-w-full flex-col items-end gap-2">
+          <div className="flex min-h-[30px] flex-wrap items-center justify-end gap-2">
+            <Input
+              aria-label="Start index"
+              placeholder="Start"
+              value={startIndex}
+              onChange={(e) => setStartIndex(e.target.value)}
+              className="w-[70px] h-full text-xs"
+            />
+            <span className="text-xs text-zinc-400">to</span>
+            <Input
+              aria-label="End index"
+              placeholder="End"
+              value={endIndex}
+              onChange={(e) => setEndIndex(e.target.value)}
+              className="w-[70px] h-full text-xs"
+            />
+            <Button size="sm" variant="danger" onClick={handleOpenDeleteConfirm} className="h-full text-xs">
+              Delete
+            </Button>
+            <Button size="sm" variant="secondary" onClick={handleOpenRestoreConfirm} className="h-full text-xs">
+              Restore
+            </Button>
+            {actionError && (
+              <span className="ml-2 text-xs text-red-400">
+                {actionError}
+              </span>
+            )}
+          </div>
+          <div className="flex min-h-[30px] flex-wrap items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleZoomOut}
+              disabled={zoomPercent <= MIN_ZOOM_PERCENT}
+              className="h-full text-xs"
+              aria-label="缩小图表"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleZoomIn}
+              disabled={zoomPercent >= MAX_ZOOM_PERCENT}
+              className="h-full text-xs"
+              aria-label="放大图表"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleZoomReset}
+              disabled={zoomPercent === MIN_ZOOM_PERCENT}
+              className="h-full text-xs"
+              aria-label="还原图表缩放"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <span className="inline-flex h-[30px] items-center rounded-md border border-zinc-700 bg-zinc-800 px-3 text-xs text-zinc-200">
+              Zoom {zoomPercent}%
             </span>
-          )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 relative overflow-hidden">
         <div 
-          ref={containerRef}
-          className={`relative h-full min-h-0 w-full ${containerCursorClass} touch-none`}
+          ref={(node) => {
+            containerRef.current = node;
+            scrollContainerRef.current = node;
+          }}
+          className={`relative h-full min-h-0 w-full overflow-x-auto overflow-y-hidden ${containerCursorClass} touch-none`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onMouseDown={handleMouseDown}
@@ -1035,16 +1125,24 @@ export const TubChart: React.FC = () => {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          <Line 
-            ref={chartRef} 
-            options={options} 
-            data={data} 
-            plugins={[verticalLinePlugin]}
-            onLoad={() => {
-              setIsChartReady(true);
+          <div
+            className="relative h-full min-h-0"
+            style={{
+              width: `${zoomPercent}%`,
+              minWidth: '100%',
             }}
-            className="w-full h-full"
-          />
+          >
+            <Line 
+              ref={chartRef} 
+              options={options} 
+              data={data} 
+              plugins={[verticalLinePlugin]}
+              onLoad={() => {
+                setIsChartReady(true);
+              }}
+              className="w-full h-full"
+            />
+          </div>
           {tooltipData && (
                <div 
                  ref={tooltipRef}
