@@ -580,7 +580,12 @@ export const TubChart: React.FC = () => {
             grid: { color: '#27272a' }
         },
         y: {
-            ticks: { color: '#71717a' },
+            min: -1,
+            max: 1,
+            ticks: {
+              color: '#71717a',
+              stepSize: 0.2,
+            },
             grid: { color: '#27272a' }
         }
     },
