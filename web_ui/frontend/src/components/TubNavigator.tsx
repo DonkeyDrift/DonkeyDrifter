@@ -11,12 +11,12 @@ interface RecordStatsProps {
 }
 
 const RecordStats = React.memo(({ steering, throttle }: RecordStatsProps) => (
-  <div className="grid grid-cols-2 gap-4">
-    <div className="bg-zinc-800 rounded-md flex h-[60px] w-[99px] flex-col items-center justify-center px-3 pt-[10px] pb-[10px] text-center">
+  <div className="flex gap-4 text-left">
+    <div className="bg-zinc-800 rounded-md flex h-[60px] w-[99px] flex-col items-start justify-center px-3 pt-[10px] pb-[10px] text-left">
       <div className="text-xs text-zinc-400 uppercase">STEERING</div>
       <div className="text-lg font-mono text-cyan-400">{steering}</div>
     </div>
-    <div className="bg-zinc-800 rounded-md flex h-[60px] w-[99px] flex-col items-center justify-center px-3 pt-[10px] pb-[10px] text-center">
+    <div className="bg-zinc-800 rounded-md flex h-[60px] w-[99px] flex-col items-start justify-center px-3 pt-[10px] pb-[10px] text-left">
       <div className="text-xs text-zinc-400 uppercase">Throttle</div>
       <div className="text-lg font-mono text-cyan-400">{throttle}</div>
     </div>
