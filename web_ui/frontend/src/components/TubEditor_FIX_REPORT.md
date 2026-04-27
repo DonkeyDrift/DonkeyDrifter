@@ -1,15 +1,15 @@
-# TubChart 当前索引竖线不显示问题根因分析报告
+# TubEditor 当前索引竖线不显示问题根因分析报告
 
 ## 问题描述
-在TubChart组件中，当前索引竖线（vertical line）无法正常显示，用户无法直观地看到当前播放位置在图表上的对应点。
+在TubEditor组件中，当前索引竖线（vertical line）无法正常显示，用户无法直观地看到当前播放位置在图表上的对应点。
 
 ## 复现场景
 - **浏览器**: Chrome/Firefox/Safari (跨浏览器问题)
 - **分辨率**: 所有分辨率下均可复现
 - **主题**: 浅色/深色主题下都存在问题
-- **操作路径**: 
+- **操作路径**:
   1. 加载配置和Tub数据
-  2. 导航到TubChart页面
+  2. 导航到TubEditor页面
   3. 播放数据或手动拖动索引
   4. 观察图表中无竖线显示
 
@@ -29,7 +29,7 @@
 
 ### 4. 视觉样式问题
 **问题**: 原线条样式（1px宽度，0.9透明度，青色）在某些背景下不够明显。
-**修复**: 
+**修复**:
 - 增加线宽到2px
 - 改为高对比度的红色
 - 添加虚线样式提高识别度
@@ -41,7 +41,7 @@
 
 ### 6. 更新机制不完善
 **问题**: 原更新机制仅调用`update()`，可能不足以触发插件重绘。
-**修复**: 
+**修复**:
 - 添加`render()`强制重绘
 - 使用适当的延迟（16ms）确保更新时机
 - 添加图表准备状态检测
@@ -55,34 +55,34 @@ const verticalLinePlugin = useMemo<Plugin<'line'>>(() => ({
   id: 'verticalLine',
   afterDraw: (chart: ChartInstance<'line'>) => {
     if (!sampledIndices.length) return;
-    
+
     try {
       const nearestIndex = findNearestIndex(sampledIndices, currentIndex);
       const labelIndex = sampledIndices.indexOf(nearestIndex);
       if (labelIndex < 0) return;
-      
+
       const xAxis = chart.scales.x;
       const yAxis = chart.scales.y;
       if (!xAxis || !yAxis) return;
-      
+
       const x = xAxis.getPixelForTick(labelIndex);
       if (isNaN(x) || x <= 0) return;
-      
+
       const ctx = chart.ctx;
       ctx.save();
-      
+
       // 高对比度样式
       ctx.strokeStyle = 'rgb(239, 68, 68)';
       ctx.lineWidth = 2;
       ctx.globalAlpha = 0.9;
       ctx.setLineDash([5, 3]); // 虚线
-      
+
       // 绘制垂直线
       ctx.beginPath();
       ctx.moveTo(x, yAxis.top);
       ctx.lineTo(x, yAxis.bottom);
       ctx.stroke();
-      
+
       // 添加标记点
       ctx.setLineDash([]);
       ctx.fillStyle = 'rgb(239, 68, 68)';
@@ -92,7 +92,7 @@ const verticalLinePlugin = useMemo<Plugin<'line'>>(() => ({
       ctx.beginPath();
       ctx.arc(x, yAxis.bottom, 3, 0, 2 * Math.PI);
       ctx.fill();
-      
+
       ctx.restore();
     } catch (error) {
       console.error('Vertical line plugin error:', error);
@@ -134,7 +134,7 @@ useEffect(() => {
 - 监控插件错误率，及时发现异常
 
 ### 2. 单元测试覆盖
-- 创建TubChart.test.tsx测试文件
+- 创建TubEditor.test.tsx测试文件
 - 覆盖插件加载、错误处理、边界情况
 
 ### 3. 视觉回归测试
@@ -148,8 +148,8 @@ useEffect(() => {
 - [ ] 性能优化考虑（useMemo等）
 
 ## 交付物
-1. ✅ 修复代码（TubChart.tsx）
-2. ✅ 单元测试（TubChart.test.tsx）
+1. ✅ 修复代码（TubEditor.tsx）
+2. ✅ 单元测试（TubEditor.test.tsx）
 3. ✅ 根因分析报告（本文档）
 
 ## 总结

@@ -1,4 +1,4 @@
-{
+﻿{
   "meta": {
     "project": "Donkey Car Web UI",
     "date": "2026-02-21",
@@ -38,7 +38,7 @@
       ]
     },
     {
-      "name": "Tub Chart",
+      "name": "Tub Editor",
       "description": "Render interactive line charts for steering and throttle (and other numeric fields). Charts show tooltips, allow clicking/dragging to navigate records, and display a current-position indicator.",
       "user_flows": [
         "Navigate to / -> View line chart with steering and throttle data -> Hover over chart to see tooltip with values -> Click on chart at a timestamp to navigate to specific record -> See current position indicator move -> Tub Navigator updates to the selected record",
@@ -154,10 +154,10 @@
         "auth_required": false
       },
       {
-        "name": "Tub Chart",
+        "name": "Tub Editor",
         "description": "Display steering and throttle data as interactive chart",
         "files": [
-          "src/components/TubChart.tsx",
+          "src/components/TubEditor.tsx",
           "src/store/useStore.ts"
         ],
         "entry_route": "/",
@@ -190,3 +190,4 @@
     ]
   }
 }
+

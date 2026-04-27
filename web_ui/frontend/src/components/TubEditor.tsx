@@ -36,7 +36,7 @@ type RecordAction = {
   indexes: number[];
 };
 
-export const TubChart: React.FC = () => {
+export const TubEditor: React.FC = () => {
   const {
     records,
     currentIndex,
@@ -114,16 +114,86 @@ export const TubChart: React.FC = () => {
     }
   }, [selectionStartIndex, selectionEndIndex]);
 
-  const parseRange = useCallback(() => {
-    const start = Number(startIndex);
-    const end = Number(endIndex);
+  const rangeValidation = useMemo(() => {
+    const normalizedStart = startIndex.trim();
+    const normalizedEnd = endIndex.trim();
 
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
+    if (!normalizedStart && !normalizedEnd) {
+      return {
+        startError: null,
+        endError: null,
+        message: null,
+      };
+    }
+
+    if (!normalizedStart) {
+      return {
+        startError: '请输入开始索引',
+        endError: null,
+        message: '请输入完整的开始和结束索引',
+      };
+    }
+
+    if (!normalizedEnd) {
+      return {
+        startError: null,
+        endError: '请输入结束索引',
+        message: '请输入完整的开始和结束索引',
+      };
+    }
+
+    if (!/^\d+$/.test(normalizedStart)) {
+      return {
+        startError: '开始索引必须是非负整数',
+        endError: null,
+        message: '索引必须是非负整数',
+      };
+    }
+
+    if (!/^\d+$/.test(normalizedEnd)) {
+      return {
+        startError: null,
+        endError: '结束索引必须是非负整数',
+        message: '索引必须是非负整数',
+      };
+    }
+
+    const start = Number.parseInt(normalizedStart, 10);
+    const end = Number.parseInt(normalizedEnd, 10);
+
+    if (end < start) {
+      return {
+        startError: null,
+        endError: '结束索引不能小于开始索引',
+        message: '结束索引不能小于开始索引',
+      };
+    }
+
+    return {
+      startError: null,
+      endError: null,
+      message: null,
+    };
+  }, [startIndex, endIndex]);
+
+  const parseRange = useCallback(() => {
+    if (rangeValidation.message) {
       return null;
     }
 
-    return { start, end };
-  }, [startIndex, endIndex]);
+    return {
+      start: Number.parseInt(startIndex.trim(), 10),
+      end: Number.parseInt(endIndex.trim(), 10),
+    };
+  }, [endIndex, rangeValidation.message, startIndex]);
+
+  const hasRangeInput = startIndex.trim() !== '' || endIndex.trim() !== '';
+  const isPartialRangeInput = startIndex.trim() === '' || endIndex.trim() === '';
+  const visibleRangeValidation = isPartialRangeInput
+    ? { startError: null, endError: null, message: null }
+    : rangeValidation;
+  const hasValidRange =
+    rangeValidation.message === null && startIndex.trim() !== '' && endIndex.trim() !== '';
 
   const runRecordAction = useCallback(
     async (
@@ -1013,7 +1083,7 @@ export const TubChart: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <LineChart className="w-5 h-5" />
-            Tub Chart
+            Tub Editor
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -1036,7 +1106,7 @@ export const TubChart: React.FC = () => {
       <CardHeader className="relative flex flex-row items-start justify-between gap-4 space-y-0">
         <CardTitle className="flex items-center gap-2">
           <LineChart className="w-5 h-5" />
-          Tub Chart
+          Tub Editor
           {isDragging && (
             <span className="ml-2 px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded-full animate-pulse">
               Live Update
@@ -1044,54 +1114,71 @@ export const TubChart: React.FC = () => {
           )}
         </CardTitle>
         <div className="flex max-w-full flex-col items-end gap-2">
-          <div className="flex min-h-[30px] flex-wrap items-center justify-end gap-2">
-            <Input
-              aria-label="Start index"
-              placeholder="Start"
-              value={startIndex}
-              onChange={(e) => setStartIndex(e.target.value)}
-              className="w-[70px] h-full text-xs"
-            />
-            <span className="text-xs text-zinc-400">to</span>
-            <Input
-              aria-label="End index"
-              placeholder="End"
-              value={endIndex}
-              onChange={(e) => setEndIndex(e.target.value)}
-              className="w-[70px] h-full text-xs"
-            />
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={() => void handleAction('delete')}
-              disabled={isProcessing}
-              className="h-full text-xs"
-            >
-              {isProcessing && processingMode === 'delete' ? 'Deleting...' : 'Delete'}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => void handleUndoLastAction()}
-              disabled={isProcessing || actionHistory.length === 0}
-              className="h-full px-2"
-              aria-label="撤销最近一次删除或恢复，最多 10 步，快捷键 Ctrl+Z"
-              title={`撤销最近一次删除或恢复 (Ctrl+Z，最多 ${MAX_UNDO_HISTORY} 步)`}
-            >
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => void handleAction('restore')}
-              disabled={isProcessing}
-              className="h-full text-xs"
-            >
-              {isProcessing && processingMode === 'restore' ? 'Restoring...' : 'Restore'}
-            </Button>
-            {actionError && (
-              <span className="ml-2 text-xs text-red-400">
-                {actionError}
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex min-h-[30px] flex-wrap items-center justify-end gap-2">
+              <Input
+                aria-label="Start index"
+                aria-invalid={hasRangeInput && !!visibleRangeValidation.startError}
+                placeholder="Start"
+                value={startIndex}
+                onChange={(e) => setStartIndex(e.target.value)}
+                className={`w-[70px] h-full text-xs ${
+                  hasRangeInput && visibleRangeValidation.startError
+                    ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'
+                    : ''
+                }`}
+              />
+              <span className="text-xs text-zinc-400">to</span>
+              <Input
+                aria-label="End index"
+                aria-invalid={hasRangeInput && !!visibleRangeValidation.endError}
+                placeholder="End"
+                value={endIndex}
+                onChange={(e) => setEndIndex(e.target.value)}
+                className={`w-[70px] h-full text-xs ${
+                  hasRangeInput && visibleRangeValidation.endError
+                    ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'
+                    : ''
+                }`}
+              />
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => void handleAction('delete')}
+                disabled={isProcessing || !hasValidRange}
+                className="h-full text-xs"
+              >
+                {isProcessing && processingMode === 'delete' ? 'Deleting...' : 'Delete'}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void handleUndoLastAction()}
+                disabled={isProcessing || actionHistory.length === 0}
+                className="h-full px-2"
+                aria-label="撤销最近一次删除或恢复，最多 10 步，快捷键 Ctrl+Z"
+                title={`撤销最近一次删除或恢复 (Ctrl+Z，最多 ${MAX_UNDO_HISTORY} 步)`}
+              >
+                <Undo2 className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void handleAction('restore')}
+                disabled={isProcessing || !hasValidRange}
+                className="h-full text-xs"
+              >
+                {isProcessing && processingMode === 'restore' ? 'Restoring...' : 'Restore'}
+              </Button>
+              {actionError && (
+                <span className="ml-2 text-xs text-red-400">
+                  {actionError}
+                </span>
+              )}
+            </div>
+            {hasRangeInput && visibleRangeValidation.message && (
+              <span className="text-xs text-red-400" role="alert" aria-live="polite">
+                {visibleRangeValidation.message}
               </span>
             )}
           </div>
@@ -1201,7 +1288,7 @@ export const TubChart: React.FC = () => {
             onChange={handleScrollSliderChange}
             disabled={zoomPercent === MIN_ZOOM_PERCENT || records.length <= visibleRange.visibleCount}
             aria-label="图表横向滚动"
-            className="tub-chart-scroll-slider relative z-20 h-4 w-full appearance-none cursor-pointer bg-transparent accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className="tub-editor-scroll-slider relative z-20 h-4 w-full appearance-none cursor-pointer bg-transparent accent-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
           />
         </div>
       </CardContent>

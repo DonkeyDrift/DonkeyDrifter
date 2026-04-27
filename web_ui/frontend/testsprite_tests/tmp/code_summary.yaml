@@ -1,4 +1,4 @@
-version: "2"
+﻿version: "2"
 type: frontend
 tech_stack:
   - TypeScript
@@ -63,10 +63,10 @@ features:
       - method: GET
         endpoint: /api/tub/image
     auth_required: false
-  - name: Tub Chart
+  - name: Tub Editor
     description: Display steering and throttle data as interactive chart
     files:
-      - src/components/TubChart.tsx
+      - src/components/TubEditor.tsx
       - src/store/useStore.ts
     entry_route: /
     user_interactions:
@@ -86,3 +86,4 @@ known_limitations:
   - issue: No error handling for missing image data
     location: src/components/TubNavigator.tsx
     impact: May display broken image if image data is invalid
+

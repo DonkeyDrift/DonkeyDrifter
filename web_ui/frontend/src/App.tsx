@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { SidePanel } from './components/SidePanel';
 import { TubNavigator } from './components/TubNavigator';
-import { TubChart } from './components/TubChart';
+import { TubEditor } from './components/TubEditor';
 import { useStore } from './store/useStore';
 
 type ErrorBoundaryProps = {
@@ -61,7 +61,7 @@ function App() {
 
         <div className="space-y-6">
           <TubNavigator />
-          <TubChart />
+          <TubEditor />
         </div>
       </Layout>
     </ErrorBoundary>

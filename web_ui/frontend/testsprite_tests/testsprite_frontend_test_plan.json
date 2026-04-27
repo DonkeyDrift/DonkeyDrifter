@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "id": "TC001",
     "title": "Load configuration successfully using a valid path",
@@ -629,7 +629,7 @@
     "id": "TC019",
     "title": "Render steering and throttle line chart when tub data is available",
     "description": "Verifies the chart area renders with steering and throttle series when data is loaded and visible on the main page.",
-    "category": "Tub Chart",
+    "category": "Tub Editor",
     "priority": "High",
     "steps": [
       {
@@ -638,7 +638,7 @@
       },
       {
         "type": "assertion",
-        "description": "Verify text \"Tub Chart\" is visible"
+        "description": "Verify text \"Tub Editor\" is visible"
       },
       {
         "type": "assertion",
@@ -658,7 +658,7 @@
     "id": "TC020",
     "title": "Empty chart placeholder appears when chart data is not loaded",
     "description": "Verifies that an empty/failed chart load shows a placeholder state prompting the user to load tub data.",
-    "category": "Tub Chart",
+    "category": "Tub Editor",
     "priority": "High",
     "steps": [
       {
@@ -687,7 +687,7 @@
     "id": "TC021",
     "title": "Error message is shown with empty chart state when data fails to load",
     "description": "Verifies an error message is visible in the chart area when chart data is empty or failed to load.",
-    "category": "Tub Chart",
+    "category": "Tub Editor",
     "priority": "Medium",
     "steps": [
       {
@@ -1029,3 +1029,4 @@
     ]
   }
 ]
+

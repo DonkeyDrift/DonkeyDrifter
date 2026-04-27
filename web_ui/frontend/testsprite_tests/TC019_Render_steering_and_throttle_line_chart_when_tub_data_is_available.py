@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from playwright import async_api
 from playwright.async_api import expect
 
@@ -33,13 +33,13 @@ async def run_test():
         # -> Navigate to http://localhost:5173
         await page.goto("http://localhost:5173", wait_until="commit", timeout=10000)
         
-        # -> Click the 'Load tub' button to load tub data, wait for the UI to update, then search the page for 'Tub Chart', 'Steering', and 'Throttle'. Also rely on presence of SVG elements (indexes 50 and 64) as the 'line chart' element check.
+        # -> Click the 'Load tub' button to load tub data, wait for the UI to update, then search the page for 'Tub Editor', 'Steering', and 'Throttle'. Also rely on presence of SVG elements (indexes 50 and 64) as the 'line chart' element check.
         frame = context.pages[-1]
         # Click element
         elem = frame.locator('xpath=/html/body/div/div/main/div[1]/div[2]/div[2]/div/button').nth(0)
         await page.wait_for_timeout(3000); await elem.click(timeout=5000)
         
-        # -> Click the 'Load tub' button (index 117) to load tub data so the page can render chart area; after the click, wait for the UI to update and then check for 'Tub Chart', the line chart SVG, 'Steering', and 'Throttle'.
+        # -> Click the 'Load tub' button (index 117) to load tub data so the page can render chart area; after the click, wait for the UI to update and then check for 'Tub Editor', the line chart SVG, 'Steering', and 'Throttle'.
         frame = context.pages[-1]
         # Click element
         elem = frame.locator('xpath=/html/body/div/div/main/div[1]/div[2]/div[2]/div/button').nth(0)
@@ -47,7 +47,7 @@ async def run_test():
         
         # --> Assertions to verify final state
         frame = context.pages[-1]
-        await expect(frame.locator('text=Tub Chart').first).to_be_visible(timeout=3000)
+        await expect(frame.locator('text=Tub Editor').first).to_be_visible(timeout=3000)
         await expect(frame.locator('xpath=(//svg)[50]').first).to_be_visible(timeout=3000)
         await expect(frame.locator('text=Steering').first).to_be_visible(timeout=3000)
         await expect(frame.locator('text=Throttle').first).to_be_visible(timeout=3000)

@@ -1,16 +1,16 @@
-
+﻿
 # TestSprite AI Testing Report(MCP)
 
 ---
 
-## 1️⃣ Document Metadata
+## 1锔忊儯 Document Metadata
 - **Project Name:** frontend
 - **Date:** 2026-02-22
 - **Prepared by:** TestSprite AI Team
 
 ---
 
-## 2️⃣ Requirement Validation Summary
+## 2锔忊儯 Requirement Validation Summary
 
 #### Test TC001 Load configuration successfully using a valid path
 - **Test Code:** [TC001_Load_configuration_successfully_using_a_valid_path.py](./TC001_Load_configuration_successfully_using_a_valid_path.py)
@@ -23,7 +23,7 @@ ASSERTIONS:
 - "~/mycar" text not visible on page
 - Page rendered blank with 0 interactive elements after navigation to /
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/edcb152e-ed1f-45a7-ae1c-67212a130b93
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -36,14 +36,14 @@ ASSERTIONS:
 - Load button not found on page
 - Page contains 0 interactive elements; SPA did not load the configuration UI
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/2350f0cd-c30d-4b96-bda2-877174e6d59a
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC003 Load button is actionable after editing the config path
 - **Test Code:** [TC003_Load_button_is_actionable_after_editing_the_config_path.py](./TC003_Load_button_is_actionable_after_editing_the_config_path.py)
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/f3bc64f0-ac09-457c-b645-e06c63e99cec
-- **Status:** ✅ Passed
+- **Status:** 鉁?Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -57,14 +57,14 @@ ASSERTIONS:
 - Page currently shows 0 interactive elements after the interaction, preventing verification of UI behavior.
 - The SPA appears to have become unresponsive or blank after the load attempt, so the feature cannot be validated.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/f2f7d194-a1f1-413d-bdba-e8f03bef8996
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC005 Attempting to load with an empty config path shows a visible failure state
 - **Test Code:** [TC005_Attempting_to_load_with_an_empty_config_path_shows_a_visible_failure_state.py](./TC005_Attempting_to_load_with_an_empty_config_path_shows_a_visible_failure_state.py)
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/975f375d-03e4-4866-8243-d5db9a7507ce
-- **Status:** ✅ Passed
+- **Status:** 鉁?Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -77,7 +77,7 @@ ASSERTIONS:
 - The page still displays 'No records loaded' indicating the UI did not update to show a loaded config.
 - The config input shows '/home/dkc/projects/mycar' (or its placeholder/help text) but no visible status or confirmation referencing this path was found.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/bdb12586-20d9-48fc-b5e9-6336ab229856
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -92,7 +92,7 @@ ASSERTIONS:
 - 'Error' message not visible after submitting an invalid path
 - 'No config loaded' status not visible after load failure
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/4c7d9d5c-50bc-4ed5-bebd-21cf0dcb04c3
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -107,7 +107,7 @@ ASSERTIONS:
 - Tub path input contained './data' but the application reported the directory does not exist, preventing records/fields from being shown.
 
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/d476a63c-616a-4b2b-a358-1c241a203489
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -121,7 +121,7 @@ ASSERTIONS:
 - Page reports 0 interactive elements after waiting, preventing any typing or clicking required by the test.
 - Could not verify the 'Error' message or the 'No tub loaded' status because interactions were not possible.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/bede99cb-8436-41d1-8057-2a2d0dfcdc8c
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -133,7 +133,7 @@ ASSERTIONS:
 - Tub path input field not found on page
 - Page rendered blank / SPA failed to load; 0 interactive elements present
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/22e0cbd8-5050-4248-b451-84f1f36961cc
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -145,7 +145,7 @@ ASSERTIONS:
 - Text 'Loading' not displayed on page after clicking 'Load tub'.
 - Status bar element not present or visible after clicking 'Load tub'.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/af9cd02a-0e5f-40cb-b6f0-a34c13f234a7
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -158,7 +158,7 @@ ASSERTIONS:
 - Load button not found on page
 - SPA did not render; page shows 0 interactive elements
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/7a26331a-4f48-41e1-b7ab-83223b1d5219
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -172,7 +172,7 @@ ASSERTIONS:
 - SPA did not render: page contains 0 interactive elements and appears blank after navigation and waiting
 - Required UI elements for loading/re-loading a tub are missing, preventing further test steps
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/2b338e78-5e0c-45df-bbf9-4ac5c0d8fa7c
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -186,7 +186,7 @@ ASSERTIONS:
 - Unable to enter the value "  ./data  " or trigger the load action because the interactive controls are not exposed to the test agent.
 - "Loading" and "Success" messages could not be verified because the load action could not be initiated.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/979a707b-89f6-498d-8a1e-32a5c9d597ed
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -200,7 +200,7 @@ ASSERTIONS:
 - Play button is not present in the Tub Navigator on first load.
 - FPS display (playback status) is not visible in the Tub Navigator on first load.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/c40f1029-ece6-4bc3-8326-e650b9cfb222
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -214,7 +214,7 @@ ASSERTIONS:
 - No 'Next' button or record navigation controls are present on the page.
 - It is not possible to verify that clicking 'Next' advances to the next record because no records are loaded.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/1454b73d-c92c-460b-889e-39736e2de964
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -227,7 +227,7 @@ ASSERTIONS:
 - No 'Next' or 'Previous' navigation buttons were found on the page to perform the requested navigation.
 - No 'current record image' preview element is present to verify image updates after navigation.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/baa46ff9-6f93-4563-851c-529cc6eef628
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -240,7 +240,7 @@ ASSERTIONS:
 - First button not found on page
 - 'current record metadata' element not visible on page
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/46e5c3a1-e115-4ec4-9f51-e575e6e715a7
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -249,27 +249,27 @@ ASSERTIONS:
 - **Test Error:** TEST FAILURE
 
 ASSERTIONS:
-- Tub Chart text not found on the page.
+- Tub Editor text not found on the page.
 - Line chart SVG element not visible on the page.
 - 'Steering' label/text not found on the page.
 - 'Throttle' label/text not found on the page.
-- Tub data not loaded — the UI displays 'No records loaded' (no records to render the chart), preventing chart series from appearing.
+- Tub data not loaded 鈥?the UI displays 'No records loaded' (no records to render the chart), preventing chart series from appearing.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/1f33792d-31b7-4bff-af1d-e1af08aec903
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC020 Empty chart placeholder appears when chart data is not loaded
 - **Test Code:** [TC020_Empty_chart_placeholder_appears_when_chart_data_is_not_loaded.py](./TC020_Empty_chart_placeholder_appears_when_chart_data_is_not_loaded.py)
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/d1cd0820-0c91-482a-a9cc-8234faa5a59f
-- **Status:** ✅ Passed
+- **Status:** 鉁?Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC021 Error message is shown with empty chart state when data fails to load
 - **Test Code:** [TC021_Error_message_is_shown_with_empty_chart_state_when_data_fails_to_load.py](./TC021_Error_message_is_shown_with_empty_chart_state_when_data_fails_to_load.py)
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/e2f7caf5-6d2f-457c-a677-7961c52f7dc0
-- **Status:** ✅ Passed
+- **Status:** 鉁?Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -284,7 +284,7 @@ ASSERTIONS:
 - 'Filtered' indicator not visible on page
 - 'Filtered record count' element not visible on page
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/9481f1e6-d37a-48a7-9d37-e3f4c88b0662
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -298,7 +298,7 @@ ASSERTIONS:
 - 'Confirm' modal text cannot be observed because the deletion feature is missing.
 - 'Success' message cannot be verified because index-range deletion functionality is not available.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/e90bbbf1-3af3-4530-89a7-7b3cdf7b8d3d
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -310,7 +310,7 @@ ASSERTIONS:
 - ASSERTION: Data Cleaner panel/button not found on page.
 - ASSERTION: Required UI elements for the cleaning workflow (filter input, Apply filter button, index range inputs, Delete button, confirmation modal, chart) are not present, so the workflow cannot be executed.
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/36a175ad-7a4b-44a4-bbb8-72436b2b3d59
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -323,7 +323,7 @@ ASSERTIONS:
 - No interactive elements present on page (0 found); cannot enter filter expression or click Apply filter
 - SPA did not load; page appears blank, preventing the required validation check
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/b8a14d62-c61c-4188-9733-e1929268d6a5
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -336,7 +336,7 @@ ASSERTIONS:
 - Filter expression input field not found on page
 - Apply filter button not found on page
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/aeace627-f777-4139-be52-964355064893
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -351,7 +351,7 @@ ASSERTIONS:
 - 'Cancel' control for the invalid filter workflow not present
 - Verification of 'Invalid' visibility could not be performed because workflow controls are missing
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/d8965b6a-fb87-488c-9252-4868d748b927
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
@@ -366,28 +366,28 @@ ASSERTIONS:
 - Cannot verify deletion confirmation modal because UI elements required for the test are missing
 - SPA likely failed to load or frontend crashed, preventing further testing
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/c16bbdd6-565b-4727-9009-48f8a7b97fd7
-- **Status:** ❌ Failed
+- **Status:** 鉂?Failed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 #### Test TC029 Status bar remains visible while navigating within the main console sections
 - **Test Code:** [TC029_Status_bar_remains_visible_while_navigating_within_the_main_console_sections.py](./TC029_Status_bar_remains_visible_while_navigating_within_the_main_console_sections.py)
 - **Test Visualization and Result:** https://www.testsprite.com/dashboard/mcp/tests/5ad15904-0ef6-4148-9a65-d041e5a9d543/da98508c-7952-4434-9860-be526ab32e5e
-- **Status:** ✅ Passed
+- **Status:** 鉁?Passed
 - **Analysis / Findings:** {{TODO:AI_ANALYSIS}}.
 ---
 
 
-## 3️⃣ Coverage & Matching Metrics
+## 3锔忊儯 Coverage & Matching Metrics
 
 - **17.24** of tests passed
 
-| Requirement        | Total Tests | ✅ Passed | ❌ Failed  |
+| Requirement        | Total Tests | 鉁?Passed | 鉂?Failed  |
 |--------------------|-------------|-----------|------------|
 | ...                | ...         | ...       | ...        |
 ---
 
 
-## 4️⃣ Key Gaps / Risks
+## 4锔忊儯 Key Gaps / Risks
 {AI_GNERATED_KET_GAPS_AND_RISKS}
 ---
