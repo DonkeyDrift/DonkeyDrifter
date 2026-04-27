@@ -52,6 +52,16 @@ export const TubEditor: React.FC = () => {
   const visualSelectionRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
   const isSelectingRef = useRef(false);
   const currentIndexRef = useRef(useStore.getState().currentIndex);
+  const selectionRangeRef = useRef<{ startIndex: number | null; endIndex: number | null }>({
+    startIndex: useStore.getState().selectionStartIndex,
+    endIndex: useStore.getState().selectionEndIndex,
+  });
+  const pendingSelectionRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
+  const selectionRangeFrameRef = useRef<number | null>(null);
+  const chartRenderFrameRef = useRef<number | null>(null);
+  const chartNeedsRenderRef = useRef(false);
+  const selectionAnimationUntilRef = useRef(0);
+  const playbackActivityUntilRef = useRef(0);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; dataIndex: number } | null>(null);
   const [tooltipData, setTooltipData] = useState<{ x: number; y: number; steering: number; throttle: number; index: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,11 +71,11 @@ export const TubEditor: React.FC = () => {
     startIndex: number;
     currentIndex: number;
   } | null>(null);
+  const selectionDraftRef = useRef(selectionDraft);
   const hydrateSelectionRef = useRef(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
-  const [startIndex, setStartIndex] = useState('');
-  const [endIndex, setEndIndex] = useState('');
+  const [rangeInputDraft, setRangeInputDraft] = useState<{ start: string; end: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMode, setProcessingMode] = useState<'delete' | 'restore' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -99,22 +109,135 @@ export const TubEditor: React.FC = () => {
     setScrollProgress(0);
   }, [applyZoomPercent]);
 
+  const ensureChartRenderLoop = useCallback(() => {
+    if (!isChartReady || chartRenderFrameRef.current != null) {
+      return;
+    }
+
+    const renderLoop = (time: number) => {
+      chartRenderFrameRef.current = null;
+
+      const hasDraftSelection = Boolean(selectionDraftRef.current);
+      const hasSelectionAnimation = hasDraftSelection || time < selectionAnimationUntilRef.current;
+      const hasPlaybackActivity = time < playbackActivityUntilRef.current;
+      const shouldRender = chartNeedsRenderRef.current || hasSelectionAnimation || hasPlaybackActivity;
+
+      if (shouldRender && chartRef.current) {
+        if (hasSelectionAnimation && (hasDraftSelection || visualSelectionRef.current)) {
+          lineDashOffsetRef.current = (lineDashOffsetRef.current - 0.5) % 20;
+        }
+
+        chartNeedsRenderRef.current = false;
+        chartRef.current.update('none');
+      }
+
+      if (hasDraftSelection || time < selectionAnimationUntilRef.current || time < playbackActivityUntilRef.current) {
+        chartRenderFrameRef.current = window.requestAnimationFrame(renderLoop);
+      }
+    };
+
+    chartRenderFrameRef.current = window.requestAnimationFrame(renderLoop);
+  }, [isChartReady]);
+
+  const requestChartRender = useCallback(
+    (options?: { animateSelection?: boolean; markPlaybackActive?: boolean }) => {
+      const now = performance.now();
+
+      chartNeedsRenderRef.current = true;
+      if (options?.animateSelection) {
+        selectionAnimationUntilRef.current = Math.max(selectionAnimationUntilRef.current, now + 220);
+      }
+      if (options?.markPlaybackActive) {
+        playbackActivityUntilRef.current = Math.max(playbackActivityUntilRef.current, now + 120);
+      }
+
+      ensureChartRenderLoop();
+    },
+    [ensureChartRenderLoop]
+  );
+
+  const flushPendingSelectionRange = useCallback(() => {
+    selectionRangeFrameRef.current = null;
+    const pendingRange = pendingSelectionRangeRef.current;
+    if (!pendingRange) {
+      return;
+    }
+
+    pendingSelectionRangeRef.current = null;
+    setSelectionRange(pendingRange.startIndex, pendingRange.endIndex);
+  }, [setSelectionRange]);
+
+  const queueSelectionRangeUpdate = useCallback(
+    (startIndex: number, endIndex: number) => {
+      if (!records.length) {
+        return;
+      }
+
+      const nextStartIndex = Math.max(0, Math.min(startIndex, records.length - 1));
+      const nextEndIndex = Math.max(nextStartIndex + 1, Math.min(endIndex, records.length));
+      const currentStartIndex = pendingSelectionRangeRef.current?.startIndex ?? selectionRangeRef.current.startIndex;
+      const currentEndIndex = pendingSelectionRangeRef.current?.endIndex ?? selectionRangeRef.current.endIndex;
+
+      if (currentStartIndex === nextStartIndex && currentEndIndex === nextEndIndex) {
+        return;
+      }
+
+      pendingSelectionRangeRef.current = {
+        startIndex: nextStartIndex,
+        endIndex: nextEndIndex,
+      };
+      selectionRangeRef.current = {
+        startIndex: nextStartIndex,
+        endIndex: nextEndIndex,
+      };
+      visualSelectionRef.current = {
+        startIndex: nextStartIndex,
+        endIndex: nextEndIndex,
+      };
+      requestChartRender({ animateSelection: true });
+
+      if (selectionRangeFrameRef.current == null) {
+        selectionRangeFrameRef.current = window.requestAnimationFrame(() => {
+          flushPendingSelectionRange();
+        });
+      }
+    },
+    [flushPendingSelectionRange, records.length, requestChartRender]
+  );
+
   useEffect(() => {
-    if (selectionStartIndex != null) {
-      setStartIndex(String(selectionStartIndex));
-    }
-    if (selectionEndIndex != null) {
-      setEndIndex(String(selectionEndIndex - 1));
-    }
-    if (selectionStartIndex == null && selectionEndIndex == null) {
-      setStartIndex('');
-      setEndIndex('');
-    }
+    selectionRangeRef.current = {
+      startIndex: selectionStartIndex,
+      endIndex: selectionEndIndex,
+    };
   }, [selectionStartIndex, selectionEndIndex]);
 
+  useEffect(() => {
+    selectionDraftRef.current = selectionDraft;
+  }, [selectionDraft]);
+
+  useEffect(() => {
+    requestChartRender({ animateSelection: selectionStartIndex != null && selectionEndIndex != null });
+  }, [requestChartRender, selectionEndIndex, selectionStartIndex]);
+
+  const syncedStartIndex = selectionStartIndex != null ? String(selectionStartIndex) : '';
+  const syncedEndIndex = selectionEndIndex != null ? String(selectionEndIndex - 1) : '';
+  const rangeStartInput = rangeInputDraft?.start ?? syncedStartIndex;
+  const rangeEndInput = rangeInputDraft?.end ?? syncedEndIndex;
+
+  useEffect(() => {
+    if (!rangeInputDraft) {
+      return;
+    }
+
+    if (rangeInputDraft.start === syncedStartIndex && rangeInputDraft.end === syncedEndIndex) {
+      setRangeInputDraft(null);
+    }
+  }, [rangeInputDraft, syncedEndIndex, syncedStartIndex]);
+
   const rangeValidation = useMemo(() => {
-    const normalizedStart = startIndex.trim();
-    const normalizedEnd = endIndex.trim();
+    const normalizedStart = rangeStartInput.trim();
+    const normalizedEnd = rangeEndInput.trim();
 
     if (!normalizedStart && !normalizedEnd) {
       return {
@@ -172,7 +295,7 @@ export const TubEditor: React.FC = () => {
       endError: null,
       message: null,
     };
-  }, [startIndex, endIndex]);
+  }, [rangeEndInput, rangeStartInput]);
 
   const parseRange = useCallback(() => {
     if (rangeValidation.message) {
@@ -180,18 +303,18 @@ export const TubEditor: React.FC = () => {
     }
 
     return {
-      start: Number.parseInt(startIndex.trim(), 10),
-      end: Number.parseInt(endIndex.trim(), 10),
+      start: Number.parseInt(rangeStartInput.trim(), 10),
+      end: Number.parseInt(rangeEndInput.trim(), 10),
     };
-  }, [endIndex, rangeValidation.message, startIndex]);
+  }, [rangeEndInput, rangeStartInput, rangeValidation.message]);
 
-  const hasRangeInput = startIndex.trim() !== '' || endIndex.trim() !== '';
-  const isPartialRangeInput = startIndex.trim() === '' || endIndex.trim() === '';
+  const hasRangeInput = rangeStartInput.trim() !== '' || rangeEndInput.trim() !== '';
+  const isPartialRangeInput = rangeStartInput.trim() === '' || rangeEndInput.trim() === '';
   const visibleRangeValidation = isPartialRangeInput
     ? { startError: null, endError: null, message: null }
     : rangeValidation;
   const hasValidRange =
-    rangeValidation.message === null && startIndex.trim() !== '' && endIndex.trim() !== '';
+    rangeValidation.message === null && rangeStartInput.trim() !== '' && rangeEndInput.trim() !== '';
 
   const runRecordAction = useCallback(
     async (
@@ -291,11 +414,15 @@ export const TubEditor: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = useStore.subscribe((state) => {
+      const previousIndex = currentIndexRef.current;
       currentIndexRef.current = state.currentIndex;
+      if (state.currentIndex !== previousIndex) {
+        requestChartRender({ markPlaybackActive: true });
+      }
     });
 
     return unsubscribe;
-  }, []);
+  }, [requestChartRender]);
 
   useEffect(() => {
     if (!isChartReady || !records.length || zoomPercent === MIN_ZOOM_PERCENT) return;
@@ -572,15 +699,16 @@ export const TubEditor: React.FC = () => {
       }
 
       if (
-        selectionStartIndex != null &&
-        selectionEndIndex != null &&
+        selectionRangeRef.current.startIndex != null &&
+        selectionRangeRef.current.endIndex != null &&
         (event.key === '[' || event.key === ']')
       ) {
         event.preventDefault();
         const delta = event.key === '[' ? -1 : 1;
-        const start = selectionStartIndex;
-        const nextEnd = Math.max(start + 1, Math.min(selectionEndIndex + delta, records.length));
-        setSelectionRange(start, nextEnd);
+        const start = selectionRangeRef.current.startIndex;
+        const end = selectionRangeRef.current.endIndex;
+        const nextEnd = Math.max(start + 1, Math.min(end + delta, records.length));
+        queueSelectionRangeUpdate(start, nextEnd);
         return;
       }
 
@@ -616,6 +744,7 @@ export const TubEditor: React.FC = () => {
       isProcessing,
       hasValidRange,
       handleAction,
+      queueSelectionRangeUpdate,
       handleZoomIn,
       handleZoomOut,
       handleZoomReset,
@@ -656,6 +785,17 @@ export const TubEditor: React.FC = () => {
 
     return () => window.clearTimeout(timeoutId);
   }, [selectionStartIndex, selectionEndIndex, records.length]);
+
+  useEffect(() => {
+    return () => {
+      if (selectionRangeFrameRef.current != null) {
+        window.cancelAnimationFrame(selectionRangeFrameRef.current);
+      }
+      if (chartRenderFrameRef.current != null) {
+        window.cancelAnimationFrame(chartRenderFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -775,7 +915,8 @@ export const TubEditor: React.FC = () => {
 
   useEffect(() => {
     hoverPositionRef.current = hoverPosition;
-  }, [hoverPosition]);
+    requestChartRender();
+  }, [hoverPosition, requestChartRender]);
 
   const verticalLinePlugin = useMemo<Plugin<'line'>>(() => ({
     id: 'verticalLine',
@@ -922,33 +1063,9 @@ export const TubEditor: React.FC = () => {
     }
   }, [selectionStartIndex, selectionEndIndex, records.length]);
 
-  // Persistent render loop to ensure smooth red line and selection animation
   useEffect(() => {
-    if (!isChartReady) return;
-    
-    let frameId: number;
-    const renderLoop = () => {
-      if (chartRef.current) {
-        // Animate selection border if active
-        if (selectionDraft || (selectionStartIndex != null && selectionEndIndex != null)) {
-          lineDashOffsetRef.current = (lineDashOffsetRef.current - 0.5) % 20;
-        }
-        // Use update('none') instead of render() to ensure plugins are re-evaluated 
-        // with latest ref values without triggering full layout animations
-        chartRef.current.update('none');
-      }
-      frameId = requestAnimationFrame(renderLoop);
-    };
-    
-    frameId = requestAnimationFrame(renderLoop);
-    
-    return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-    };
-  }, [isChartReady, selectionStartIndex, selectionEndIndex, selectionDraft]);
-
-  // Removed the previous useEffect that was tied to currentIndex to prevent constant restarts
-  // and potential "freezing" during high-frequency state updates.
+    requestChartRender({ animateSelection: Boolean(selectionDraft) });
+  }, [requestChartRender, selectionDraft]);
 
   const selectionInfo = useMemo(() => {
     if (!records.length) {
@@ -1213,8 +1330,13 @@ export const TubEditor: React.FC = () => {
                   aria-label="Start index"
                   aria-invalid={hasRangeInput && !!visibleRangeValidation.startError}
                   placeholder="Start"
-                  value={startIndex}
-                  onChange={(e) => setStartIndex(e.target.value)}
+                  value={rangeStartInput}
+                  onChange={(e) =>
+                    setRangeInputDraft({
+                      start: e.target.value,
+                      end: rangeInputDraft?.end ?? syncedEndIndex,
+                    })
+                  }
                   className={`w-[70px] h-full text-xs ${
                     hasRangeInput && visibleRangeValidation.startError
                       ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'
@@ -1238,8 +1360,13 @@ export const TubEditor: React.FC = () => {
                   aria-label="End index"
                   aria-invalid={hasRangeInput && !!visibleRangeValidation.endError}
                   placeholder="End"
-                  value={endIndex}
-                  onChange={(e) => setEndIndex(e.target.value)}
+                  value={rangeEndInput}
+                  onChange={(e) =>
+                    setRangeInputDraft({
+                      start: rangeInputDraft?.start ?? syncedStartIndex,
+                      end: e.target.value,
+                    })
+                  }
                   className={`w-[70px] h-full text-xs ${
                     hasRangeInput && visibleRangeValidation.endError
                       ? 'border-red-500 text-red-100 placeholder:text-red-300/70 focus:ring-red-500'

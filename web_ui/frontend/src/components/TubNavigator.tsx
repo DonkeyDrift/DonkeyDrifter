@@ -65,18 +65,13 @@ const TimelineSlider = React.memo(({ max, value, isDragging, onInput, onChange, 
 });
 
 export const TubNavigator: React.FC = () => {
-  const { 
-    records, 
-    currentIndex, 
-    setCurrentIndex, 
-    totalRecords, 
-    tubTotalRecords,
-    config, 
-    isDragging, 
-    setIsDragging,
-    selectionStartIndex,
-    selectionEndIndex 
-  } = useStore();
+  const records = useStore((state) => state.records);
+  const setCurrentIndex = useStore((state) => state.setCurrentIndex);
+  const totalRecords = useStore((state) => state.totalRecords);
+  const tubTotalRecords = useStore((state) => state.tubTotalRecords);
+  const config = useStore((state) => state.config);
+  const isDragging = useStore((state) => state.isDragging);
+  const setIsDragging = useStore((state) => state.setIsDragging);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
@@ -87,15 +82,15 @@ export const TubNavigator: React.FC = () => {
   const lastTimeRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
   const isLoopingRef = useRef(isLooping);
+  const currentIndexRef = useRef(useStore.getState().currentIndex);
   const selectionRangeRef = useRef<{ start: number | null; end: number | null }>({
-    start: selectionStartIndex,
-    end: selectionEndIndex,
+    start: useStore.getState().selectionStartIndex,
+    end: useStore.getState().selectionEndIndex,
   });
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const fpsStartRef = useRef<number>(0);
   const fpsFramesRef = useRef<number>(0);
-  const lastIndexRef = useRef(currentIndex);
-  const displayIndexRef = useRef(currentIndex);
+  const displayIndexRef = useRef(currentIndexRef.current);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -115,27 +110,29 @@ export const TubNavigator: React.FC = () => {
   }, [isLooping]);
 
   useEffect(() => {
-    selectionRangeRef.current = {
-      start: selectionStartIndex,
-      end: selectionEndIndex,
-    };
-  }, [selectionStartIndex, selectionEndIndex]);
+    const unsubscribe = useStore.subscribe((state) => {
+      currentIndexRef.current = state.currentIndex;
+      selectionRangeRef.current = {
+        start: state.selectionStartIndex,
+        end: state.selectionEndIndex,
+      };
 
-  // Sync currentIndex ref for performance optimization
-  useEffect(() => {
-    lastIndexRef.current = currentIndex;
-  }, [currentIndex]);
+      if (!isPlayingRef.current && !isDragging) {
+        setLocalIndex((prev) => {
+          if (prev === state.currentIndex) {
+            return prev;
+          }
+          return state.currentIndex;
+        });
+        displayIndexRef.current = state.currentIndex;
+      }
+    });
+
+    return unsubscribe;
+  }, [isDragging]);
 
   // Use a local state for the index to avoid triggering global store re-renders 60 times/sec
-  const [localIndex, setLocalIndex] = useState(currentIndex);
-
-  // Sync localIndex with global currentIndex when global changes (e.g. from other components)
-  useEffect(() => {
-    if (!isPlayingRef.current && !isDragging) {
-      setLocalIndex(currentIndex);
-      displayIndexRef.current = currentIndex;
-    }
-  }, [currentIndex, isDragging]);
+  const [localIndex, setLocalIndex] = useState(currentIndexRef.current);
 
   // Ensure initial frame is drawn when records are loaded
   useEffect(() => {
