@@ -593,9 +593,10 @@ export const TubNavigator: React.FC = () => {
               </Button>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 h-[30px]">
               <Button 
-                className="flex-1"
+                size="sm"
+                className="flex-1 h-full"
                 variant={isPlaying ? "danger" : "primary"}
                 aria-label={isPlaying ? 'Stop playback' : 'Start playback'}
                 onClick={() => setIsPlaying(!isPlaying)}
@@ -604,11 +605,12 @@ export const TubNavigator: React.FC = () => {
               </Button>
               
               <Button
+                size="sm"
                 variant={isLooping ? "primary" : "secondary"}
                 aria-label={isLooping ? 'Loop mode active' : 'Play once mode'}
                 onClick={() => setIsLooping(!isLooping)}
                 title={isLooping ? "循环播放" : "播放后停止"}
-                className="px-3"
+                className="px-3 h-full"
               >
                 {isLooping ? <Repeat className="w-4 h-4" /> : <ArrowRightToLine className="w-4 h-4" />}
               </Button>

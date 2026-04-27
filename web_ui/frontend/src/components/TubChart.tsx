@@ -991,13 +991,13 @@ export const TubChart: React.FC = () => {
             </span>
           )}
         </CardTitle>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center h-[30px]">
           <Input
             aria-label="Start index"
             placeholder="Start"
             value={startIndex}
             onChange={(e) => setStartIndex(e.target.value)}
-            className="w-24"
+            className="w-24 h-full text-xs"
           />
           <span className="text-xs text-zinc-400">to</span>
           <Input
@@ -1005,12 +1005,12 @@ export const TubChart: React.FC = () => {
             placeholder="End"
             value={endIndex}
             onChange={(e) => setEndIndex(e.target.value)}
-            className="w-24"
+            className="w-24 h-full text-xs"
           />
-          <Button variant="danger" onClick={handleOpenDeleteConfirm}>
+          <Button size="sm" variant="danger" onClick={handleOpenDeleteConfirm} className="h-full text-xs">
             Delete
           </Button>
-          <Button variant="secondary" onClick={handleOpenRestoreConfirm}>
+          <Button size="sm" variant="secondary" onClick={handleOpenRestoreConfirm} className="h-full text-xs">
             Restore
           </Button>
           {actionError && (
