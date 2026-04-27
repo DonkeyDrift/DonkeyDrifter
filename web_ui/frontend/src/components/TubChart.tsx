@@ -1076,7 +1076,7 @@ export const TubChart: React.FC = () => {
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
-            <div className="flex h-[18px] box-content items-center gap-2 rounded-md bg-zinc-800 px-3 text-left rotate-0">
+            <div className="flex h-[30px] box-content items-center gap-2 rounded-md bg-zinc-800 px-3 text-left rotate-0">
               <div className="h-4 box-content text-xs text-zinc-400 uppercase">ZOOM</div>
               <div className="h-4 box-content text-[15px] font-mono text-cyan-400 leading-none">{zoomMultiplier}x</div>
             </div>
