@@ -3,11 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { useStore } from '../store/useStore';
 import { getImageUrl } from '../services/api';
-import { Navigation, Play, Pause, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertCircle } from 'lucide-react';
+import { Navigation, Play, Pause, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, AlertCircle, Repeat, ArrowRightToLine } from 'lucide-react';
 
 export const TubNavigator: React.FC = () => {
   const { records, currentIndex, setCurrentIndex, totalRecords, config, isDragging, setIsDragging } = useStore();
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
   const playbackFps = Math.round(1000 / playbackSpeed);
   const [actualFps, setActualFps] = useState(0);
@@ -16,6 +17,7 @@ export const TubNavigator: React.FC = () => {
   const requestRef = useRef<number>();
   const lastTimeRef = useRef<number>(0);
   const isPlayingRef = useRef(isPlaying);
+  const isLoopingRef = useRef(isLooping);
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const fpsStartRef = useRef<number>(0);
   const fpsFramesRef = useRef<number>(0);
@@ -25,6 +27,10 @@ export const TubNavigator: React.FC = () => {
   useEffect(() => {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
+
+  useEffect(() => {
+    isLoopingRef.current = isLooping;
+  }, [isLooping]);
 
   // Sync currentIndex ref for performance optimization
   useEffect(() => {
@@ -61,10 +67,15 @@ export const TubNavigator: React.FC = () => {
 
     if (deltaTime >= playbackSpeed) {
       const steps = Math.floor(deltaTime / playbackSpeed);
-      const nextIndex = Math.min(totalRecords - 1, lastIndexRef.current + steps);
+      let nextIndex = lastIndexRef.current + steps;
       
       if (nextIndex >= totalRecords - 1) {
-        setIsPlaying(false);
+        if (isLoopingRef.current) {
+          nextIndex = nextIndex % totalRecords;
+        } else {
+          nextIndex = totalRecords - 1;
+          setIsPlaying(false);
+        }
       }
       
       // 直接更新索引，避免函数调用开销
@@ -104,17 +115,26 @@ export const TubNavigator: React.FC = () => {
   // Handle spacebar shortcut for play/pause
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      if (
-        document.activeElement instanceof HTMLInputElement ||
-        document.activeElement instanceof HTMLTextAreaElement ||
-        document.activeElement instanceof HTMLSelectElement
-      ) {
-        return;
-      }
-      
       if (e.code === 'Space') {
-        e.preventDefault(); // Prevent page scroll
+        // Ignore if user is typing in a text input or textarea
+        if (
+          document.activeElement instanceof HTMLInputElement && 
+          document.activeElement.type !== 'range' &&
+          document.activeElement.type !== 'checkbox' &&
+          document.activeElement.type !== 'radio' &&
+          document.activeElement.type !== 'button' &&
+          document.activeElement.type !== 'submit'
+        ) {
+          return;
+        }
+        
+        if (document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLSelectElement) {
+          return;
+        }
+        
+        // Prevent page scroll and default button/range behavior
+        e.preventDefault(); 
+        
         setIsPlaying(prev => !prev);
       }
     };
@@ -332,14 +352,26 @@ export const TubNavigator: React.FC = () => {
               </Button>
             </div>
 
-            <Button 
-              className="w-full"
-              variant={isPlaying ? "danger" : "primary"}
-              aria-label={isPlaying ? 'Stop playback' : 'Start playback'}
-              onClick={() => setIsPlaying(!isPlaying)}
-            >
-              {isPlaying ? <><Pause className="w-4 h-4" /> Stop</> : <><Play className="w-4 h-4" /> Play</>}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                className="flex-1"
+                variant={isPlaying ? "danger" : "primary"}
+                aria-label={isPlaying ? 'Stop playback' : 'Start playback'}
+                onClick={() => setIsPlaying(!isPlaying)}
+              >
+                {isPlaying ? <><Pause className="w-4 h-4" /> Stop</> : <><Play className="w-4 h-4" /> Play</>}
+              </Button>
+              
+              <Button
+                variant={isLooping ? "primary" : "secondary"}
+                aria-label={isLooping ? 'Loop mode active' : 'Play once mode'}
+                onClick={() => setIsLooping(!isLooping)}
+                title={isLooping ? "循环播放" : "播放后停止"}
+                className="px-3"
+              >
+                {isLooping ? <Repeat className="w-4 h-4" /> : <ArrowRightToLine className="w-4 h-4" />}
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>
