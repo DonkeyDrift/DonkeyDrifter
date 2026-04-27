@@ -8,7 +8,6 @@ import {
   PointElement,
   LineElement,
   Title,
-  Tooltip,
   Legend,
 } from 'chart.js';
 import type { Chart as ChartInstance, Plugin } from 'chart.js';
@@ -21,7 +20,6 @@ ChartJS.register(
   PointElement,
   LineElement,
   Title,
-  Tooltip,
   Legend
 );
 
@@ -423,6 +421,9 @@ export const TubChart: React.FC = () => {
         labels: {
             color: '#e4e4e7' // zinc-200
         }
+      },
+      tooltip: {
+        enabled: false,
       },
     },
     scales: {
