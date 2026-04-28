@@ -907,17 +907,36 @@ export const TubEditor: React.FC = () => {
     // Increase point density while zooming in so horizontal zoom reveals more detail.
     const maxPoints = Math.min(records.length, Math.max(1000, zoomPercent * 10));
     const step = Math.max(1, Math.ceil(records.length / maxPoints));
-    const sampledRecords = records.filter((_, i) => i % step === 0 || i === records.length - 1);
+    const sampledRecords = records
+      .map((record, i) => ({ record, originalIndex: i }))
+      .filter((_, i) => i % step === 0 || i === records.length - 1);
 
-    const sampledX = sampledRecords.map((record) => record._index);
-    const angleData = sampledRecords.map((record) => ({
-      x: record._index,
-      y: Number(record['user/angle'] ?? 0),
-    }));
-    const throttleData = sampledRecords.map((record) => ({
-      x: record._index,
-      y: Number(record['user/throttle'] ?? 0),
-    }));
+    const sampledX = sampledRecords.map(({ record }) => record._index);
+    const angleData: { x: number; y: number | null }[] = [];
+    const throttleData: { x: number; y: number | null }[] = [];
+
+    sampledRecords.forEach(({ record, originalIndex }, i) => {
+      if (i > 0) {
+        const { record: prevRecord, originalIndex: prevOriginalIndex } = sampledRecords[i - 1];
+        // If the gap in _index is larger than the gap in array indices, it means records were deleted
+        const originalIndexGap = originalIndex - prevOriginalIndex;
+        
+        if (record._index - prevRecord._index > originalIndexGap) {
+          // Insert a null point to break the line
+          angleData.push({ x: prevRecord._index + 1, y: null });
+          throttleData.push({ x: prevRecord._index + 1, y: null });
+        }
+      }
+      
+      angleData.push({
+        x: record._index,
+        y: Number(record['user/angle'] ?? 0),
+      });
+      throttleData.push({
+        x: record._index,
+        y: Number(record['user/throttle'] ?? 0),
+      });
+    });
 
     return {
       data: {
@@ -930,6 +949,7 @@ export const TubEditor: React.FC = () => {
             borderWidth: 1,
             pointRadius: 0,
             tension: 0.1,
+            spanGaps: false,
           },
           {
             label: 'Throttle',
@@ -939,6 +959,7 @@ export const TubEditor: React.FC = () => {
             borderWidth: 1,
             pointRadius: 0,
             tension: 0.1,
+            spanGaps: false,
           },
         ],
       },
