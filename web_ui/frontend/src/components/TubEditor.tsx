@@ -1091,9 +1091,9 @@ export const TubEditor: React.FC = () => {
             const startRecord = records[Math.max(0, Math.min(startValue, records.length - 1))];
             const startXValue = startRecord ? startRecord._index : 0;
             
-            const endXValue = endValue < records.length && records[endValue] 
-                ? records[endValue]._index 
-                : (records[records.length - 1]?._index ?? 0) + 1;
+            // endValue is exclusive. Get the last selected record.
+            const lastSelectedRecord = records[Math.max(0, Math.min(endValue - 1, records.length - 1))];
+            const endXValue = lastSelectedRecord ? lastSelectedRecord._index + 1 : startXValue + 1;
 
             const startX = xAxis.getPixelForValue(startXValue);
             const endX = xAxis.getPixelForValue(endXValue);
@@ -1125,9 +1125,28 @@ export const TubEditor: React.FC = () => {
 
         const currentSelectionDraft = selectionDraftRef.current;
         if (currentSelectionDraft) {
-            const startIndex = Math.min(currentSelectionDraft.startIndex, currentSelectionDraft.currentIndex);
-            const endIndex = Math.max(currentSelectionDraft.startIndex, currentSelectionDraft.currentIndex) + 1;
-            drawSelectionBox(startIndex, endIndex, true);
+            const chartArea = chart.chartArea;
+            const startX = currentSelectionDraft.startX;
+            const endX = currentSelectionDraft.currentX;
+            const minX = Math.min(startX, endX);
+            const maxX = Math.max(startX, endX);
+
+            if (!isNaN(minX) && !isNaN(maxX) && maxX > minX) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(minX, chartArea.top, maxX - minX, chartArea.bottom - chartArea.top);
+                ctx.clip();
+
+                ctx.lineDashOffset = -lineDashOffsetRef.current;
+                ctx.fillStyle = 'rgba(34, 197, 94, 0.15)'; 
+                ctx.strokeStyle = 'rgb(34, 197, 94)';
+
+                ctx.fillRect(minX, chartArea.top, maxX - minX, chartArea.bottom - chartArea.top);
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.strokeRect(minX, chartArea.top, maxX - minX, chartArea.bottom - chartArea.top);
+                ctx.restore();
+            }
         } else if (visualSelectionRef.current) {
             drawSelectionBox(visualSelectionRef.current.startIndex, visualSelectionRef.current.endIndex, false);
         } else if (selectionRangeRef.current.startIndex != null && selectionRangeRef.current.endIndex != null && totalRecords > 1) {
