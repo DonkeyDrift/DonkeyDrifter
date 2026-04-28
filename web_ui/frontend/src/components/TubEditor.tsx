@@ -378,9 +378,18 @@ export const TubEditor: React.FC = () => {
     const startIdx = range.start;
     const endIdx = range.end;
 
+    // Convert range input to actual record _index values
+    // records array may be filtered, so we need to map position to actual _index
     const indexes: number[] = [];
     for (let i = startIdx; i <= endIdx; i += 1) {
-      indexes.push(i);
+      if (i >= 0 && i < records.length) {
+        indexes.push(records[i]._index);
+      }
+    }
+
+    if (indexes.length === 0) {
+      setActionError('No valid records in selected range');
+      return;
     }
 
     await runRecordAction(mode, indexes, true);
@@ -388,7 +397,7 @@ export const TubEditor: React.FC = () => {
     visualSelectionRef.current = null;
     selectionDraftRef.current = null;
     setSelectionDraft(null);
-  }, [parseRange, runRecordAction, clearSelectionRange]);
+  }, [parseRange, runRecordAction, clearSelectionRange, records]);
 
   const handleUndoLastAction = useCallback(async () => {
     const lastAction = actionHistory[actionHistory.length - 1];
