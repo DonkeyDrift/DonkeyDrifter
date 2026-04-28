@@ -541,16 +541,37 @@ export const TubEditor: React.FC = () => {
 
   const getIndexFromPointerX = useCallback(
     (x: number, chart: ChartInstance<'line'>) => {
-      const chartArea = chart.chartArea;
-      const chartWidth = chartArea.right - chartArea.left;
-      const relativeX = Math.max(0, Math.min(x - chartArea.left, chartWidth));
-      const progress = chartWidth > 0 ? relativeX / chartWidth : 0;
-      const span = Math.max(1, visibleRange.endIndex - visibleRange.startIndex);
-      const dataIndex = Math.round(visibleRange.startIndex + progress * span);
-
-      return Math.max(0, Math.min(dataIndex, records.length - 1));
+      const xAxis = chart.scales.x;
+      if (!xAxis || !records.length) return 0;
+      
+      const targetIndexValue = xAxis.getValueForPixel(x);
+      
+      let low = 0;
+      let high = records.length - 1;
+      let closest = 0;
+      let minDiff = Infinity;
+      
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const diff = Math.abs(records[mid]._index - targetIndexValue);
+        
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = mid;
+        }
+        
+        if (records[mid]._index === targetIndexValue) {
+          return mid;
+        } else if (records[mid]._index < targetIndexValue) {
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+      
+      return closest;
     },
-    [records.length, visibleRange.endIndex, visibleRange.startIndex]
+    [records]
   );
 
   const handleScrollSliderChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -984,8 +1005,8 @@ export const TubEditor: React.FC = () => {
     scales: {
         x: {
             type: 'linear' as const,
-            min: visibleRange.startIndex,
-            max: visibleRange.endIndex,
+            min: records.length > 0 && records[visibleRange.startIndex] ? records[visibleRange.startIndex]._index : visibleRange.startIndex,
+            max: records.length > 0 && records[visibleRange.endIndex] ? records[visibleRange.endIndex]._index : visibleRange.endIndex,
             ticks: {
               color: '#71717a',
               callback: (value: string | number) => `${Math.round(Number(value))}`,
@@ -1025,7 +1046,9 @@ export const TubEditor: React.FC = () => {
         const chartArea = chart.chartArea;
         const latestIndex = currentIndexRef.current;
         const totalRecords = records.length;
-        const currentX = xAxis.getPixelForValue(latestIndex);
+        const currentRecord = records[latestIndex];
+        const currentXValue = currentRecord ? currentRecord._index : latestIndex;
+        const currentX = xAxis.getPixelForValue(currentXValue);
         
         if (!isNaN(currentX) && currentX >= chart.chartArea.left && currentX <= chart.chartArea.right) {
           ctx.save();
@@ -1053,8 +1076,16 @@ export const TubEditor: React.FC = () => {
 
         const drawSelectionBox = (startValue: number, endValue: number, isDraft: boolean) => {
             const chartArea = chart.chartArea;
-            const startX = xAxis.getPixelForValue(startValue);
-            const endX = xAxis.getPixelForValue(endValue);
+            
+            const startRecord = records[Math.max(0, Math.min(startValue, records.length - 1))];
+            const startXValue = startRecord ? startRecord._index : 0;
+            
+            const endXValue = endValue < records.length && records[endValue] 
+                ? records[endValue]._index 
+                : (records[records.length - 1]?._index ?? 0) + 1;
+
+            const startX = xAxis.getPixelForValue(startXValue);
+            const endX = xAxis.getPixelForValue(endXValue);
             
             if (!isNaN(startX) && !isNaN(endX) && endX > startX) {
                 ctx.save();
