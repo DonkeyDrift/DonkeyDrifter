@@ -35,7 +35,7 @@ export const TubLoader: React.FC = () => {
         setPath(selectData.path);
         // Then load tub from selected path
         const data = await loadTub(selectData.path);
-        setTub(data.path, data.records || [], data.fields || []);
+        setTub(data.path, data.records || [], data.fields || [], data.total_physical_records, data.deleted_indexes);
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Failed to select or load tub'));

@@ -49,6 +49,8 @@ export const TubEditor: React.FC = () => {
   const clearSelectionRange = useStore((state) => state.clearSelectionRange);
   const redoSelectionRange = useStore((state) => state.redoSelectionRange);
   const setAllRecords = useStore((state) => state.setAllRecords);
+  const deletedIndexes = useStore((state) => state.deletedIndexes);
+  const totalPhysicalRecords = useStore((state) => state.totalPhysicalRecords);
   const chartRef = useRef<ChartInstance<'line'> | null>(null);
   const lineDashOffsetRef = useRef(0);
   const visualSelectionRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
@@ -343,16 +345,19 @@ export const TubEditor: React.FC = () => {
       setIsProcessing(true);
       setProcessingMode(mode);
       try {
-        if (mode === 'delete') {
-          await deleteRecords(indexes);
-        } else {
-          await restoreRecords(indexes);
-        }
+        const actionResponse =
+          mode === 'delete'
+            ? await deleteRecords(indexes)
+            : await restoreRecords(indexes);
 
         const data = await getRecords(0, 100000);
         const nextRecords = data.records || [];
         preserveViewportOnRecordsChangeRef.current = true;
-        setAllRecords(nextRecords);
+        setAllRecords(
+          nextRecords,
+          actionResponse.total_physical_records,
+          actionResponse.deleted_indexes
+        );
         setActionError(null);
         if (rememberAction) {
           setActionHistory((prev) => {
@@ -1379,20 +1384,53 @@ export const TubEditor: React.FC = () => {
   }, [records.length, selectionDraft, selectionStartIndex, selectionEndIndex]);
 
   const sliderSelectionStyle = useMemo<React.CSSProperties | null>(() => {
-    if (!sliderSelectionRange || !records.length) {
+    if (!sliderSelectionRange || !records.length || !totalPhysicalRecords) {
       return null;
     }
 
-    const total = records.length;
-    const leftPercent = (sliderSelectionRange.startIndex / total) * 100;
-    const widthPercent =
-      ((sliderSelectionRange.endIndex - sliderSelectionRange.startIndex) / total) * 100;
+    // Map array indices to physical _index values so the green bar aligns
+    // with the red deleted bars (which are plotted in the physical coordinate space).
+    const startRecord = records[Math.max(0, Math.min(sliderSelectionRange.startIndex, records.length - 1))];
+    const endRecord = records[Math.max(0, Math.min(sliderSelectionRange.endIndex - 1, records.length - 1))];
+
+    const startXValue = startRecord ? startRecord._index : 0;
+    const endXValue = endRecord ? endRecord._index + 1 : startXValue + 1;
+
+    const leftPercent = (startXValue / totalPhysicalRecords) * 100;
+    const widthPercent = ((endXValue - startXValue) / totalPhysicalRecords) * 100;
 
     return {
       left: `${leftPercent}%`,
       width: `max(${widthPercent}%, 2px)`,
     };
-  }, [records.length, sliderSelectionRange]);
+  }, [records, totalPhysicalRecords, sliderSelectionRange]);
+
+  const sliderDeletedStyles = useMemo<{ left: string; width: string }[]>(() => {
+    if (!deletedIndexes.length || !totalPhysicalRecords) {
+      return [];
+    }
+
+    // Group deleted indexes into contiguous ranges
+    const ranges: { start: number; end: number }[] = [];
+    let start = deletedIndexes[0];
+    let end = deletedIndexes[0];
+
+    for (let i = 1; i < deletedIndexes.length; i++) {
+      if (deletedIndexes[i] === end + 1) {
+        end = deletedIndexes[i];
+      } else {
+        ranges.push({ start, end });
+        start = deletedIndexes[i];
+        end = deletedIndexes[i];
+      }
+    }
+    ranges.push({ start, end });
+
+    return ranges.map(({ start, end }) => ({
+      left: `${(start / totalPhysicalRecords) * 100}%`,
+      width: `max(${((end - start + 1) / totalPhysicalRecords) * 100}%, 2px)`,
+    }));
+  }, [deletedIndexes, totalPhysicalRecords]);
 
   const handleTouchStart = useCallback(
     (event: React.TouchEvent<HTMLDivElement>) => {
@@ -1777,6 +1815,17 @@ export const TubEditor: React.FC = () => {
               />
             </div>
           )}
+          {sliderDeletedStyles.map((style, i) => (
+            <div
+              key={i}
+              className="pointer-events-none absolute inset-x-0 top-1/2 z-10 h-2 -translate-y-1/2"
+            >
+              <div
+                className="absolute h-full rounded-sm border border-red-400/60 bg-red-500/40"
+                style={style}
+              />
+            </div>
+          ))}
           <input
             type="range"
             min="0"

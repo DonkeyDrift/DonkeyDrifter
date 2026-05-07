@@ -17,6 +17,8 @@ interface AppState {
   records: TubRecord[];
   totalRecords: number;
   tubTotalRecords: number;
+  totalPhysicalRecords: number;
+  deletedIndexes: number[];
   currentIndex: number;
   fields: string[];
   isLoading: boolean;
@@ -31,9 +33,10 @@ interface AppState {
   selectionHistoryIndex: number;
 
   setConfig: (config: Record<string, unknown>, path: string) => void;
-  setTub: (path: string, records: TubRecord[], fields: string[]) => void;
+  setTub: (path: string, records: TubRecord[], fields: string[], totalPhysicalRecords?: number, deletedIndexes?: number[]) => void;
   setRecords: (records: TubRecord[]) => void;
-  setAllRecords: (records: TubRecord[]) => void;
+  setAllRecords: (records: TubRecord[], totalPhysicalRecords?: number, deletedIndexes?: number[]) => void;
+  setDeletedIndexes: (deletedIndexes: number[], totalPhysicalRecords?: number) => void;
   setCurrentIndex: (index: number | ((prev: number) => number)) => void;
   setIsDragging: (isDragging: boolean) => void;
   setIsPlaying: (isPlaying: boolean) => void;
@@ -61,6 +64,8 @@ export const useStore = create<AppState>()(
       records: [],
       totalRecords: 0,
       tubTotalRecords: 0,
+      totalPhysicalRecords: 0,
+      deletedIndexes: [],
       currentIndex: 0,
       fields: [],
       isLoading: false,
@@ -76,13 +81,15 @@ export const useStore = create<AppState>()(
       onSelectionChange: undefined,
 
       setConfig: (config, path) => set({ config, configPath: path, error: null, isSidePanelOpen: false }),
-      setTub: (path, records, fields) =>
+      setTub: (path, records, fields, totalPhysicalRecords, deletedIndexes) =>
         set({
           tubPath: path,
           records,
           originalRecords: records,
           totalRecords: records.length,
           tubTotalRecords: records.length,
+          totalPhysicalRecords: totalPhysicalRecords ?? records.length,
+          deletedIndexes: deletedIndexes ?? [],
           fields,
           currentIndex: records.length > 0 ? 0 : 0, // Keep at 0 but ensure UI update
           error: null,
@@ -90,11 +97,13 @@ export const useStore = create<AppState>()(
           isPlaying: false,
         }),
       setRecords: (records) => set({ records, totalRecords: records.length }),
-      setAllRecords: (records) =>
+      setAllRecords: (records, totalPhysicalRecords, deletedIndexes) =>
         set((state) => ({
           records,
           originalRecords: records,
           totalRecords: records.length,
+          totalPhysicalRecords: totalPhysicalRecords ?? state.totalPhysicalRecords,
+          deletedIndexes: deletedIndexes ?? state.deletedIndexes,
           currentIndex:
             records.length > 0
               ? Math.max(0, Math.min(state.currentIndex, records.length - 1))
@@ -185,6 +194,11 @@ export const useStore = create<AppState>()(
             selectionHistoryIndex: nextIndex,
           };
         }),
+      setDeletedIndexes: (deletedIndexes, totalPhysicalRecords) =>
+        set((state) => ({
+          deletedIndexes,
+          totalPhysicalRecords: totalPhysicalRecords ?? state.totalPhysicalRecords,
+        })),
       setSelectionChangeHandler: (handler) => set({ onSelectionChange: handler }),
     }),
     {

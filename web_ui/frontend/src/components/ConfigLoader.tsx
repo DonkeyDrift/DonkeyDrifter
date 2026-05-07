@@ -33,7 +33,7 @@ export const ConfigLoader: React.FC = () => {
         : `${carPath}/data`;
       
       const data = await loadTub(tubPath);
-      setTub(data.path, data.records || [], data.fields || []);
+      setTub(data.path, data.records || [], data.fields || [], data.total_physical_records, data.deleted_indexes);
     } catch {
       console.warn('Auto-loading tub from ./data failed, user might need to select manually.');
     }
@@ -71,7 +71,7 @@ export const ConfigLoader: React.FC = () => {
       if (currentTubPath && currentTubPath !== '/home/dkc/projects/mycar/data') {
         try {
           const tubData = await loadTub(currentTubPath);
-          setTub(tubData.path, tubData.records || [], tubData.fields || []);
+          setTub(tubData.path, tubData.records || [], tubData.fields || [], tubData.total_physical_records, tubData.deleted_indexes);
         } catch (err) {
           console.warn('Failed to load persisted tub path, falling back to auto-load', err);
           await autoLoadTub(path);

@@ -63,9 +63,11 @@ async def load_tub(request: TubLoadRequest):
         return {
             "status": True,
             "record_count": len(records),
+            "total_physical_records": current_tub.manifest.current_index,
             "records": records,
             "fields": fields,
-            "path": path
+            "path": path,
+            "deleted_indexes": sorted(list(current_tub.manifest.deleted_indexes)),
         }
     except Exception as e:
         logger.error(f"Failed to load tub: {e}")
@@ -132,6 +134,8 @@ async def delete_records(request: TubDeleteRequest):
             "status": True,
             "message": f"Deleted {len(request.indexes)} records",
             "record_count": len(current_records),
+            "total_physical_records": current_tub.manifest.current_index,
+            "deleted_indexes": sorted(list(current_tub.manifest.deleted_indexes)),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -150,6 +154,8 @@ async def restore_records(request: TubDeleteRequest):
             "status": True,
             "message": f"Restored {len(request.indexes)} records",
             "record_count": len(current_records),
+            "total_physical_records": current_tub.manifest.current_index,
+            "deleted_indexes": sorted(list(current_tub.manifest.deleted_indexes)),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
