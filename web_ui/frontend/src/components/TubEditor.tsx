@@ -559,27 +559,28 @@ export const TubEditor: React.FC = () => {
   const getIndexFromPointerX = useCallback(
     (x: number, chart: ChartInstance<'line'>) => {
       const xAxis = chart.scales.x;
-      if (!xAxis || !records.length) return 0;
+      const currentRecords = recordsRef.current;
+      if (!xAxis || !currentRecords.length) return 0;
       
       const targetIndexValue = xAxis.getValueForPixel(x);
       
       let low = 0;
-      let high = records.length - 1;
+      let high = currentRecords.length - 1;
       let closest = 0;
       let minDiff = Infinity;
       
       while (low <= high) {
         const mid = Math.floor((low + high) / 2);
-        const diff = Math.abs(records[mid]._index - targetIndexValue);
+        const diff = Math.abs(currentRecords[mid]._index - targetIndexValue);
         
         if (diff < minDiff) {
           minDiff = diff;
           closest = mid;
         }
         
-        if (records[mid]._index === targetIndexValue) {
+        if (currentRecords[mid]._index === targetIndexValue) {
           return mid;
-        } else if (records[mid]._index < targetIndexValue) {
+        } else if (currentRecords[mid]._index < targetIndexValue) {
           low = mid + 1;
         } else {
           high = mid - 1;
@@ -588,7 +589,7 @@ export const TubEditor: React.FC = () => {
       
       return closest;
     },
-    [records]
+    []
   );
 
   const handleScrollSliderChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -632,9 +633,10 @@ export const TubEditor: React.FC = () => {
       const clampedX = Math.max(chartArea.left, Math.min(x, chartArea.right));
       const clampedIndex = getIndexFromPointerX(clampedX, chart);
 
-      const record = records[clampedIndex];
-      const steering = (record['user/angle'] as number) ?? 0;
-      const throttle = (record['user/throttle'] as number) ?? 0;
+      const currentRecords = recordsRef.current;
+      const record = currentRecords[clampedIndex];
+      const steering = (record?.['user/angle'] as number) ?? 0;
+      const throttle = (record?.['user/throttle'] as number) ?? 0;
 
       hoverPositionRef.current = { x: clampedX, y, dataIndex: clampedIndex };
       requestChartRender();
@@ -675,7 +677,7 @@ export const TubEditor: React.FC = () => {
         setSelectionDraft(nextDraft);
       }
     },
-    [getIndexFromPointerX, records, requestChartRender, updateTooltipPosition]
+    [getIndexFromPointerX, requestChartRender, updateTooltipPosition]
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -1425,9 +1427,10 @@ export const TubEditor: React.FC = () => {
         setSelectionDraft(nextDraft);
       }
 
-      const record = records[clampedIndex];
-      const steering = (record['user/angle'] as number) ?? 0;
-      const throttle = (record['user/throttle'] as number) ?? 0;
+      const currentRecords = recordsRef.current;
+      const record = currentRecords[clampedIndex];
+      const steering = (record?.['user/angle'] as number) ?? 0;
+      const throttle = (record?.['user/throttle'] as number) ?? 0;
 
       hoverPositionRef.current = { x: clampedX, y, dataIndex: clampedIndex };
       requestChartRender();
@@ -1460,7 +1463,7 @@ export const TubEditor: React.FC = () => {
 
       event.preventDefault();
     },
-    [getIndexFromPointerX, records, requestChartRender, updateTooltipPosition]
+    [getIndexFromPointerX, requestChartRender, updateTooltipPosition]
   );
 
   const handleTouchEnd = useCallback(
