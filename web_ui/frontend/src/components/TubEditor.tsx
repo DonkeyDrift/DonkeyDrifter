@@ -1195,7 +1195,7 @@ export const TubEditor: React.FC = () => {
         }
 
         const hoverPosData = hoverPositionRef.current;
-        if (hoverPosData && hoverPosData.x >= chartArea.left && hoverPosData.x <= chartArea.right) {
+        if (hoverPosData && hoverPosData.x >= chartArea.left && hoverPosData.x <= chartArea.right && !selectionDraftRef.current) {
           ctx.save();
           ctx.strokeStyle = 'rgb(34, 197, 94)';
           ctx.lineWidth = 2;
