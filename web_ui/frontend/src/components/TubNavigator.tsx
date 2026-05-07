@@ -545,7 +545,7 @@ export const TubNavigator: React.FC = () => {
               onMouseDown={handleSliderMouseDown}
               onMouseUp={handleSliderMouseUp}
               recordIndex={localIndex}
-              totalRecords={tubTotalRecords}
+              totalRecords={totalRecords}
             />
 
             <div className="grid grid-cols-4 gap-2">
