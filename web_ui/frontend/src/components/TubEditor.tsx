@@ -384,19 +384,30 @@ export const TubEditor: React.FC = () => {
     const startIdx = range.start;
     const endIdx = range.end;
 
-    // The user input (range.start and range.end) represents the physical _index shown on the chart X-axis.
+    // The user input (range.start and range.end) are array indices (as shown
+    // in the index inputs), not physical _index values. We must map them to
+    // the actual _index values before sending to the backend.
     let indexes: number[] = [];
+    const start = Math.max(0, Math.min(startIdx, records.length - 1));
+    const end = Math.max(start, Math.min(endIdx, records.length - 1));
+
     if (mode === 'delete') {
-      // For delete, we must filter records to find all existing _index values within this selected physical range.
-      indexes = records
-        .filter((record) => record._index >= startIdx && record._index <= endIdx)
-        .map((record) => record._index);
+      // For delete, collect the _index values of the visible records in the
+      // selected array-index range.
+      indexes = records.slice(start, end + 1).map((record) => record._index);
     } else {
       // For restore, the deleted records are not in the current array.
-      // We generate all physical indexes in the range to tell the backend to restore them.
+      // We generate all physical indexes from the _index of the first selected
+      // record to the _index of the last selected record.
+      if (records.length === 0) {
+        setActionError('No records available');
+        return;
+      }
+      const startXValue = records[start]._index;
+      const endXValue = records[end]._index;
       const maxRestoreCount = 1000000; // Prevent out-of-memory if user inputs a huge range
-      const actualEnd = Math.min(endIdx, startIdx + maxRestoreCount);
-      for (let i = startIdx; i <= actualEnd; i++) {
+      const actualEnd = Math.min(endXValue, startXValue + maxRestoreCount);
+      for (let i = startXValue; i <= actualEnd; i++) {
         indexes.push(i);
       }
     }
