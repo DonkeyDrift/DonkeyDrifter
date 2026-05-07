@@ -608,6 +608,42 @@ export const TubEditor: React.FC = () => {
     setScrollProgress(Math.max(0, Math.min(1, nextProgress)));
   }, []);
 
+  const handleWheel = useCallback((event: React.WheelEvent) => {
+    if (!records.length) return;
+
+    // Ctrl/Meta + vertical wheel = zoom
+    if ((event.ctrlKey || event.metaKey) && event.deltaY !== 0) {
+      event.preventDefault();
+      if (event.deltaY < 0) {
+        handleZoomIn();
+      } else {
+        handleZoomOut();
+      }
+      return;
+    }
+
+    // Horizontal pan (trackpad two-finger swipe left/right)
+    // Require dominant horizontal delta to avoid interfering with vertical scrolling
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && Math.abs(event.deltaX) > 0) {
+      event.preventDefault();
+
+      const totalRecords = records.length;
+      const visibleCount = Math.max(
+        2,
+        Math.min(totalRecords, Math.ceil((totalRecords * MIN_ZOOM_PERCENT) / zoomPercent))
+      );
+      const maxStartIndex = Math.max(0, totalRecords - visibleCount);
+
+      if (maxStartIndex <= 0) return;
+
+      const containerWidth = containerRef.current?.clientWidth || 1;
+      const sensitivity = 1.5;
+      const deltaProgress = (event.deltaX / containerWidth) * sensitivity;
+      const newProgress = Math.max(0, Math.min(1, scrollProgress + deltaProgress));
+      setScrollProgress(newProgress);
+    }
+  }, [records.length, zoomPercent, scrollProgress, handleZoomIn, handleZoomOut]);
+
   const updateTooltipPosition = useCallback((x: number, y: number) => {
     if (!tooltipRef.current || !containerRef.current) {
       return;
@@ -1696,6 +1732,7 @@ export const TubEditor: React.FC = () => {
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
+          onWheel={handleWheel}
         >
           <div className="pointer-events-none absolute inset-0 h-full min-h-0 w-full">
             <Line 
