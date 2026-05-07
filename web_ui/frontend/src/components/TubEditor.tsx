@@ -1085,22 +1085,7 @@ export const TubEditor: React.FC = () => {
         const currentRecord = records[latestIndex];
         const currentXValue = currentRecord ? currentRecord._index : latestIndex;
         
-        // When drawing the red line, we should use the actual pixel coordinate
-        // of the current playback position. If dragging the selection, the playback
-        // line should stick to the data point, but let's check if the user is 
-        // interacting and we want it to follow the mouse.
-        // Actually, currentIndex is already set by handleInteraction using getIndexFromPointerX,
-        // which maps the pixel to the nearest index. The issue is that there's a gap in _index,
-        // and the pixel for currentXValue (which is an _index) snaps to the physical index position,
-        // leaving a large gap to the mouse pointer if the mouse is over a deleted area.
-        // To make the red line follow the mouse over empty gaps, we should use the hover position if available.
-        let currentX = xAxis.getPixelForValue(currentXValue);
-        
-        const hoverPos = hoverPositionRef.current;
-        if (hoverPos && hoverPos.x >= chart.chartArea.left && hoverPos.x <= chart.chartArea.right) {
-            // When hovering, make the red line follow the mouse exactly
-            currentX = hoverPos.x;
-        }
+        const currentX = xAxis.getPixelForValue(currentXValue);
 
         if (!isNaN(currentX) && currentX >= chart.chartArea.left && currentX <= chart.chartArea.right) {
           ctx.save();
