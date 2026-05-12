@@ -42,3 +42,68 @@ export const restoreRecords = async (indexes: number[]) => {
 export const getImageUrl = (path: string) => {
   return `${API_URL}/tub/image?path=${encodeURIComponent(path)}`;
 };
+
+// ------------------------------------------------------------------
+// Trainer APIs
+// ------------------------------------------------------------------
+export interface TrainerConfig {
+  host: string;
+  user: string;
+  password: string;
+  remote_dir_base: string;
+  model_name: string;
+  python_path: string;
+}
+
+export const getTrainerConfig = async (configFile = 'train_online.conf') => {
+  const response = await api.get('/trainer/config', { params: { config_file: configFile } });
+  return response.data;
+};
+
+export const setTrainerConfig = async (cfg: TrainerConfig, configFile = 'train_online.conf') => {
+  const response = await api.post('/trainer/config', cfg, { params: { config_file: configFile } });
+  return response.data;
+};
+
+export const listModels = async (workingDir?: string) => {
+  const response = await api.get('/trainer/models', { params: workingDir ? { working_dir: workingDir } : {} });
+  return response.data;
+};
+
+export const listBackups = async (workingDir?: string) => {
+  const response = await api.get('/trainer/backups', { params: workingDir ? { working_dir: workingDir } : {} });
+  return response.data;
+};
+
+export const startLocalTrain = async (params: {
+  tub: string;
+  model: string;
+  model_type: string;
+  transfer?: string;
+  working_dir?: string;
+}) => {
+  const response = await api.post('/trainer/train/local', params);
+  return response.data;
+};
+
+export const startOnlineTrain = async (params: {
+  config_file?: string;
+  working_dir?: string;
+}) => {
+  const response = await api.post('/trainer/train/online', params);
+  return response.data;
+};
+
+export const stopTrain = async (jobId: string) => {
+  const response = await api.post(`/trainer/train/${jobId}/stop`);
+  return response.data;
+};
+
+export const getJobStatus = async (jobId: string) => {
+  const response = await api.get(`/trainer/train/${jobId}/status`);
+  return response.data;
+};
+
+export const createLogStream = (jobId: string) => {
+  return new EventSource(`${API_URL}/trainer/train/${jobId}/logs`);
+};

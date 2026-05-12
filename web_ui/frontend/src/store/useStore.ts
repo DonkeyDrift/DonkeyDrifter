@@ -9,6 +9,32 @@ interface TubRecord {
   [key: string]: unknown;
 }
 
+export interface TrainingJob {
+  id: string;
+  mode: 'local' | 'online';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+  progress: {
+    currentEpoch: number;
+    totalEpochs: number;
+    currentStep: number;
+    totalSteps: number;
+    loss: number | null;
+    globalPercent: number;
+  };
+  logs: string[];
+  startedAt: string;
+  finishedAt?: string;
+}
+
+export interface TrainerOnlineConfig {
+  host: string;
+  user: string;
+  password: string;
+  remoteDirBase: string;
+  modelName: string;
+  pythonPath: string;
+}
+
 interface AppState {
   config: Record<string, unknown> | null;
   configPath: string;
@@ -32,6 +58,10 @@ interface AppState {
   selectionHistory: { startIndex: number; endIndex: number }[];
   selectionHistoryIndex: number;
 
+  // Trainer state
+  trainingJob: TrainingJob | null;
+  trainerOnlineConfig: TrainerOnlineConfig;
+
   setConfig: (config: Record<string, unknown>, path: string) => void;
   setTub: (path: string, records: TubRecord[], fields: string[], totalPhysicalRecords?: number, deletedIndexes?: number[]) => void;
   setRecords: (records: TubRecord[]) => void;
@@ -52,14 +82,21 @@ interface AppState {
   setSelectionChangeHandler: (
     handler: ((startIndex: number | null, endIndex: number | null) => void) | undefined
   ) => void;
+
+  // Trainer actions
+  setTrainingJob: (job: TrainingJob | null) => void;
+  appendTrainingLog: (lines: string[]) => void;
+  updateTrainingProgress: (progress: TrainingJob['progress']) => void;
+  finishTrainingJob: (status: 'completed' | 'failed' | 'stopped') => void;
+  setTrainerOnlineConfig: (cfg: Partial<TrainerOnlineConfig>) => void;
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
       config: null,
-      configPath: '/home/dkc/projects/mycar', // Default default
-      tubPath: '/home/dkc/projects/mycar/data', // Default default
+      configPath: '/home/dkc/projects/mycar',
+      tubPath: '/home/dkc/projects/mycar/data',
       originalRecords: [],
       records: [],
       totalRecords: 0,
@@ -73,12 +110,23 @@ export const useStore = create<AppState>()(
       isPlaying: false,
       isLooping: false,
       error: null,
-      isSidePanelOpen: true, // Default open for first time use
+      isSidePanelOpen: true,
       selectionStartIndex: null,
       selectionEndIndex: null,
       selectionHistory: [],
       selectionHistoryIndex: -1,
       onSelectionChange: undefined,
+
+      // Trainer defaults
+      trainingJob: null,
+      trainerOnlineConfig: {
+        host: 'haowenpi.com',
+        user: 'ubuntu',
+        password: 'dkc@2026',
+        remoteDirBase: '~/projects',
+        modelName: 'model',
+        pythonPath: '~/miniconda3/envs/donkey/bin/python',
+      },
 
       setConfig: (config, path) => set({ config, configPath: path, error: null, isSidePanelOpen: false }),
       setTub: (path, records, fields, totalPhysicalRecords, deletedIndexes) =>
@@ -91,7 +139,7 @@ export const useStore = create<AppState>()(
           totalPhysicalRecords: totalPhysicalRecords ?? records.length,
           deletedIndexes: deletedIndexes ?? [],
           fields,
-          currentIndex: records.length > 0 ? 0 : 0, // Keep at 0 but ensure UI update
+          currentIndex: records.length > 0 ? 0 : 0,
           error: null,
           isSidePanelOpen: false,
           isPlaying: false,
@@ -200,6 +248,44 @@ export const useStore = create<AppState>()(
           totalPhysicalRecords: totalPhysicalRecords ?? state.totalPhysicalRecords,
         })),
       setSelectionChangeHandler: (handler) => set({ onSelectionChange: handler }),
+
+      // Trainer actions
+      setTrainingJob: (job) => set({ trainingJob: job }),
+      appendTrainingLog: (lines) =>
+        set((state) => {
+          if (!state.trainingJob) return state;
+          return {
+            trainingJob: {
+              ...state.trainingJob,
+              logs: [...state.trainingJob.logs, ...lines],
+            },
+          };
+        }),
+      updateTrainingProgress: (progress) =>
+        set((state) => {
+          if (!state.trainingJob) return state;
+          return {
+            trainingJob: {
+              ...state.trainingJob,
+              progress,
+            },
+          };
+        }),
+      finishTrainingJob: (status) =>
+        set((state) => {
+          if (!state.trainingJob) return state;
+          return {
+            trainingJob: {
+              ...state.trainingJob,
+              status,
+              finishedAt: new Date().toISOString(),
+            },
+          };
+        }),
+      setTrainerOnlineConfig: (cfg) =>
+        set((state) => ({
+          trainerOnlineConfig: { ...state.trainerOnlineConfig, ...cfg },
+        })),
     }),
     {
       name: 'donkeycar-storage',
@@ -207,6 +293,7 @@ export const useStore = create<AppState>()(
         configPath: state.configPath,
         tubPath: state.tubPath,
         isLooping: state.isLooping,
+        trainerOnlineConfig: state.trainerOnlineConfig,
       }),
     }
   )
