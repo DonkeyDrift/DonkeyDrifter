@@ -7,20 +7,21 @@ This file provides the essential context an AI coding agent needs to work effect
 Donkeycar is a minimalist and modular self-driving library for Python, aimed at hobbyists and students. It provides a pipeline-based vehicle architecture, deep-learning autopilots (TensorFlow and PyTorch), computer vision autopilots, GPS path following, hardware abstraction for cameras/actuators/sensors, and both terminal and web-based user interfaces.
 
 - **Version**: 5.2.0
-- **Python Requirement**: >=3.11.0, <3.12 (enforced at import time)
+- **Python Requirement**: >=3.11.0, <3.12 (enforced at import time in `donkeycar/__init__.py`)
 - **License**: MIT
 - **Repository**: https://github.com/autorope/donkeycar
 
 ## Technology Stack
 
-- **Core**: Python 3.11, NumPy, Pillow, OpenCV, Tornado
+- **Core**: Python 3.11, NumPy, Pillow, OpenCV, Tornado, pandas, pyyaml
 - **Machine Learning**: TensorFlow 2.15, PyTorch 2.1 (optional extras), Keras
 - **Data**: pandas, custom "Tub" v2 format for training records
 - **Telemetry**: paho-mqtt
 - **Terminal UI**: Kivy + rich
-- **Web UI Backend**: FastAPI, Uvicorn
-- **Web UI Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Zustand, Chart.js
+- **Web UI Backend**: FastAPI, Uvicorn, python-multipart
+- **Web UI Frontend**: React 18, TypeScript 5.8, Vite 6, Tailwind CSS 3, Zustand, Chart.js, Axios, react-router-dom
 - **Testing**: pytest, pytest-cov, responses, mypy
+- **Build**: setuptools with `setup.cfg` and `pyproject.toml`
 
 ## Project Structure
 
@@ -33,7 +34,7 @@ donkeycar/
   utils.py             # Image/array helpers, model type resolution
   geom.py, la.py       # Geometry and linear algebra utilities
   parts/               # Hardware drivers, controllers, neural nets, CV, data stores
-    camera.py          # PiCamera, Webcam, CSICamera, MockCamera, etc.
+    camera.py          # PiCamera (picamera2), Webcam, CSICamera, MockCamera, etc.
     actuator.py        # PWM steering/throttle, H-Bridge, VESC, PCA9685
     controller.py      # Joystick, Web, RC, Mock controllers
     keras.py           # KerasPilot base class and model architectures
@@ -42,6 +43,10 @@ donkeycar/
     datastore_v2.py    # Lower-level tub v2 data primitives
     image_transformations.py  # Crop, trapeze, blur, resize, color-space transforms
     network.py, telemetry.py, gps.py, lidar.py, imu.py, ...
+    simulation.py      # Mock camera/telemetry for testing
+    web_controller/    # Tornado-based web controller
+    object_detector/   # Object detection parts
+    voice_control/     # Voice control parts
   pipeline/            # Training pipeline
     training.py        # TensorFlow training entry point (BatchSequence, train())
     sequence.py        # TubRecord, TubSequence, TfmIterator
@@ -52,21 +57,35 @@ donkeycar/
     base.py            # donkey CLI command dispatcher (createcar, train, calibrate, ...)
     train_local.py, train_online.py
     ui/                # Kivy-based GUI
-    tui.py             # Terminal UI
+    tui.py             # Terminal UI (rich-based)
+    tub_web/           # Legacy Bootstrap/jQuery tub browser
   templates/           # Car application templates and default configs
     complete.py        # Full-featured car script (the default template)
     cfg_complete.py    # Default configuration values
     basic.py, simulator.py, path_follow.py, cv_control.py, ...
     train.py, calibrate.py, myconfig.py
-  tests/               # Unit tests
+  tests/               # Unit tests (pytest)
   utilities/           # Circular buffer, platform detection, etc.
   gym/                 # OpenAI Gym / DonkeyGym simulator integration
   contrib/             # Community hardware contributions
 web_ui/
-  backend/             # FastAPI app (main.py, routers/config.py, routers/tub.py)
-  frontend/            # React + Vite SPA (src/App.tsx, src/store/useStore.ts, ...)
+  backend/             # FastAPI app
+    main.py            # FastAPI app with CORS
+    trainer_engine.py  # TrainingJobManager for local/online jobs and SSE streaming
+    web_online_trainer.py  # OnlineTrainer subclass for web log streaming
+    routers/
+      config.py        # /api/config — directory picker, config loader
+      tub.py           # /api/tub — load tub, get records, serve images, delete/restore
+      trainer.py       # /api/trainer — training config, start/stop, job status, SSE logs
+    requirements.txt   # fastapi, uvicorn, python-multipart, pandas, numpy, pillow
+  frontend/            # React + Vite SPA
+    package.json       # React 18, TypeScript 5.8, Vite 6, Tailwind CSS 3, Zustand, Chart.js
+    src/App.tsx        # Router (/ , /trainer)
+    src/components/    # TubEditor, TubNavigator, ConfigLoader, TrainerPage components
+    src/pages/         # Home, TrainerPage
+    src/store/         # Zustand store, Axios API client
 tests/                 # Top-level integration tests
-scripts/               # Standalone utilities (tflite conversion, profiling, etc.)
+scripts/               # Standalone utilities (tflite conversion, profiling, migration, etc.)
 arduino/               # Arduino firmware for encoders
 ```
 
@@ -96,6 +115,8 @@ pip install -e .[macos,dev]
 pip install -e .[torch]
 ```
 
+Core dependencies (from `setup.cfg`): `numpy`, `pillow`, `docopt`, `tornado`, `requests`, `PrettyTable`, `paho-mqtt`, `simple_pid`, `progress`, `pyfiglet`, `psutil`, `pynmea2`, `pyserial`, `utm`, `pandas`, `pyyaml`, `rich`, `paramiko`.
+
 ### Testing
 
 ```bash
@@ -112,12 +133,21 @@ make tests
 Test configuration lives in `donkeycar/tests/pytest.ini`:
 - Deprecation and Future warnings are ignored.
 - `log_cli = True` at INFO level.
-- `reruns = 3`
+- `reruns = 3` (flakiness mitigation).
+
+Coverage configuration (`.coveragerc`):
+- Branch coverage enabled.
+- Omits `donkeycar/tests/*` from coverage metrics.
 
 ### Linting / CI
 
-- GitHub Actions runs `pytest` on `ubuntu-latest` and `macos-latest` using conda with Python 3.11.
-- Super-Linter runs on push/PR (non-blocking, `continue-on-error: true`).
+- GitHub Actions runs `pytest` on `ubuntu-latest` and `macos-latest` using conda/mamba with Python 3.11.
+  - Workflow: `.github/workflows/python-package-conda.yml`
+  - Installs with `pip install -e .[pc,dev]` then runs `pytest`.
+- Super-Linter runs on push/PR (non-blocking, `continue-on-error: true`, `DISABLE_ERRORS: true`).
+  - Workflow: `.github/workflows/superlinter.yml`
+  - Excludes `*.css` and `*.js` files.
+- No dedicated local linter configs (`.flake8`, `.pylintrc`, `.pre-commit-config.yaml`) are present.
 
 ## Code Style Guidelines
 
@@ -127,6 +157,7 @@ Test configuration lives in `donkeycar/tests/pytest.ini`:
 - Add comments where behavior is non-obvious.
 - The project targets Raspberry Pi OS, Jetson Nano, Linux, macOS, and WSL on Windows.
 - New features should have **unit tests** and be broadly useful to the community.
+- Config values are **UPPERCASE** by convention.
 
 ## Key Architectural Patterns
 
@@ -180,13 +211,14 @@ Access via `donkeycar.parts.tub_v2.Tub`.
 4. Post-training, optional `.tflite` and `.trt` conversions are performed.
 5. Training metadata is stored in a `PilotDatabase` (JSON in the car directory).
 
-### Web UI (New)
+### Web UI
 
 A modern web interface is provided under `web_ui/`:
-- **Backend**: FastAPI with CORS enabled. Routers: `/api/config`, `/api/tub`.
-- **Frontend**: React SPA served by Vite. Communicates with backend via REST.
+- **Backend**: FastAPI with CORS enabled (`allow_origins=["*"]`). Routers: `/api/config`, `/api/tub`, `/api/trainer`.
+- **Frontend**: React SPA served by Vite. Communicates with backend via REST and SSE for training log streaming.
 - Launch via: `donkey web --path <web_ui_dir> --frontend-port 5188 --backend-port 8000`
 - The CLI command spawns both `uvicorn` (backend) and `npm run dev` (frontend) as subprocesses.
+- Supports both **local training** (subprocess `donkey train`) and **online/cloud training** (SSH to remote server, upload data, run training, download model).
 
 ## Entry Points and CLI
 
@@ -210,10 +242,14 @@ Available subcommands (from `management/base.py`):
 ## Testing Instructions
 
 - Place unit tests in `donkeycar/tests/`.
-- Place integration tests in `tests/`.
+- Place integration tests in `tests/` at the project root.
 - Use fixtures from `donkeycar/tests/setup.py` for sample tubs, cars, and records.
 - Mock hardware when possible; many tests use `SquareBoxCamera` and `MovingSquareTelemetry` from `donkeycar.parts.simulation`.
-- Platform-specific tests should guard with `on_pi()` or similar checks.
+- Platform-specific tests should guard with `on_pi()` or similar checks (e.g., `@pytest.mark.skipif(on_pi() == False, reason='Not on RPi')`).
+- Both **pytest** and **unittest** patterns exist in the codebase; prefer pytest for new tests.
+- Use `tempfile.mkdtemp()` or `tmpdir` pytest fixtures for isolated test data, and clean up after tests.
+- Training tests in `donkeycar/tests/test_train.py` verify model convergence and pipeline consistency.
+- Web UI scripts in `web_ui/test_*.py` are ad-hoc API probing scripts (not pytest tests); they make live HTTP calls to `localhost:8000`.
 
 ## Security and Safety Considerations
 
