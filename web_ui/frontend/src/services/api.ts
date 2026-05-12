@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api';
+const DEFAULT_API_BASE = '/api';
+const RAW_API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
+const API_URL = RAW_API_BASE && RAW_API_BASE.length > 0 ? RAW_API_BASE.replace(/\/$/, '') : DEFAULT_API_BASE;
 
 export const api = axios.create({
   baseURL: API_URL,
