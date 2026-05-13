@@ -1,12 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { listModels } from '../../services/api';
 import { useStore } from '../../store/useStore';
-import { FileText, Folder, Copy } from 'lucide-react';
+import { FileText, Copy } from 'lucide-react';
 import { API_URL } from '../../services/api';
 
 interface ModelItem {
   name: string;
-  type: 'file' | 'directory';
   size: number;
   modified: string;
   path: string;
@@ -34,7 +33,6 @@ export const ModelsList: React.FC = () => {
     rect: DOMRect;
   } | null>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -134,7 +132,7 @@ export const ModelsList: React.FC = () => {
         <div className="text-sm text-zinc-600">No models found in ./models</div>
       )}
 
-      <div ref={listRef} className="space-y-2 max-h-64 overflow-y-auto">
+      <div className="space-y-2 max-h-64 overflow-y-auto">
         {models.map((m) => (
           <div
             key={m.name}
@@ -144,11 +142,7 @@ export const ModelsList: React.FC = () => {
             onClick={(e) => m.previewPath && togglePreview(m, e.currentTarget.getBoundingClientRect())}
           >
             <div className="flex items-center gap-2 min-w-0">
-              {m.type === 'directory' ? (
-                <Folder className="w-4 h-4 text-cyan-500 shrink-0" />
-              ) : (
-                <FileText className="w-4 h-4 text-zinc-500 shrink-0" />
-              )}
+              <FileText className="w-4 h-4 text-zinc-500 shrink-0" />
               <div className="min-w-0">
                 <div className="text-sm text-zinc-300 truncate" title={m.name}>{m.name}</div>
                 <div className="text-xs text-zinc-600">

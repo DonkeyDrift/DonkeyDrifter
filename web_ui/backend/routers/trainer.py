@@ -113,12 +113,10 @@ def _get_dir_size(path: str) -> int:
 
 @router.get("/models")
 async def list_models(working_dir: Optional[str] = None):
-    """List local models in ./models directory.
+    """List local .tflite models in ./models directory.
 
-    Includes files (e.g. .h5, .tflite, .trt, .ckpt) and
-    directories (e.g. TensorFlow SavedModel folders).
-    Training loss charts (.png) are hidden from the list but linked to
-    their corresponding model via previewPath.
+    Only .tflite files are shown. Training loss charts (.png) are hidden
+    from the list but linked to their corresponding model via previewPath.
     """
     cwd = working_dir or os.getcwd()
     models_dir = os.path.join(cwd, "models")
@@ -134,15 +132,11 @@ async def list_models(working_dir: Optional[str] = None):
 
     for name in sorted(os.listdir(models_dir)):
         full = os.path.join(models_dir, name)
-        # Skip metadata and preview images
-        if name == "database.json" or name.endswith(".png"):
+        # Only show .tflite model files
+        if not (os.path.isfile(full) and name.endswith(".tflite")):
             continue
 
-        # Derive the expected preview image name
-        if os.path.isfile(full):
-            stem = os.path.splitext(name)[0]
-        else:
-            stem = name
+        stem = os.path.splitext(name)[0]
         preview_name = f"{stem}.png"
         preview_path = (
             os.path.abspath(os.path.join(models_dir, preview_name))
@@ -150,26 +144,15 @@ async def list_models(working_dir: Optional[str] = None):
             else None
         )
 
-        if os.path.isfile(full):
-            stat = os.stat(full)
-            items.append({
-                "name": name,
-                "type": "file",
-                "size": stat.st_size,
-                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "path": os.path.abspath(full),
-                "previewPath": preview_path,
-            })
-        elif os.path.isdir(full):
-            stat = os.stat(full)
-            items.append({
-                "name": name,
-                "type": "directory",
-                "size": _get_dir_size(full),
-                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "path": os.path.abspath(full),
-                "previewPath": preview_path,
-            })
+        stat = os.stat(full)
+        items.append({
+            "name": name,
+            "type": "file",
+            "size": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "path": os.path.abspath(full),
+            "previewPath": preview_path,
+        })
     return {"models": items}
 
 
