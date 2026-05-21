@@ -41,7 +41,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({ job }) => {
       {isExpanded && (
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-0.5 h-96"
+          className="overflow-y-auto p-3 font-mono text-xs space-y-0.5 h-96"
         >
           {visibleLogs.length === 0 && (
             <div className="text-zinc-600 italic">Logs will appear here when training starts...</div>
