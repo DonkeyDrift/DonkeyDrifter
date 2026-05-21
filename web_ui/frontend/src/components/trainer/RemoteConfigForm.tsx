@@ -4,10 +4,11 @@ import { getTrainerConfig } from '../../services/api';
 
 interface RemoteConfigFormProps {
   onStart: () => void;
+  onStop: () => void;
   isRunning: boolean;
 }
 
-export const RemoteConfigForm: React.FC<RemoteConfigFormProps> = ({ onStart, isRunning }) => {
+export const RemoteConfigForm: React.FC<RemoteConfigFormProps> = ({ onStart, onStop, isRunning }) => {
   const { trainerOnlineConfig, setTrainerOnlineConfig, configPath } = useStore();
 
   const [host, setHost] = useState(trainerOnlineConfig.host);
@@ -120,11 +121,14 @@ export const RemoteConfigForm: React.FC<RemoteConfigFormProps> = ({ onStart, isR
       <div className="text-xs text-zinc-600">Working dir: {configPath}</div>
 
       <button
-        onClick={handleStart}
-        disabled={isRunning}
-        className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-md font-medium transition-colors"
+        onClick={isRunning ? onStop : handleStart}
+        className={`w-full px-4 py-2 rounded-md font-medium transition-colors text-white ${
+          isRunning
+            ? 'bg-red-600 hover:bg-red-700'
+            : 'bg-cyan-600 hover:bg-cyan-700'
+        }`}
       >
-        {isRunning ? 'Training...' : 'Start Cloud Training'}
+        {isRunning ? 'Stop Training' : 'Start Cloud Training'}
       </button>
     </div>
   );

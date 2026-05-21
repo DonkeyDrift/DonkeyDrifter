@@ -9,6 +9,7 @@ interface LocalConfigFormProps {
     model_type: string;
     transfer?: string;
   }) => void;
+  onStop: () => void;
   isRunning: boolean;
 }
 
@@ -22,7 +23,7 @@ const MODEL_TYPES = [
   '3d',
 ];
 
-export const LocalConfigForm: React.FC<LocalConfigFormProps> = ({ onStart, isRunning }) => {
+export const LocalConfigForm: React.FC<LocalConfigFormProps> = ({ onStart, onStop, isRunning }) => {
   const { configPath } = useStore();
   const [tub, setTub] = useState('./data');
   const [model, setModel] = useState('');
@@ -92,11 +93,14 @@ export const LocalConfigForm: React.FC<LocalConfigFormProps> = ({ onStart, isRun
       </div>
 
       <button
-        onClick={handleStart}
-        disabled={isRunning}
-        className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-md font-medium transition-colors"
+        onClick={isRunning ? onStop : handleStart}
+        className={`w-full px-4 py-2 rounded-md font-medium transition-colors text-white ${
+          isRunning
+            ? 'bg-red-600 hover:bg-red-700'
+            : 'bg-cyan-600 hover:bg-cyan-700'
+        }`}
       >
-        {isRunning ? 'Training...' : 'Start Local Training'}
+        {isRunning ? 'Stop Training' : 'Start Local Training'}
       </button>
     </div>
   );
