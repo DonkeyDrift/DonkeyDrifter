@@ -39,10 +39,11 @@ export const TrainerPage: React.FC = () => {
               {isRunning ? 'Stop Training' : 'Training Finished'}
             </button>
           )}
+
+          <LogPanel job={job} />
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-          <LogPanel job={job} />
           <ModelsList />
         </div>
       </div>
