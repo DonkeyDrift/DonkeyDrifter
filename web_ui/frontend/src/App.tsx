@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { SidePanel } from './components/SidePanel';
 import { TubNavigator } from './components/TubNavigator';
@@ -69,7 +69,7 @@ function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <ErrorBoundary>
         <SidePanel />
         <Layout>
@@ -79,7 +79,7 @@ function App() {
           </Routes>
         </Layout>
       </ErrorBoundary>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
