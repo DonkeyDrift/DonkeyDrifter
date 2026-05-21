@@ -32,10 +32,13 @@ export const ProgressPanel: React.FC<ProgressPanelProps> = ({ job }) => {
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg">
-      <div className="px-4 py-2 border-b border-zinc-800">
+      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
           Training Status
         </h3>
+        {job && (
+          <span className={`text-sm font-bold ${statusColor}`}>{status!.toUpperCase()}</span>
+        )}
       </div>
 
       {!job ? (
@@ -51,12 +54,7 @@ export const ProgressPanel: React.FC<ProgressPanelProps> = ({ job }) => {
           </div>
         </div>
       ) : (
-        <div className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-300">Status</span>
-            <span className={`text-sm font-bold ${statusColor}`}>{status!.toUpperCase()}</span>
-          </div>
-
+        <div className="p-4 pt-0 space-y-3">
           {/* Progress bar */}
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-zinc-500">
