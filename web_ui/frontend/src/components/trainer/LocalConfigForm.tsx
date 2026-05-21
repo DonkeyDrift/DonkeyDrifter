@@ -42,7 +42,7 @@ export const LocalConfigForm: React.FC<LocalConfigFormProps> = ({ onStart, onSto
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-4">
-      <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Local Training</h3>
+      <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Training Config</h3>
 
       <div className="space-y-1">
         <label className="text-xs text-zinc-500">Tub Path</label>

@@ -118,7 +118,7 @@ export const ModelsList: React.FC = () => {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3 relative">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Models</h3>
+        <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Trained Models</h3>
         <button
           onClick={refresh}
           disabled={loading}

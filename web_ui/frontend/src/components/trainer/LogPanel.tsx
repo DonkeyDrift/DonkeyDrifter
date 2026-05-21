@@ -28,7 +28,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({ job }) => {
         onClick={() => setIsExpanded(!isExpanded)}
         className="px-4 py-2 border-b border-zinc-800 flex items-center justify-between w-full hover:bg-zinc-800/50 transition-colors"
       >
-        <span className="text-sm font-semibold text-zinc-300">Training Log</span>
+        <span className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Training Log</span>
         <div className="flex items-center gap-2">
           <span className="text-xs text-zinc-600">{logs.length} lines</span>
           {isExpanded ? (
