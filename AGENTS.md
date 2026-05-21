@@ -20,7 +20,12 @@ Donkeycar is a minimalist and modular self-driving library for Python, aimed at 
 - **Telemetry**: paho-mqtt
 - **Terminal UI**: Kivy + rich
 - **Web UI Backend**: FastAPI, Uvicorn, python-multipart
+  - Requirements: `fastapi`, `uvicorn`, `python-multipart`, `pandas`, `numpy`, `pillow` (see `web_ui/backend/requirements.txt`)
 - **Web UI Frontend**: React 18.3, TypeScript 5.8, Vite 6, Tailwind CSS 3.4, Zustand 5, Chart.js 4.5, Axios 1.13, react-router-dom 7.13, lucide-react, clsx, tailwind-merge
+  - Linting: ESLint 9 with flat config (`eslint.config.js`), typescript-eslint, react-hooks and react-refresh plugins
+  - Testing: Playwright (`@playwright/test`) is installed as a dev dependency
+  - Dev tooling: `babel-plugin-react-dev-locator`, `vite-tsconfig-paths`, `vite-plugin-trae-solo-badge` (adds a Trae IDE badge to the production build)
+  - Vite dev server binds to `0.0.0.0:5188` and proxies `/api` to `http://localhost:8000`
 - **Testing**: pytest, pytest-cov, responses, mypy
 - **Build**: setuptools with `setup.cfg` and `pyproject.toml`
 
@@ -40,12 +45,16 @@ donkeycar/
     controller.py      # Joystick, Web, RC, Mock controllers
     keras.py           # KerasPilot base class and model architectures
     pytorch/           # PyTorch models and training
+      ResNet18.py
+      torch_data.py
+      torch_train.py
+      torch_utils.py
     tub_v2.py          # Tub v2 data storage (manifest + records + images)
     datastore_v2.py    # Lower-level tub v2 data primitives
     image_transformations.py  # Crop, trapeze, blur, resize, color-space transforms
     network.py, telemetry.py, gps.py, lidar.py, imu.py, ...
     simulation.py      # Mock camera/telemetry for testing
-    web_controller/    # Tornado-based web controller
+    web_controller/    # Tornado-based web controller (static assets in templates/static/)
     object_detector/   # Object detection parts
     voice_control/     # Voice control parts
   pipeline/            # Training pipeline
@@ -55,11 +64,11 @@ donkeycar/
     types.py           # TubDataset and type definitions
     database.py        # PilotDatabase for tracking trained models
   management/          # CLI tooling and UIs
-    base.py            # donkey CLI command dispatcher (createcar, train, calibrate, ...)
+    base.py            # donkey CLI command dispatcher (createcar, train, calibrate, web, ...)
     train_local.py, train_online.py
-    ui/                # Kivy-based GUI
+    ui/                # Kivy-based GUI (car_screen.py, pilot_screen.py, train_screen.py, tub_screen.py, ...)
     tui.py             # Terminal UI (rich-based)
-    tub_web/           # Legacy Bootstrap/jQuery tub browser
+    tub_web/           # Legacy Bootstrap/jQuery tub browser (base.html, tub.html, tubs.html, static/)
   templates/           # Car application templates and default configs
     complete.py        # Full-featured car script (the default template)
     cfg_complete.py    # Default configuration values
@@ -81,18 +90,26 @@ web_ui/
     requirements.txt   # fastapi, uvicorn, python-multipart, pandas, numpy, pillow
   frontend/            # React + Vite SPA
     package.json       # Dependencies and scripts
-    src/App.tsx        # Router (/ , /trainer)
-    src/components/    # TubEditor, TubNavigator, ConfigLoader, TrainerPage components
-    src/pages/         # Home, TrainerPage
-    src/store/         # Zustand store, Axios API client
-    src/services/      # API client functions
-    src/hooks/         # Custom React hooks
-tests/                 # Top-level integration tests
-scripts/               # Standalone utilities (tflite conversion, profiling, migration, etc.)
+    vite.config.ts     # Vite config with /api proxy to localhost:8000
+    eslint.config.js   # ESLint 9 flat config
+    tailwind.config.js # Tailwind CSS config (darkMode: "class")
+    tsconfig.json      # TypeScript config
+    src/
+      App.tsx          # Router (/ , /trainer)
+      main.tsx         # Entry point
+      components/      # TubEditor, TubNavigator, ConfigLoader, TrainerPage sub-components, UI primitives
+      pages/           # Home, TrainerPage
+      store/           # Zustand store, Axios API client
+      services/        # API client functions
+      hooks/           # Custom React hooks
+tests/                 # Top-level integration tests (pytest)
+scripts/               # Standalone utilities
+  convert_to_tflite.py, freeze_model.py, migrate_model_names.py, multi_train.py,
+  preview_augumentations.py, profile.py, hsv_picker.py, remote_cam_view.py, ...
 arduino/               # Arduino firmware for encoders
 docs/                  # Architecture and design documentation
-  arch/                # Architecture notes (web controller, params persistence, etc.)
-  plan/                # Design plans (trainer-design, etc.)
+  arch/                # Architecture notes (web controller, params persistence, testing, arrow key fixes)
+  plan/                # Design plans (trainer-design.md — written in Chinese)
 ```
 
 ## Build, Install, and Test Commands
@@ -154,6 +171,16 @@ Coverage configuration (`.coveragerc`):
   - Workflow: `.github/workflows/superlinter.yml`
   - Excludes `*.css` and `*.js` files.
 - No dedicated local linter configs (`.flake8`, `.pylintrc`, `.pre-commit-config.yaml`) are present.
+- Frontend linting uses ESLint 9 with a flat config (`eslint.config.js`). Run `npm run lint` in `web_ui/frontend/`.
+
+### Packaging
+
+```bash
+# Build source distribution (Makefile target)
+make package
+# Equivalent to:
+python setup.py sdist
+```
 
 ## Code Style Guidelines
 
@@ -164,6 +191,7 @@ Coverage configuration (`.coveragerc`):
 - The project targets Raspberry Pi OS, Jetson Nano, Linux, macOS, and WSL on Windows.
 - New features should have **unit tests** and be broadly useful to the community.
 - Config values are **UPPERCASE** by convention.
+- The core project uses English for all code, comments, and documentation. Note that some recent Web UI additions (e.g., `donkey web` CLI output strings, `docs/plan/trainer-design.md`) contain Chinese text.
 
 ## Key Architectural Patterns
 
@@ -255,6 +283,8 @@ Available subcommands (from `management/base.py`):
 - `createjs` — create joystick config
 - `cnnactivations` — visualize CNN activations
 
+When invoked without arguments, `donkey` defaults to the TUI (`donkeycar.management.tui`).
+
 ## Testing Instructions
 
 - Place unit tests in `donkeycar/tests/`.
@@ -278,6 +308,7 @@ Available subcommands (from `management/base.py`):
 - The web controller and Web UI bind to `0.0.0.0` by default; ensure network exposure is intentional.
 - The FastAPI backend in `web_ui/backend` uses `allow_origins=["*"]` for development.
 - Be cautious with subprocess calls in `management/base.py` (port scanning, npm, uvicorn).
+- The `Dockerfile` at the project root is outdated (references Python 3.6 and a `[tf]` extra that no longer exists). Do not rely on it for current builds without updates.
 
 ## Notes for AI Agents
 
@@ -287,3 +318,5 @@ Available subcommands (from `management/base.py`):
 - **Avoid breaking Tub v2 format changes** — it is the primary data interchange format.
 - When editing the web UI, remember both the FastAPI backend (`web_ui/backend/`) and the React frontend (`web_ui/frontend/`).
 - The `docs/` directory contains architecture notes (`docs/arch/`) and design plans (`docs/plan/`) that may provide useful context for complex features.
+- Some recently added Web UI code and documentation (e.g., `docs/plan/trainer-design.md`, user-facing strings in the `donkey web` command) are written in Chinese. The rest of the codebase is English.
+- The frontend Vite config includes `vite-plugin-trae-solo-badge`, a build-time plugin specific to the Trae IDE. Removing or modifying it will not affect application logic.
