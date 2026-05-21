@@ -1,3 +1,4 @@
+<!-- From: /home/dkc/projects/donkeycar/AGENTS.md -->
 # Donkeycar Agent Guide
 
 This file provides the essential context an AI coding agent needs to work effectively in the Donkeycar repository.
@@ -250,6 +251,9 @@ Available subcommands (from `management/base.py`):
 - `models` — show model database
 - `ui` / `tui` — graphical/terminal UIs
 - `web` — launch the new web UI
+- `findcar` — find car IP on local network
+- `createjs` — create joystick config
+- `cnnactivations` — visualize CNN activations
 
 ## Testing Instructions
 
