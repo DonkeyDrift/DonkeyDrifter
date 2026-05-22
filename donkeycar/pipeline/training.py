@@ -1,3 +1,4 @@
+import json
 import math
 import os
 from time import time
@@ -165,6 +166,22 @@ def train(cfg: Config, tub_paths: str, model: str = None,
                        min_delta=cfg.MIN_DELTA,
                        patience=cfg.EARLY_STOP_PATIENCE,
                        show_plot=cfg.SHOW_PLOT)
+
+    # Save loss metadata for web UI
+    try:
+        meta_path = f'{base_path}_meta.json'
+        with open(meta_path, 'w') as f:
+            json.dump({
+                'final_loss': history.history['loss'][-1] if 'loss' in history.history and history.history['loss'] else None,
+                'best_loss': min(history.history['loss']) if 'loss' in history.history and history.history['loss'] else None,
+                'final_val_loss': history.history['val_loss'][-1] if 'val_loss' in history.history and history.history['val_loss'] else None,
+                'best_val_loss': min(history.history['val_loss']) if 'val_loss' in history.history and history.history['val_loss'] else None,
+                'loss_history': history.history.get('loss', []),
+                'val_loss_history': history.history.get('val_loss', []),
+                'epochs': len(history.history.get('loss', [])),
+            }, f, indent=2)
+    except Exception:
+        pass
 
     # We are doing the tflite/trt conversion here on a previously saved model
     # and not on the kl.interpreter.model object directly. The reason is that

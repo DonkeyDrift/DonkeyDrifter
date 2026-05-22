@@ -200,20 +200,6 @@ class TrainingJobManager:
                 job.status = 'failed'
                 job.error_message = str(e)
         finally:
-            # Save loss metadata if training produced any loss data
-            if job.loss_history:
-                try:
-                    meta_path = os.path.join(cwd, "models", f"{os.path.basename(model)}_meta.json")
-                    with open(meta_path, "w") as f:
-                        json.dump({
-                            "final_loss": job.loss_history[-1],
-                            "best_loss": min(job.loss_history),
-                            "loss_history": job.loss_history,
-                            "model": model,
-                            "finished_at": datetime.now().isoformat(),
-                        }, f, indent=2)
-                except Exception:
-                    pass
             job.finished_at = datetime.now().isoformat()
             await job.log_queue.put({"type": "status", "status": job.status})
 
