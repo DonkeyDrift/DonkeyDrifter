@@ -34,6 +34,7 @@ export const ModelsList: React.FC = () => {
     name: string;
     rect: DOMRect;
   } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -64,7 +65,11 @@ export const ModelsList: React.FC = () => {
       clearTimeout(previewTimerRef.current);
     }
     if (model.previewPath) {
+      if (previewLoading && activePreview?.path !== model.previewPath) {
+        return;
+      }
       setActivePreview({ path: model.previewPath, name: model.name, rect });
+      setPreviewLoading(true);
     }
   };
 
@@ -74,17 +79,23 @@ export const ModelsList: React.FC = () => {
     }
     previewTimerRef.current = setTimeout(() => {
       setActivePreview(null);
+      setPreviewLoading(false);
     }, delay);
   };
 
   const togglePreview = (model: ModelItem, rect: DOMRect) => {
     if (activePreview?.path === model.previewPath) {
       setActivePreview(null);
+      setPreviewLoading(false);
     } else if (model.previewPath) {
+      if (previewLoading) {
+        return;
+      }
       if (previewTimerRef.current) {
         clearTimeout(previewTimerRef.current);
       }
       setActivePreview({ path: model.previewPath, name: model.name, rect });
+      setPreviewLoading(true);
     }
   };
 
@@ -197,12 +208,19 @@ export const ModelsList: React.FC = () => {
           <div className="text-xs text-zinc-400 mb-1 text-center truncate" title={activePreview.name}>
             {activePreview.name}
           </div>
+          {previewLoading && (
+            <div className="w-full h-32 flex items-center justify-center text-zinc-500 text-sm">
+              Loading...
+            </div>
+          )}
           <img
             src={`${API_URL}/trainer/models/preview?path=${encodeURIComponent(activePreview.path)}`}
             alt="Training loss chart"
-            className="w-full h-auto rounded"
+            className={`w-full h-auto rounded ${previewLoading ? 'hidden' : ''}`}
             style={{ maxHeight: 220 }}
             draggable={false}
+            onLoad={() => setPreviewLoading(false)}
+            onError={() => setPreviewLoading(false)}
           />
         </div>
       )}
