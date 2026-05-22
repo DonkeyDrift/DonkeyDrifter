@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useStore } from '../store/useStore';
-import { getTrainerConfig } from '../services/api';
+import { getTrainerConfig, loadConfig, loadMyconfig, saveTrainingConfig } from '../services/api';
 import { ModeTabs } from '../components/trainer/ModeTabs';
 import { LocalConfigForm } from '../components/trainer/LocalConfigForm';
 import { RemoteConfigForm } from '../components/trainer/RemoteConfigForm';
@@ -8,40 +8,33 @@ import { ProgressPanel } from '../components/trainer/ProgressPanel';
 import { LogPanel } from '../components/trainer/LogPanel';
 import { ModelsList } from '../components/trainer/ModelsList';
 import { useTrainingJob } from '../hooks/useTrainingJob';
-import type { AdvancedTrainingOptions } from '../services/api';
 
 type TrainerMode = 'local' | 'online';
 
-export const TrainerPage: React.FC = () => {
-  const [mode, setMode] = useState<TrainerMode>('local');
-  const { job, startLocal, startOnline, stopJob, isRunning } = useTrainingJob();
-  const { trainerOnlineConfig, setTrainerOnlineConfig } = useStore();
+const TRAINING_KEYS = [
+  'BATCH_SIZE',
+  'TRAIN_TEST_SPLIT',
+  'MAX_EPOCHS',
+  'SHOW_PLOT',
+  'USE_EARLY_STOP',
+  'EARLY_STOP_PATIENCE',
+  'LEARNING_RATE',
+  'CREATE_TF_LITE',
+  'PRUNE_VAL_LOSS_DEGRADATION_LIMIT',
+];
 
-  // Local form state
-  const [localTub, setLocalTub] = useState('./data');
-  const [localModel, setLocalModel] = useState('');
-  const [localModelType, setLocalModelType] = useState('linear');
-  const [localTransfer, setLocalTransfer] = useState('');
-  const [advanced, setAdvanced] = useState<AdvancedTrainingOptions>({
-    enabled: false,
-    batch_size: 128,
-    train_test_split: 0.8,
-    max_epochs: 100,
-    show_plot: true,
-    use_early_stop: true,
-    early_stop_patience: 5,
-    learning_rate: 0.001,
-    create_tf_lite: true,
-    prune_val_loss_degradation_limit: 0.2,
-  });
+export const TrainerPage: React.FC = () => {
+  const [mode, setMode] = React.useState<TrainerMode>('local');
+  const { job, startLocal, startOnline, stopJob, isRunning } = useTrainingJob();
+  const { configPath, trainerOnlineConfig, setTrainerOnlineConfig, trainerLocalConfig, setTrainerLocalConfig } = useStore();
 
   // Remote form state
-  const [host, setHost] = useState(trainerOnlineConfig.host);
-  const [user, setUser] = useState(trainerOnlineConfig.user);
-  const [password, setPassword] = useState(trainerOnlineConfig.password);
-  const [remoteDirBase, setRemoteDirBase] = useState(trainerOnlineConfig.remoteDirBase);
-  const [modelName, setModelName] = useState(trainerOnlineConfig.modelName);
-  const [pythonPath, setPythonPath] = useState(trainerOnlineConfig.pythonPath);
+  const [host, setHost] = React.useState(trainerOnlineConfig.host);
+  const [user, setUser] = React.useState(trainerOnlineConfig.user);
+  const [password, setPassword] = React.useState(trainerOnlineConfig.password);
+  const [remoteDirBase, setRemoteDirBase] = React.useState(trainerOnlineConfig.remoteDirBase);
+  const [modelName, setModelName] = React.useState(trainerOnlineConfig.modelName);
+  const [pythonPath, setPythonPath] = React.useState(trainerOnlineConfig.pythonPath);
 
   // Load remote config on mount
   useEffect(() => {
@@ -67,16 +60,73 @@ export const TrainerPage: React.FC = () => {
       });
   }, [setTrainerOnlineConfig]);
 
-  const handleLocalStart = useCallback(() => {
-    const modelName = localModel.trim() || `pilot_${Date.now()}`;
-    startLocal({
-      tub: localTub,
-      model: `./models/${modelName}`,
-      model_type: localModelType,
-      transfer: localTransfer.trim() || undefined,
-      advanced: advanced.enabled ? advanced : undefined,
+  // Load training config from myconfig.py on mount / when configPath changes
+  useEffect(() => {
+    if (!configPath) return;
+
+    Promise.all([loadConfig(configPath), loadMyconfig(configPath)])
+      .then(([mergedData, myconfigData]) => {
+        const merged = mergedData.config || {};
+        const myconfig = myconfigData.config || {};
+        const updates: Partial<typeof trainerLocalConfig> = {};
+
+        // Read training config values (prefer myconfig.py overrides)
+        if (merged.BATCH_SIZE !== undefined) updates.batchSize = merged.BATCH_SIZE;
+        if (merged.TRAIN_TEST_SPLIT !== undefined) updates.trainTestSplit = merged.TRAIN_TEST_SPLIT;
+        if (merged.MAX_EPOCHS !== undefined) updates.maxEpochs = merged.MAX_EPOCHS;
+        if (merged.SHOW_PLOT !== undefined) updates.showPlot = merged.SHOW_PLOT;
+        if (merged.USE_EARLY_STOP !== undefined) updates.useEarlyStop = merged.USE_EARLY_STOP;
+        if (merged.EARLY_STOP_PATIENCE !== undefined) updates.earlyStopPatience = merged.EARLY_STOP_PATIENCE;
+        if (merged.LEARNING_RATE !== undefined) updates.learningRate = merged.LEARNING_RATE;
+        if (merged.CREATE_TF_LITE !== undefined) updates.createTfLite = merged.CREATE_TF_LITE;
+        if (merged.PRUNE_VAL_LOSS_DEGRADATION_LIMIT !== undefined) updates.pruneValLossDegradationLimit = merged.PRUNE_VAL_LOSS_DEGRADATION_LIMIT;
+        if (merged.DEFAULT_MODEL_TYPE !== undefined) updates.modelType = merged.DEFAULT_MODEL_TYPE;
+
+        // Determine if advanced options are enabled based on myconfig.py overrides
+        const hasAdvancedOverrides = TRAINING_KEYS.some((k) => k in myconfig);
+        if (hasAdvancedOverrides) {
+          updates.advancedEnabled = true;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          setTrainerLocalConfig(updates);
+        }
+      })
+      .catch(() => {
+        // Fall back to localStorage persisted values
+      });
+  }, [configPath, setTrainerLocalConfig]);
+
+  const handleLocalStart = useCallback(async () => {
+    const modelName = trainerLocalConfig.model.trim() || `pilot_${Date.now()}`;
+
+    // Save training config to myconfig.py
+    const trainingConfig: Record<string, string | number | boolean> = {};
+    if (trainerLocalConfig.advancedEnabled) {
+      trainingConfig['BATCH_SIZE'] = trainerLocalConfig.batchSize;
+      trainingConfig['TRAIN_TEST_SPLIT'] = trainerLocalConfig.trainTestSplit;
+      trainingConfig['MAX_EPOCHS'] = trainerLocalConfig.maxEpochs;
+      trainingConfig['SHOW_PLOT'] = trainerLocalConfig.showPlot;
+      trainingConfig['USE_EARLY_STOP'] = trainerLocalConfig.useEarlyStop;
+      trainingConfig['EARLY_STOP_PATIENCE'] = trainerLocalConfig.earlyStopPatience;
+      trainingConfig['LEARNING_RATE'] = trainerLocalConfig.learningRate;
+      trainingConfig['CREATE_TF_LITE'] = trainerLocalConfig.createTfLite;
+      trainingConfig['PRUNE_VAL_LOSS_DEGRADATION_LIMIT'] = trainerLocalConfig.pruneValLossDegradationLimit;
+    }
+
+    await saveTrainingConfig({
+      path: configPath,
+      enabled: trainerLocalConfig.advancedEnabled,
+      config: trainingConfig,
     });
-  }, [localTub, localModel, localModelType, localTransfer, advanced, startLocal]);
+
+    startLocal({
+      tub: trainerLocalConfig.tub,
+      model: `./models/${modelName}`,
+      model_type: trainerLocalConfig.modelType,
+      transfer: trainerLocalConfig.transfer.trim() || undefined,
+    });
+  }, [trainerLocalConfig, configPath, startLocal]);
 
   const handleOnlineStart = useCallback(() => {
     setTrainerOnlineConfig({
@@ -111,16 +161,8 @@ export const TrainerPage: React.FC = () => {
         <div className="lg:col-span-2 space-y-6">
           {mode === 'local' ? (
             <LocalConfigForm
-              tub={localTub}
-              onTubChange={setLocalTub}
-              model={localModel}
-              onModelChange={setLocalModel}
-              modelType={localModelType}
-              onModelTypeChange={setLocalModelType}
-              transfer={localTransfer}
-              onTransferChange={setLocalTransfer}
-              advanced={advanced}
-              onAdvancedChange={setAdvanced}
+              config={trainerLocalConfig}
+              onConfigChange={setTrainerLocalConfig}
             />
           ) : (
             <RemoteConfigForm

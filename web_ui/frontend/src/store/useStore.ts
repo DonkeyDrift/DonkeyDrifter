@@ -35,6 +35,23 @@ export interface TrainerOnlineConfig {
   pythonPath: string;
 }
 
+export interface TrainerLocalConfig {
+  tub: string;
+  model: string;
+  modelType: string;
+  transfer: string;
+  advancedEnabled: boolean;
+  batchSize: number;
+  trainTestSplit: number;
+  maxEpochs: number;
+  showPlot: boolean;
+  useEarlyStop: boolean;
+  earlyStopPatience: number;
+  learningRate: number;
+  createTfLite: boolean;
+  pruneValLossDegradationLimit: number;
+}
+
 interface AppState {
   config: Record<string, unknown> | null;
   configPath: string;
@@ -61,6 +78,7 @@ interface AppState {
   // Trainer state
   trainingJob: TrainingJob | null;
   trainerOnlineConfig: TrainerOnlineConfig;
+  trainerLocalConfig: TrainerLocalConfig;
 
   setConfig: (config: Record<string, unknown>, path: string) => void;
   setTub: (path: string, records: TubRecord[], fields: string[], totalPhysicalRecords?: number, deletedIndexes?: number[]) => void;
@@ -89,6 +107,7 @@ interface AppState {
   updateTrainingProgress: (progress: TrainingJob['progress']) => void;
   finishTrainingJob: (status: 'completed' | 'failed' | 'stopped') => void;
   setTrainerOnlineConfig: (cfg: Partial<TrainerOnlineConfig>) => void;
+  setTrainerLocalConfig: (cfg: Partial<TrainerLocalConfig>) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -126,6 +145,22 @@ export const useStore = create<AppState>()(
         remoteDirBase: '~/projects',
         modelName: 'model',
         pythonPath: '~/miniconda3/envs/donkey/bin/python',
+      },
+      trainerLocalConfig: {
+        tub: './data',
+        model: '',
+        modelType: 'linear',
+        transfer: '',
+        advancedEnabled: false,
+        batchSize: 128,
+        trainTestSplit: 0.8,
+        maxEpochs: 100,
+        showPlot: true,
+        useEarlyStop: true,
+        earlyStopPatience: 5,
+        learningRate: 0.001,
+        createTfLite: true,
+        pruneValLossDegradationLimit: 0.2,
       },
 
       setConfig: (config, path) => set({ config, configPath: path, error: null, isSidePanelOpen: false }),
@@ -286,6 +321,10 @@ export const useStore = create<AppState>()(
         set((state) => ({
           trainerOnlineConfig: { ...state.trainerOnlineConfig, ...cfg },
         })),
+      setTrainerLocalConfig: (cfg) =>
+        set((state) => ({
+          trainerLocalConfig: { ...state.trainerLocalConfig, ...cfg },
+        })),
     }),
     {
       name: 'donkeycar-storage',
@@ -294,6 +333,7 @@ export const useStore = create<AppState>()(
         tubPath: state.tubPath,
         isLooping: state.isLooping,
         trainerOnlineConfig: state.trainerOnlineConfig,
+        trainerLocalConfig: state.trainerLocalConfig,
       }),
     }
   )

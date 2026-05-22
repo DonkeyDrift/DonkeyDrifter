@@ -28,26 +28,12 @@ class TrainerConfig(BaseModel):
     python_path: str
 
 
-class AdvancedTrainingOptions(BaseModel):
-    enabled: bool = False
-    batch_size: Optional[int] = None
-    train_test_split: Optional[float] = None
-    max_epochs: Optional[int] = None
-    show_plot: Optional[bool] = None
-    use_early_stop: Optional[bool] = None
-    early_stop_patience: Optional[int] = None
-    learning_rate: Optional[float] = None
-    create_tf_lite: Optional[bool] = None
-    prune_val_loss_degradation_limit: Optional[float] = None
-
-
 class LocalTrainRequest(BaseModel):
     tub: str = "./data"
     model: str
     model_type: str = "linear"
     transfer: Optional[str] = None
     working_dir: Optional[str] = None
-    advanced: Optional[AdvancedTrainingOptions] = None
 
 
 class OnlineTrainRequest(BaseModel):
@@ -214,7 +200,6 @@ async def start_local_train(request: LocalTrainRequest):
             model_type=request.model_type,
             transfer=request.transfer,
             working_dir=request.working_dir,
-            advanced=request.advanced,
         )
     )
     return {"job_id": job.id, "status": job.status}
