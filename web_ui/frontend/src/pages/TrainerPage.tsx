@@ -8,6 +8,7 @@ import { ProgressPanel } from '../components/trainer/ProgressPanel';
 import { LogPanel } from '../components/trainer/LogPanel';
 import { ModelsList } from '../components/trainer/ModelsList';
 import { useTrainingJob } from '../hooks/useTrainingJob';
+import type { AdvancedTrainingOptions } from '../services/api';
 
 type TrainerMode = 'local' | 'online';
 
@@ -21,6 +22,18 @@ export const TrainerPage: React.FC = () => {
   const [localModel, setLocalModel] = useState('');
   const [localModelType, setLocalModelType] = useState('linear');
   const [localTransfer, setLocalTransfer] = useState('');
+  const [advanced, setAdvanced] = useState<AdvancedTrainingOptions>({
+    enabled: false,
+    batch_size: 128,
+    train_test_split: 0.8,
+    max_epochs: 100,
+    show_plot: true,
+    use_early_stop: true,
+    early_stop_patience: 5,
+    learning_rate: 0.001,
+    create_tf_lite: true,
+    prune_val_loss_degradation_limit: 0.2,
+  });
 
   // Remote form state
   const [host, setHost] = useState(trainerOnlineConfig.host);
@@ -61,8 +74,9 @@ export const TrainerPage: React.FC = () => {
       model: `./models/${modelName}`,
       model_type: localModelType,
       transfer: localTransfer.trim() || undefined,
+      advanced: advanced.enabled ? advanced : undefined,
     });
-  }, [localTub, localModel, localModelType, localTransfer, startLocal]);
+  }, [localTub, localModel, localModelType, localTransfer, advanced, startLocal]);
 
   const handleOnlineStart = useCallback(() => {
     setTrainerOnlineConfig({
@@ -105,6 +119,8 @@ export const TrainerPage: React.FC = () => {
               onModelTypeChange={setLocalModelType}
               transfer={localTransfer}
               onTransferChange={setLocalTransfer}
+              advanced={advanced}
+              onAdvancedChange={setAdvanced}
             />
           ) : (
             <RemoteConfigForm

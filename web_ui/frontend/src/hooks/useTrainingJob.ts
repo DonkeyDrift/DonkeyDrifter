@@ -6,6 +6,7 @@ import {
   stopTrain,
   createLogStream,
   setTrainerConfig,
+  type AdvancedTrainingOptions,
 } from '../services/api';
 
 export function useTrainingJob() {
@@ -70,6 +71,7 @@ export function useTrainingJob() {
     model: string;
     model_type: string;
     transfer?: string;
+    advanced?: AdvancedTrainingOptions;
   }) => {
     if (trainingJob && trainingJob.status === 'running') {
       return;

@@ -112,12 +112,40 @@ class TrainingJobManager:
     # ------------------------------------------------------------------
     async def run_local(self, job: TrainingJob, tub: str, model: str,
                         model_type: str, transfer: Optional[str] = None,
-                        working_dir: Optional[str] = None):
+                        working_dir: Optional[str] = None,
+                        advanced: Optional[dict] = None):
         job.status = 'running'
         cwd = working_dir or os.getcwd()
         cmd = ["donkey", "train", "--tub", tub, "--model", model, "--type", model_type]
         if transfer:
             cmd.extend(["--transfer", transfer])
+
+        # Handle advanced options by writing a temporary myconfig override
+        temp_myconfig = None
+        if advanced and advanced.get("enabled"):
+            temp_myconfig = os.path.join(cwd, "myconfig_web_override.py")
+            lines = []
+            mapping = {
+                "batch_size": "BATCH_SIZE",
+                "train_test_split": "TRAIN_TEST_SPLIT",
+                "max_epochs": "MAX_EPOCHS",
+                "show_plot": "SHOW_PLOT",
+                "use_early_stop": "USE_EARLY_STOP",
+                "early_stop_patience": "EARLY_STOP_PATIENCE",
+                "learning_rate": "LEARNING_RATE",
+                "create_tf_lite": "CREATE_TF_LITE",
+                "prune_val_loss_degradation_limit": "PRUNE_VAL_LOSS_DEGRADATION_LIMIT",
+            }
+            for key, cfg_name in mapping.items():
+                val = advanced.get(key)
+                if val is not None:
+                    if isinstance(val, str):
+                        lines.append(f'{cfg_name} = "{val}"{os.linesep}')
+                    else:
+                        lines.append(f'{cfg_name} = {val}{os.linesep}')
+            with open(temp_myconfig, "w") as f:
+                f.writelines(lines)
+            cmd.extend(["--myconfig", temp_myconfig])
 
         try:
             job.process = await asyncio.create_subprocess_exec(
@@ -196,6 +224,11 @@ class TrainingJobManager:
                 job.status = 'failed'
                 job.error_message = str(e)
         finally:
+            if temp_myconfig and os.path.exists(temp_myconfig):
+                try:
+                    os.remove(temp_myconfig)
+                except Exception:
+                    pass
             job.finished_at = datetime.now().isoformat()
             await job.log_queue.put({"type": "status", "status": job.status})
 

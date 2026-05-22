@@ -77,12 +77,26 @@ export const listBackups = async (workingDir?: string) => {
   return response.data;
 };
 
+export interface AdvancedTrainingOptions {
+  enabled: boolean;
+  batch_size?: number;
+  train_test_split?: number;
+  max_epochs?: number;
+  show_plot?: boolean;
+  use_early_stop?: boolean;
+  early_stop_patience?: number;
+  learning_rate?: number;
+  create_tf_lite?: boolean;
+  prune_val_loss_degradation_limit?: number;
+}
+
 export const startLocalTrain = async (params: {
   tub: string;
   model: string;
   model_type: string;
   transfer?: string;
   working_dir?: string;
+  advanced?: AdvancedTrainingOptions;
 }) => {
   const response = await api.post('/trainer/train/local', params);
   return response.data;
