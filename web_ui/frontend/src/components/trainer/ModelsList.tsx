@@ -10,6 +10,8 @@ interface ModelItem {
   modified: string;
   path: string;
   previewPath?: string;
+  finalLoss?: number;
+  bestLoss?: number;
 }
 
 function formatSize(bytes: number): string {
@@ -147,6 +149,14 @@ export const ModelsList: React.FC = () => {
                 <div className="text-sm text-zinc-300 truncate" title={m.name}>{m.name}</div>
                 <div className="text-xs text-zinc-600">
                   {formatSize(m.size)} · {new Date(m.modified).toLocaleString()}
+                  {typeof m.finalLoss === 'number' && (
+                    <span className="ml-2 text-emerald-500">
+                      loss: {m.finalLoss.toFixed(4)}
+                      {typeof m.bestLoss === 'number' && m.bestLoss !== m.finalLoss && (
+                        <span className="text-zinc-500 ml-1">(best: {m.bestLoss.toFixed(4)})</span>
+                      )}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

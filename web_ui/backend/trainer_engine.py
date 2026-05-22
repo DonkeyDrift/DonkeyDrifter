@@ -2,6 +2,7 @@
 Training Job Engine - manages local and online training jobs with SSE streaming.
 """
 import asyncio
+import json
 import os
 import queue
 import re
@@ -52,6 +53,7 @@ class TrainingJob:
     log_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue())
     progress: TrainingProgress = field(default_factory=TrainingProgress)
     logs: list = field(default_factory=list)
+    loss_history: list = field(default_factory=list)
     started_at: str = field(default_factory=lambda: datetime.now().isoformat())
     finished_at: Optional[str] = None
     process: Optional[asyncio.subprocess.Process] = None
@@ -165,6 +167,8 @@ class TrainingJobManager:
                                 job.progress.global_percent,
                             )
                             if new_progress != old_progress:
+                                if job.progress.loss is not None:
+                                    job.loss_history.append(job.progress.loss)
                                 await job.log_queue.put({
                                     "type": "progress",
                                     "data": {
@@ -196,6 +200,20 @@ class TrainingJobManager:
                 job.status = 'failed'
                 job.error_message = str(e)
         finally:
+            # Save loss metadata if training produced any loss data
+            if job.loss_history:
+                try:
+                    meta_path = os.path.join(cwd, "models", f"{os.path.basename(model)}_meta.json")
+                    with open(meta_path, "w") as f:
+                        json.dump({
+                            "final_loss": job.loss_history[-1],
+                            "best_loss": min(job.loss_history),
+                            "loss_history": job.loss_history,
+                            "model": model,
+                            "finished_at": datetime.now().isoformat(),
+                        }, f, indent=2)
+                except Exception:
+                    pass
             job.finished_at = datetime.now().isoformat()
             await job.log_queue.put({"type": "status", "status": job.status})
 

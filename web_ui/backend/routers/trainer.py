@@ -144,6 +144,16 @@ async def list_models(working_dir: Optional[str] = None):
             else None
         )
 
+        # Read loss metadata if available
+        meta_path = os.path.join(models_dir, f"{stem}_meta.json")
+        loss_info = {}
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r") as f:
+                    loss_info = json.load(f)
+            except Exception:
+                pass
+
         stat = os.stat(full)
         items.append({
             "name": name,
@@ -152,6 +162,8 @@ async def list_models(working_dir: Optional[str] = None):
             "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
             "path": os.path.abspath(full),
             "previewPath": preview_path,
+            "finalLoss": loss_info.get("final_loss"),
+            "bestLoss": loss_info.get("best_loss"),
         })
     return {"models": items}
 
