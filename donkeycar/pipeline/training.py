@@ -23,6 +23,13 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def _to_native(val):
+    """Convert numpy scalars to native Python types for JSON serialization."""
+    if hasattr(val, 'item'):
+        return val.item()
+    return val
+
+
 class BatchSequence(object):
     """
     The idea is to have a shallow sequence with types that can hydrate
@@ -170,15 +177,17 @@ def train(cfg: Config, tub_paths: str, model: str = None,
     # Save loss metadata for web UI
     try:
         meta_path = f'{base_path}_meta.json'
+        loss_hist = [_to_native(v) for v in history.history.get('loss', [])]
+        val_loss_hist = [_to_native(v) for v in history.history.get('val_loss', [])]
         with open(meta_path, 'w') as f:
             json.dump({
-                'final_loss': history.history['loss'][-1] if 'loss' in history.history and history.history['loss'] else None,
-                'best_loss': min(history.history['loss']) if 'loss' in history.history and history.history['loss'] else None,
-                'final_val_loss': history.history['val_loss'][-1] if 'val_loss' in history.history and history.history['val_loss'] else None,
-                'best_val_loss': min(history.history['val_loss']) if 'val_loss' in history.history and history.history['val_loss'] else None,
-                'loss_history': history.history.get('loss', []),
-                'val_loss_history': history.history.get('val_loss', []),
-                'epochs': len(history.history.get('loss', [])),
+                'final_loss': loss_hist[-1] if loss_hist else None,
+                'best_loss': min(loss_hist) if loss_hist else None,
+                'final_val_loss': val_loss_hist[-1] if val_loss_hist else None,
+                'best_val_loss': min(val_loss_hist) if val_loss_hist else None,
+                'loss_history': loss_hist,
+                'val_loss_history': val_loss_hist,
+                'epochs': len(loss_hist),
             }, f, indent=2)
     except Exception:
         pass
