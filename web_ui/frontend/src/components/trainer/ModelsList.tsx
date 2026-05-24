@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { listModels } from '../../services/api';
+import { listModels, deleteModel, downloadModelUrl, API_URL } from '../../services/api';
 import { useStore } from '../../store/useStore';
-import { FileText, Copy, TrendingDown } from 'lucide-react';
-import { API_URL } from '../../services/api';
+import { FileText, Copy, TrendingDown, Download, Trash2 } from 'lucide-react';
 
 interface ModelItem {
   name: string;
@@ -35,6 +34,8 @@ export const ModelsList: React.FC = () => {
     rect: DOMRect;
   } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ModelItem | null>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -99,6 +100,17 @@ export const ModelsList: React.FC = () => {
     }
   };
 
+  const handleDelete = useCallback(async (model: ModelItem) => {
+    setDeleting(model.path);
+    try {
+      await deleteModel(model.path);
+      setConfirmDelete(null);
+      await refresh();
+    } finally {
+      setDeleting(null);
+    }
+  }, [refresh]);
+
   // Compute fixed-position popover coordinates
   const getPopoverStyle = (): React.CSSProperties => {
     if (!activePreview) return { display: 'none' };
@@ -160,13 +172,22 @@ export const ModelsList: React.FC = () => {
                 <FileText className="w-4 h-4 text-zinc-500 shrink-0" />
                 <span className="text-sm text-zinc-300 truncate" title={m.name}>{m.name}</span>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 {typeof m.finalLoss === 'number' && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded mr-1">
                     <TrendingDown className="w-3 h-3" />
                     {m.finalLoss.toFixed(4)}
                   </span>
                 )}
+                <a
+                  href={downloadModelUrl(m.path)}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Download model"
+                  className="p-1 text-zinc-500 hover:text-cyan-400 transition-colors"
+                  download
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </a>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -222,6 +243,34 @@ export const ModelsList: React.FC = () => {
             onLoad={() => setPreviewLoading(false)}
             onError={() => setPreviewLoading(false)}
           />
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-5 w-80 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h4 className="text-sm font-semibold text-zinc-200 mb-2">Delete Model</h4>
+            <p className="text-xs text-zinc-400 mb-4">
+              Are you sure you want to delete <span className="text-zinc-200 font-medium">{confirmDelete.name}</span>? This will also remove its preview image and metadata. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting === confirmDelete.path}
+                className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors disabled:text-zinc-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting === confirmDelete.path}
+                className="px-3 py-1.5 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded transition-colors disabled:text-zinc-600 disabled:bg-zinc-800"
+              >
+                {deleting === confirmDelete.path ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

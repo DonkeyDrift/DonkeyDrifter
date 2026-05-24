@@ -178,6 +178,45 @@ async def get_model_preview(path: str = Query(..., description="Absolute path to
     return FileResponse(path, media_type="image/png")
 
 
+@router.get("/models/download")
+async def download_model(path: str = Query(..., description="Absolute path to the model file")):
+    """Download a model file as attachment."""
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Model file not found")
+    if not path.lower().endswith(".tflite"):
+        raise HTTPException(status_code=400, detail="Only .tflite model files are supported")
+    filename = os.path.basename(path)
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=filename,
+    )
+
+
+@router.delete("/models")
+async def delete_model(path: str = Query(..., description="Absolute path to the model file")):
+    """Delete a model file and its associated preview image and metadata."""
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Model file not found")
+    if not path.lower().endswith(".tflite"):
+        raise HTTPException(status_code=400, detail="Only .tflite model files are supported")
+
+    # Remove the main model file
+    os.remove(path)
+
+    # Remove associated files (preview .png and _meta.json) if they exist
+    stem = os.path.splitext(path)[0]
+    for suffix in (".png", "_meta.json"):
+        associated_path = f"{stem}{suffix}"
+        if os.path.isfile(associated_path):
+            try:
+                os.remove(associated_path)
+            except Exception:
+                pass
+
+    return {"status": True, "path": path}
+
+
 @router.get("/backups")
 async def list_backups(working_dir: Optional[str] = None):
     """List data backup archives in ./data_cache."""

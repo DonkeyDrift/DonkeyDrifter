@@ -86,6 +86,15 @@ export const listModels = async (workingDir?: string) => {
   return response.data;
 };
 
+export const downloadModelUrl = (path: string): string => {
+  return `${API_URL}/trainer/models/download?path=${encodeURIComponent(path)}`;
+};
+
+export const deleteModel = async (path: string) => {
+  const response = await api.delete('/trainer/models', { params: { path } });
+  return response.data;
+};
+
 export const listBackups = async (workingDir?: string) => {
   const response = await api.get('/trainer/backups', { params: workingDir ? { working_dir: workingDir } : {} });
   return response.data;
