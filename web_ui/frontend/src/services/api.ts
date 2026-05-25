@@ -142,3 +142,85 @@ export const getJobStatus = async (jobId: string) => {
 export const createLogStream = (jobId: string) => {
   return new EventSource(`${API_URL}/trainer/train/${jobId}/logs`);
 };
+
+// ------------------------------------------------------------------
+// Pilot Arena APIs
+// ------------------------------------------------------------------
+export interface ArenaModel {
+  name: string;
+  path: string;
+  format: string;
+  size: number;
+  modified: string;
+  compatible: boolean;
+}
+
+export interface ArenaPilot {
+  id: string;
+  name: string;
+  model_path: string;
+  model_type: string;
+  loaded_at: string;
+}
+
+export interface ArenaPrediction {
+  status: boolean;
+  record_index: number;
+  user: { angle: number; throttle: number };
+  pilot: { angle: number; throttle: number };
+}
+
+export const listArenaModelTypes = async () => {
+  const response = await api.get('/arena/model-types');
+  return response.data;
+};
+
+export const listArenaModels = async (params: { workingDir?: string; modelType?: string } = {}) => {
+  const response = await api.get('/arena/models', {
+    params: {
+      ...(params.workingDir ? { working_dir: params.workingDir } : {}),
+      ...(params.modelType ? { model_type: params.modelType } : {}),
+    },
+  });
+  return response.data as { models: ArenaModel[] };
+};
+
+export const loadArenaPilot = async (payload: {
+  model_path: string;
+  model_type: string;
+  config_path?: string;
+}) => {
+  const response = await api.post('/arena/pilots/load', payload);
+  return response.data as { status: boolean; pilot: ArenaPilot };
+};
+
+export const unloadArenaPilot = async (pilotId: string) => {
+  const response = await api.delete(`/arena/pilots/${pilotId}`);
+  return response.data;
+};
+
+export const predictArenaPilot = async (pilotId: string, payload: {
+  record_index: number;
+  config_path?: string;
+  user_angle_field?: string;
+  user_throttle_field?: string;
+}) => {
+  const response = await api.post(`/arena/pilots/${pilotId}/predict`, payload);
+  return response.data as ArenaPrediction;
+};
+
+export const getArenaPreviewUrl = (pilotId: string, params: {
+  recordIndex: number;
+  configPath?: string;
+  userAngleField?: string;
+  userThrottleField?: string;
+}) => {
+  const search = new URLSearchParams({
+    record_index: String(params.recordIndex),
+    t: String(Date.now()),
+  });
+  if (params.configPath) search.set('config_path', params.configPath);
+  if (params.userAngleField) search.set('user_angle_field', params.userAngleField);
+  if (params.userThrottleField) search.set('user_throttle_field', params.userThrottleField);
+  return `${API_URL}/arena/pilots/${pilotId}/preview?${search.toString()}`;
+};
