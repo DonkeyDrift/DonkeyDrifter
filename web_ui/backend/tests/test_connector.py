@@ -213,3 +213,47 @@ def test_pull_tub_job_fails_when_command_building_fails():
     assert "远端名称不能包含路径分隔符" in job.error_message
     assert event["type"] == "status"
     assert event["status"] == "failed"
+
+
+def test_drive_command_keeps_stopped_status(monkeypatch):
+    import asyncio
+
+    import connector_engine
+    from connector_engine import ConnectorJobManager
+
+    class FakeStdout:
+        async def readline(self):
+            return b""
+
+    async def run_job():
+        release_process = asyncio.Event()
+
+        class FakeProcess:
+            stdout = FakeStdout()
+            returncode = 1
+
+            async def wait(self):
+                await release_process.wait()
+                return self.returncode
+
+        async def create_process(*args, **kwargs):
+            return FakeProcess()
+
+        manager = ConnectorJobManager()
+        job = manager.create_job("drive_start")
+        monkeypatch.setattr(connector_engine.asyncio, "create_subprocess_exec", create_process)
+
+        task = asyncio.create_task(manager._run_drive_command(job, ["ssh", "car"], capture_pid=True))
+        await asyncio.sleep(0)
+        job.status = "stopped"
+        release_process.set()
+        await task
+
+        event = await job.log_queue.get()
+        return job, event
+
+    job, event = asyncio.run(run_job())
+
+    assert job.status == "stopped"
+    assert event["type"] == "status"
+    assert event["status"] == "stopped"

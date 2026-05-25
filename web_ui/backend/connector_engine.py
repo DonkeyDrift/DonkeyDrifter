@@ -124,6 +124,8 @@ class ConnectorJobManager:
                 job.logs.append(text)
                 await job.log_queue.put({"type": "log", "line": text, "timestamp": time.time()})
             await job.process.wait()
+            if job.status == "stopped":
+                return
             if job.process.returncode == 0:
                 job.status = "completed"
                 if capture_pid and output:
