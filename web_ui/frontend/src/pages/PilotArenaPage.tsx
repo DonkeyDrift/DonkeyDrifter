@@ -153,6 +153,7 @@ export const PilotArenaPage: React.FC = () => {
   const predictionCacheRef = useRef<Record<string, Record<number, { pilot: { angle: number; throttle: number } }>>>({});
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const imageLoadCallbacksRef = useRef<Map<string, Map<string, (image: HTMLImageElement) => void>>>(new Map());
   const imageInFlightRef = useRef<Set<string>>(new Set());
   const lastImageRequestAtRef = useRef(0);
   const playbackFpsStartRef = useRef<Record<string, number>>({});
@@ -260,9 +261,14 @@ export const PilotArenaPage: React.FC = () => {
     }
   }, [updateViewer]);
 
-  const cacheImage = useCallback((imageUrl: string, onLoad?: (image: HTMLImageElement) => void) => {
+  const cacheImage = useCallback((imageUrl: string, onLoadKey?: string, onLoad?: (image: HTMLImageElement) => void) => {
     const cachedImage = imageCacheRef.current.get(imageUrl);
     if (cachedImage) {
+      if (onLoadKey && onLoad && !cachedImage.complete) {
+        const callbacks = imageLoadCallbacksRef.current.get(imageUrl) ?? new Map<string, (image: HTMLImageElement) => void>();
+        callbacks.set(onLoadKey, onLoad);
+        imageLoadCallbacksRef.current.set(imageUrl, callbacks);
+      }
       imageCacheRef.current.delete(imageUrl);
       imageCacheRef.current.set(imageUrl, cachedImage);
       return cachedImage;
@@ -275,12 +281,18 @@ export const PilotArenaPage: React.FC = () => {
 
     const image = new Image();
     imageInFlightRef.current.add(imageUrl);
+    if (onLoadKey && onLoad) {
+      imageLoadCallbacksRef.current.set(imageUrl, new Map([[onLoadKey, onLoad]]));
+    }
     image.onload = () => {
       imageInFlightRef.current.delete(imageUrl);
-      onLoad?.(image);
+      const callbacks = imageLoadCallbacksRef.current.get(imageUrl);
+      callbacks?.forEach((callback) => callback(image));
+      imageLoadCallbacksRef.current.delete(imageUrl);
     };
     image.onerror = () => {
       imageInFlightRef.current.delete(imageUrl);
+      imageLoadCallbacksRef.current.delete(imageUrl);
       imageCacheRef.current.delete(imageUrl);
     };
     image.src = imageUrl;
@@ -294,6 +306,7 @@ export const PilotArenaPage: React.FC = () => {
         oldestImage.onerror = null;
         oldestImage.src = '';
       }
+      imageLoadCallbacksRef.current.delete(oldestUrl);
       imageInFlightRef.current.delete(oldestUrl);
       imageCacheRef.current.delete(oldestUrl);
     }
@@ -347,7 +360,7 @@ export const PilotArenaPage: React.FC = () => {
       drawControlLine(ctx, userControl?.angle, userControl?.throttle, '#22c55e');
       drawControlLine(ctx, cachedPrediction?.pilot.angle ?? viewer.prediction?.angle, cachedPrediction?.pilot.throttle ?? viewer.prediction?.throttle, '#3b82f6');
     };
-    const image = cacheImage(imageUrl, (loadedImage) => {
+    const image = cacheImage(imageUrl, viewer.localId, (loadedImage) => {
       if (currentIndexRef.current === recordIndex) {
         draw(loadedImage);
       }
@@ -568,6 +581,7 @@ export const PilotArenaPage: React.FC = () => {
       }
     }
     clearViewerPredictionState(viewer.localId);
+    imageLoadCallbacksRef.current.forEach((callbacks) => callbacks.delete(viewer.localId));
     delete canvasRefs.current[viewer.localId];
     setViewers((items) => items.filter((item) => item.localId !== viewer.localId));
   }, [clearViewerPredictionState]);
