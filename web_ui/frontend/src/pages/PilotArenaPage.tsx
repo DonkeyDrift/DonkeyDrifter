@@ -119,7 +119,7 @@ export const PilotArenaPage: React.FC = () => {
   const hasRecords = records.length > 0;
   const maxIndex = Math.max(0, records.length - 1);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
-  const evaluationIntervalMs = Math.max(playbackSpeed, 250);
+  const evaluationIntervalMs = Math.max(playbackSpeed, 100);
   const predictionOptions = useMemo(() => ({
     preTransformations,
     augmentations: [
@@ -236,17 +236,17 @@ export const PilotArenaPage: React.FC = () => {
     options: { playback?: boolean; force?: boolean } = {},
   ) => {
     if (!viewer.pilot || !hasRecords) return;
-    if (options.playback && !options.force) {
-      if (predictionInFlightRef.current[viewer.localId] || previewInFlightRef.current[viewer.localId]) {
-        pendingViewerIndexRef.current[viewer.localId] = recordIndex;
-        return;
-      }
+    if (options.playback && !options.force && predictionInFlightRef.current[viewer.localId]) {
+      pendingViewerIndexRef.current[viewer.localId] = recordIndex;
+      return;
     }
 
     predictionInFlightRef.current[viewer.localId] = true;
     const requestId = (predictionRequestRef.current[viewer.localId] ?? 0) + 1;
     predictionRequestRef.current[viewer.localId] = requestId;
-    updateViewer(viewer.localId, { loading: true, error: undefined });
+    if (!options.playback) {
+      updateViewer(viewer.localId, { loading: true, error: undefined });
+    }
     try {
       const data = await predictArenaPilot(viewer.pilot.id, {
         record_index: recordIndex,
@@ -258,20 +258,27 @@ export const PilotArenaPage: React.FC = () => {
         blur: predictionOptions.blur,
       });
       if (predictionRequestRef.current[viewer.localId] !== requestId) return;
-      previewInFlightRef.current[viewer.localId] = true;
-      updateViewer(viewer.localId, {
+      const patch: Partial<ViewerState> = {
         user: data.user,
         prediction: data.pilot,
-        previewUrl: getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions }),
-        previewLoading: true,
         lastEvaluatedIndex: recordIndex,
         loading: false,
-      });
+      };
+      if (!options.playback || options.force) {
+        previewInFlightRef.current[viewer.localId] = true;
+        patch.previewUrl = getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions });
+        patch.previewLoading = true;
+      }
+      updateViewer(viewer.localId, patch);
     } catch (error) {
       if (predictionRequestRef.current[viewer.localId] !== requestId) return;
       updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
     } finally {
       predictionInFlightRef.current[viewer.localId] = false;
+      const pendingIndex = pendingViewerIndexRef.current[viewer.localId];
+      if (options.playback && pendingIndex === recordIndex) {
+        delete pendingViewerIndexRef.current[viewer.localId];
+      }
     }
   }, [configPath, hasRecords, predictionOptions, updateViewer]);
 
@@ -493,7 +500,7 @@ export const PilotArenaPage: React.FC = () => {
             </Button>
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(currentIndex + 1)} disabled={!hasRecords}>下一帧</Button>
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(maxIndex)} disabled={!hasRecords}>末帧</Button>
-            <span className="text-xs text-zinc-500">评估间隔 {Math.round(evaluationIntervalMs)}ms</span>
+            <span className="text-xs text-zinc-500">数值评估间隔 {Math.round(evaluationIntervalMs)}ms</span>
           </div>
           <div className="flex flex-wrap gap-3 text-sm text-zinc-400">
             <span>当前序号: {currentIndex}</span>
