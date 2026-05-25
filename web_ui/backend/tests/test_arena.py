@@ -72,6 +72,19 @@ def test_list_models_includes_all_arena_model_formats(tmp_path):
     assert names == {"pilot.h5", "pilot.tflite", "pilot.savedmodel", "pilot.trt"}
 
 
+def test_load_car_config_merges_base_config_and_myconfig(tmp_path):
+    (tmp_path / "config.py").write_text("IMAGE_H = 120\nIMAGE_W = 160\nIMAGE_DEPTH = 3\n")
+    (tmp_path / "myconfig.py").write_text("IMAGE_H = 240\n")
+
+    from routers import arena
+
+    cfg = arena.load_car_config(str(tmp_path))
+
+    assert cfg.IMAGE_H == 240
+    assert cfg.IMAGE_W == 160
+    assert cfg.IMAGE_DEPTH == 3
+
+
 def test_load_and_unload_pilot(monkeypatch, tmp_path):
     client, _ = make_client(monkeypatch)
     model_path = tmp_path / "pilot.tflite"

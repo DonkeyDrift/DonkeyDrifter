@@ -105,11 +105,7 @@ def _format_for_path(path: str) -> str:
 def load_car_config(config_path: Optional[str] = None):
     if not config_path:
         return None
-    if os.path.isdir(config_path):
-        myconfig_path = os.path.join(config_path, "myconfig.py")
-        config_file = myconfig_path if os.path.exists(myconfig_path) else os.path.join(config_path, "config.py")
-    else:
-        config_file = config_path
+    config_file = os.path.join(config_path, "config.py") if os.path.isdir(config_path) else config_path
     if not os.path.exists(config_file):
         raise HTTPException(status_code=404, detail="Config file not found")
     return load_config(config_file)
