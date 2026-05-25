@@ -7,6 +7,8 @@ import { useDriveWebsocket } from '../hooks/useDriveWebsocket';
 import { useKeyboardDrive } from '../hooks/useKeyboardDrive';
 import { useDriveHotkeys } from '../hooks/useDriveHotkeys';
 import { ProgrammableButtons } from '../components/drive/ProgrammableButtons';
+import { ParameterPanel } from '../components/drive/ParameterPanel';
+import { useDriveStore } from '../store/useDriveStore';
 import { Circle, CirclePlay, Wifi, WifiOff } from 'lucide-react';
 
 export const DrivePage: React.FC = () => {
@@ -25,8 +27,16 @@ export const DrivePage: React.FC = () => {
   const [recordDuration, setRecordDuration] = useState(0);
   const [currentModel, setCurrentModel] = useState<string>('未加载');
 
+  const { params, loadFromServer } = useDriveStore();
+
+  // 页面加载时从服务端拉取参数
+  useEffect(() => {
+    loadFromServer();
+  }, [loadFromServer]);
+
   useKeyboardDrive({
     enabled: true,
+    params,
     onChange: (a, t) => {
       keyboardRef.current = { angle: a, throttle: t };
       lastInputType.current = 'keyboard';
@@ -172,6 +182,7 @@ export const DrivePage: React.FC = () => {
               className="w-full max-w-[240px]"
               onClick={(id) => send({ buttons: { [id]: true } })}
             />
+            <ParameterPanel className="w-full max-w-[240px]" />
             <div className="text-[10px] text-zinc-500 text-center">
               键盘快捷键: I 前进 · K 倒车 · J 左转 · L 右转<br />
               R 切换录制 · M 切换模式

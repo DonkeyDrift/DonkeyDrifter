@@ -1,13 +1,11 @@
 import { useEffect, useRef } from 'react';
 
+import { DriveParams } from '../store/useDriveStore';
+
 interface UseKeyboardDriveOptions {
   enabled?: boolean;
   onChange?: (angle: number, throttle: number) => void;
-  // 参数：与原 web_controller 保持一致
-  steerRate?: number;      // 转向角速度 (每帧增量)
-  accelRate?: number;      // 油门上升率
-  brakeRate?: number;      // 刹车/倒车上升率
-  recenterRate?: number;   // 自动回中速度
+  params?: Partial<DriveParams>;
 }
 
 /**
@@ -18,10 +16,7 @@ interface UseKeyboardDriveOptions {
 export const useKeyboardDrive = ({
   enabled = true,
   onChange,
-  steerRate = 1.2,
-  accelRate = 1.0,
-  brakeRate = 1.2,
-  recenterRate = 0.35,
+  params = {},
 }: UseKeyboardDriveOptions = {}) => {
   const keysRef = useRef({ i: false, k: false, j: false, l: false });
   const angleRef = useRef(0);
@@ -29,6 +24,8 @@ export const useKeyboardDrive = ({
   const rafRef = useRef<number | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
 
   useEffect(() => {
     if (!enabled) return;
@@ -50,6 +47,13 @@ export const useKeyboardDrive = ({
     // 60fps 平滑更新
     const tick = () => {
       const keys = keysRef.current;
+      const {
+        steerRate = 1.2,
+        accelRate = 1.0,
+        brakeRate = 1.2,
+        recenterRate = 0.35,
+      } = paramsRef.current;
+
       let a = angleRef.current;
       let t = throttleRef.current;
 
@@ -90,7 +94,7 @@ export const useKeyboardDrive = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [enabled, steerRate, accelRate, brakeRate, recenterRate]);
+  }, [enabled]);
 
   return { angle: angleRef.current, throttle: throttleRef.current };
 };
