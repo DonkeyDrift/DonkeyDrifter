@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { listModels, deleteModel, downloadModelUrl, API_URL } from '../../services/api';
+import { listModels, deleteModel, downloadModelUrl, loadModelToCar, API_URL } from '../../services/api';
 import { useStore } from '../../store/useStore';
-import { FileText, Copy, TrendingDown, Download, Trash2 } from 'lucide-react';
+import { FileText, Copy, TrendingDown, Download, Trash2, Send } from 'lucide-react';
 
 interface ModelItem {
   name: string;
@@ -188,6 +188,21 @@ export const ModelsList: React.FC = () => {
                 >
                   <Download className="w-3.5 h-3.5" />
                 </a>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await loadModelToCar(m.path, configPath);
+                      alert('模型加载指令已下发到车端');
+                    } catch (err: any) {
+                      alert(`加载失败: ${err.response?.data?.detail || err.message}`);
+                    }
+                  }}
+                  title="加载到车端"
+                  className="p-1 text-zinc-500 hover:text-emerald-400 transition-colors"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

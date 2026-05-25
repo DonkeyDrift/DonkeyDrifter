@@ -95,6 +95,11 @@ export const deleteModel = async (path: string) => {
   return response.data;
 };
 
+export const loadModelToCar = async (modelPath: string, workingDir?: string) => {
+  const response = await api.post('/drive/load_model', { model_path: modelPath, working_dir: workingDir });
+  return response.data;
+};
+
 export const listBackups = async (workingDir?: string) => {
   const response = await api.get('/trainer/backups', { params: workingDir ? { working_dir: workingDir } : {} });
   return response.data;

@@ -147,6 +147,26 @@ async def save_params(request: SaveParamsRequest):
         raise HTTPException(status_code=500, detail=f"Save failed: {e}")
 
 
+class LoadModelRequest(BaseModel):
+    model_path: str
+    working_dir: Optional[str] = None
+
+
+@router.post("/load_model")
+async def load_model(request: LoadModelRequest):
+    """通知车端加载指定模型"""
+    if not drive_state.car_online():
+        raise HTTPException(status_code=400, detail="车端未连接，无法加载模型")
+
+    ok = await drive_state.send_to_car({
+        "type": "load_model",
+        "model_path": request.model_path,
+    })
+    if not ok:
+        raise HTTPException(status_code=500, detail="发送到车端失败")
+    return {"success": True, "message": "模型加载指令已下发"}
+
+
 # ------------------------------------------------------------------
 # WebSocket 主通道
 # ------------------------------------------------------------------
