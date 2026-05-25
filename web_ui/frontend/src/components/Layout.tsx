@@ -42,13 +42,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             >
               Pilot Arena
             </Link>
-            <div className="relative h-full flex items-center group">
-              <span className="transition-colors hover:text-cyan-400 text-zinc-400 cursor-not-allowed">Car Connector</span>
-              <div className="absolute top-full left-0 mt-3 px-2 py-1 bg-zinc-900 text-xs text-white rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[100] shadow-xl border border-zinc-700">
-                To be done
-                <div className="absolute -top-[5px] left-3 w-2.5 h-2.5 bg-zinc-900 border-t border-l border-zinc-700 rotate-45"></div>
-              </div>
-            </div>
+            <Link
+              to="/connector"
+              className={`transition-colors hover:text-cyan-400 ${isActive('/connector') ? 'text-cyan-500' : 'text-zinc-400'}`}
+            >
+              Car Connector
+            </Link>
           </nav>
         </div>
       </header>

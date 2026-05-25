@@ -10,6 +10,7 @@ const TrainerPage = React.lazy(() => import('./pages/TrainerPage').then((module)
 const DrivePage = React.lazy(() => import('./pages/DrivePage').then((module) => ({ default: module.DrivePage })));
 const CalibratePage = React.lazy(() => import('./pages/CalibratePage').then((module) => ({ default: module.CalibratePage })));
 const PilotArenaPage = React.lazy(() => import('./pages/PilotArenaPage').then((module) => ({ default: module.PilotArenaPage })));
+const CarConnectorPage = React.lazy(() => import('./pages/CarConnectorPage').then((module) => ({ default: module.CarConnectorPage })));
 
 type ErrorBoundaryProps = {
   children?: React.ReactNode;
@@ -84,6 +85,7 @@ function App() {
               <Route path="/drive" element={<DrivePage />} />
               <Route path="/calibrate" element={<CalibratePage />} />
               <Route path="/pilot" element={<PilotArenaPage />} />
+              <Route path="/connector" element={<CarConnectorPage />} />
             </Routes>
           </React.Suspense>
         </Layout>

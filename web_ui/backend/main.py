@@ -7,7 +7,7 @@ import sys
 # Add project root to sys.path to allow importing donkeycar if not installed
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-from routers import config, tub, trainer, drive, arena
+from routers import config, tub, trainer, drive, arena, connector
 
 app = FastAPI(title="Donkey Car Web UI API")
 
@@ -25,6 +25,7 @@ app.include_router(tub.router, prefix="/api/tub", tags=["tub"])
 app.include_router(trainer.router, prefix="/api/trainer", tags=["trainer"])
 app.include_router(drive.router, prefix="/api/drive", tags=["drive"])
 app.include_router(arena.router, prefix="/api/arena", tags=["arena"])
+app.include_router(connector.router, prefix="/api/connector", tags=["connector"])
 
 @app.get("/")
 async def root():

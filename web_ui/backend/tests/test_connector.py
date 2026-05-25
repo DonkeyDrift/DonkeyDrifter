@@ -93,6 +93,26 @@ def test_build_push_pilots_command_filters_selected_formats():
     assert command[-1] == "pi@car.local:~/mycar/models"
 
 
+def test_build_remote_drive_start_command_injects_bridge_url_safely():
+    from remote_car_client import ConnectorConfig, build_remote_drive_start_command
+
+    config = ConnectorConfig(host="car.local", user="pi", car_dir="~/mycar")
+
+    command = build_remote_drive_start_command(
+        config=config,
+        model_type="tflite_linear",
+        pilot="pilot.tflite",
+        bridge_server_url="ws://192.168.1.2:8000/api/drive/ws",
+    )
+
+    remote_command = command[-1]
+    assert command[:3] == ["ssh", "-p", "22"]
+    assert "DRIVE_API_SERVER_URL=ws://192.168.1.2:8000/api/drive/ws" in remote_command
+    assert "--type tflite_linear" in remote_command
+    assert "--model '~/mycar/models/pilot.tflite'" in remote_command
+    assert "echo $!" in remote_command
+
+
 def test_status_uses_remote_client(monkeypatch, tmp_path):
     client, connector = make_client(monkeypatch, tmp_path)
 

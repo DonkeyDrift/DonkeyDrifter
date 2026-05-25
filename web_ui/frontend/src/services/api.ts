@@ -155,6 +155,103 @@ export const createLogStream = (jobId: string) => {
 };
 
 // ------------------------------------------------------------------
+// Car Connector APIs
+// ------------------------------------------------------------------
+export interface ConnectorConfig {
+  host: string;
+  user: string;
+  port: number;
+  car_dir: string;
+  key_path?: string | null;
+}
+
+export type ConnectorJobState = 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+
+export interface ConnectorJobStatus {
+  id: string;
+  kind: string;
+  status: ConnectorJobState;
+  progress: number;
+  logs: string[];
+  error?: string | null;
+  started_at: string;
+  finished_at?: string | null;
+}
+
+export const getConnectorConfig = async () => {
+  const response = await api.get('/connector/config');
+  return response.data as { config: ConnectorConfig };
+};
+
+export const setConnectorConfig = async (config: ConnectorConfig) => {
+  const response = await api.post('/connector/config', config);
+  return response.data as { config: ConnectorConfig };
+};
+
+export const checkConnectorStatus = async () => {
+  const response = await api.post('/connector/status');
+  return response.data as { online: boolean; message: string };
+};
+
+export const listConnectorTubs = async () => {
+  const response = await api.get('/connector/remote/tubs');
+  return response.data as { items: string[] };
+};
+
+export const listConnectorModels = async () => {
+  const response = await api.get('/connector/remote/models');
+  return response.data as { items: string[] };
+};
+
+export const pullConnectorTub = async (payload: {
+  remote_tub: string;
+  local_data_path: string;
+  create_new_dir: boolean;
+  car_dir?: string;
+}) => {
+  const response = await api.post('/connector/tub/pull', payload);
+  return response.data as { job_id: string; status: ConnectorJobState };
+};
+
+export const pushConnectorPilots = async (payload: {
+  local_models_path: string;
+  formats: string[];
+  car_dir?: string;
+}) => {
+  const response = await api.post('/connector/pilots/push', payload);
+  return response.data as { job_id: string; status: ConnectorJobState };
+};
+
+export const startConnectorDrive = async (payload: {
+  model_type?: string;
+  pilot?: string;
+  bridge_server_url?: string;
+  car_dir?: string;
+}) => {
+  const response = await api.post('/connector/drive/start', payload);
+  return response.data as { job_id: string; status: ConnectorJobState };
+};
+
+export const stopConnectorDrive = async (payload: { pid?: number; car_dir?: string } = {}) => {
+  const response = await api.post('/connector/drive/stop', payload);
+  return response.data as { job_id: string; status: ConnectorJobState };
+};
+
+export const getConnectorJobStatus = async (jobId: string) => {
+  const response = await api.get(`/connector/jobs/${jobId}/status`);
+  return response.data as ConnectorJobStatus;
+};
+
+export const stopConnectorJob = async (jobId: string) => {
+  const response = await api.post(`/connector/jobs/${jobId}/stop`);
+  return response.data;
+};
+
+export const createConnectorJobStream = (jobId: string) => {
+  return new EventSource(`${API_URL}/connector/jobs/${jobId}/events`);
+};
+
+// ------------------------------------------------------------------
 // Pilot Arena APIs
 // ------------------------------------------------------------------
 export interface ArenaModel {
