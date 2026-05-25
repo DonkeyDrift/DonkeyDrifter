@@ -113,6 +113,7 @@ export const PilotArenaPage: React.FC = () => {
   const isPlayingRef = useRef(isPlaying);
   const isLoopingRef = useRef(isLooping);
   const evaluationTimerRef = useRef<number>();
+  const previewTimerRef = useRef<number>();
   const lastEvaluationAtRef = useRef(0);
 
   const currentRecord = records[currentIndex];
@@ -120,6 +121,7 @@ export const PilotArenaPage: React.FC = () => {
   const maxIndex = Math.max(0, records.length - 1);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
   const evaluationIntervalMs = Math.max(playbackSpeed, 100);
+  const previewIntervalMs = Math.max(evaluationIntervalMs, 500);
   const predictionOptions = useMemo(() => ({
     preTransformations,
     augmentations: [
@@ -265,9 +267,11 @@ export const PilotArenaPage: React.FC = () => {
         loading: false,
       };
       if (!options.playback || options.force) {
-        previewInFlightRef.current[viewer.localId] = true;
-        patch.previewUrl = getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions });
-        patch.previewLoading = true;
+        if (!previewInFlightRef.current[viewer.localId]) {
+          previewInFlightRef.current[viewer.localId] = true;
+          patch.previewUrl = getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions });
+          patch.previewLoading = true;
+        }
       }
       updateViewer(viewer.localId, patch);
     } catch (error) {
@@ -326,16 +330,21 @@ export const PilotArenaPage: React.FC = () => {
     });
   }, [refreshPrediction]);
 
+  const refreshLoadedPreviews = useCallback((recordIndex: number) => {
+    viewersRef.current.forEach((viewer) => {
+      if (!viewer.pilot || previewInFlightRef.current[viewer.localId]) return;
+      previewInFlightRef.current[viewer.localId] = true;
+      updateViewer(viewer.localId, {
+        previewUrl: getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions }),
+        previewLoading: true,
+      });
+    });
+  }, [configPath, predictionOptions, updateViewer]);
+
   const handlePreviewSettled = useCallback((localId: string) => {
     previewInFlightRef.current[localId] = false;
     updateViewer(localId, { previewLoading: false });
-    const pendingIndex = pendingViewerIndexRef.current[localId];
-    if (pendingIndex === undefined || !isPlayingRef.current) return;
-    const viewer = viewersRef.current.find((item) => item.localId === localId);
-    if (!viewer) return;
-    delete pendingViewerIndexRef.current[localId];
-    refreshPrediction(viewer, pendingIndex, { playback: true });
-  }, [refreshPrediction, updateViewer]);
+  }, [updateViewer]);
 
   useEffect(() => {
     if (isPlaying) return;
@@ -366,6 +375,26 @@ export const PilotArenaPage: React.FC = () => {
       }
     };
   }, [evaluateLoadedViewers, evaluationIntervalMs, isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const schedulePreview = () => {
+      previewTimerRef.current = window.setTimeout(() => {
+        refreshLoadedPreviews(currentIndexRef.current);
+        schedulePreview();
+      }, previewIntervalMs);
+    };
+
+    refreshLoadedPreviews(currentIndexRef.current);
+    schedulePreview();
+
+    return () => {
+      if (previewTimerRef.current !== undefined) {
+        window.clearTimeout(previewTimerRef.current);
+      }
+    };
+  }, [isPlaying, previewIntervalMs, refreshLoadedPreviews]);
 
   const toggleTransformation = (name: string, target: 'pre' | 'post') => {
     const setter = target === 'pre' ? setPreTransformations : setPostTransformations;
@@ -500,7 +529,9 @@ export const PilotArenaPage: React.FC = () => {
             </Button>
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(currentIndex + 1)} disabled={!hasRecords}>下一帧</Button>
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(maxIndex)} disabled={!hasRecords}>末帧</Button>
-            <span className="text-xs text-zinc-500">数值评估间隔 {Math.round(evaluationIntervalMs)}ms</span>
+            <span className="text-xs text-zinc-500">
+              数值 {Math.round(evaluationIntervalMs)}ms / 图片 {Math.round(previewIntervalMs)}ms
+            </span>
           </div>
           <div className="flex flex-wrap gap-3 text-sm text-zinc-400">
             <span>当前序号: {currentIndex}</span>
