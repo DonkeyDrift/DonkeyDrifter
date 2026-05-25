@@ -38,6 +38,8 @@ type ViewerState = {
   user?: { angle: number; throttle: number };
   prediction?: { angle: number; throttle: number };
   previewUrl?: string;
+  previewLoading?: boolean;
+  lastEvaluatedIndex?: number;
   loading: boolean;
   error?: string;
 };
@@ -79,6 +81,11 @@ export const PilotArenaPage: React.FC = () => {
   const records = useStore((state) => state.records);
   const currentIndex = useStore((state) => state.currentIndex);
   const setCurrentIndex = useStore((state) => state.setCurrentIndex);
+  const config = useStore((state) => state.config);
+  const isPlaying = useStore((state) => state.isPlaying);
+  const setIsPlaying = useStore((state) => state.setIsPlaying);
+  const isLooping = useStore((state) => state.isLooping);
+  const setIsLooping = useStore((state) => state.setIsLooping);
 
   const [modelTypes, setModelTypes] = useState<string[]>(['tflite_linear', 'linear']);
   const [columns, setColumns] = useState<1 | 2 | 3 | 4>(2);
@@ -97,9 +104,22 @@ export const PilotArenaPage: React.FC = () => {
   const [plotLoading, setPlotLoading] = useState(false);
   const viewersRef = useRef(viewers);
   const predictionRequestRef = useRef<Record<string, number>>({});
+  const predictionInFlightRef = useRef<Record<string, boolean>>({});
+  const previewInFlightRef = useRef<Record<string, boolean>>({});
+  const pendingViewerIndexRef = useRef<Record<string, number>>({});
+  const playbackFrameRef = useRef<number>();
+  const lastPlaybackTimeRef = useRef(0);
+  const currentIndexRef = useRef(currentIndex);
+  const isPlayingRef = useRef(isPlaying);
+  const isLoopingRef = useRef(isLooping);
+  const evaluationTimerRef = useRef<number>();
+  const lastEvaluationAtRef = useRef(0);
 
   const currentRecord = records[currentIndex];
   const hasRecords = records.length > 0;
+  const maxIndex = Math.max(0, records.length - 1);
+  const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
+  const evaluationIntervalMs = Math.max(playbackSpeed, 250);
   const predictionOptions = useMemo(() => ({
     preTransformations,
     augmentations: [
@@ -123,6 +143,64 @@ export const PilotArenaPage: React.FC = () => {
   useEffect(() => {
     viewersRef.current = viewers;
   }, [viewers]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    if (!isPlaying) {
+      lastPlaybackTimeRef.current = 0;
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    isLoopingRef.current = isLooping;
+  }, [isLooping]);
+
+  useEffect(() => {
+    if (!hasRecords && isPlaying) {
+      setIsPlaying(false);
+    }
+  }, [hasRecords, isPlaying, setIsPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying || !hasRecords) return;
+
+    const animate = (time: number) => {
+      if (!isPlayingRef.current) return;
+      if (lastPlaybackTimeRef.current === 0) {
+        lastPlaybackTimeRef.current = time;
+      }
+
+      const deltaTime = time - lastPlaybackTimeRef.current;
+      if (deltaTime >= playbackSpeed) {
+        const steps = Math.floor(deltaTime / playbackSpeed);
+        let nextIndex = currentIndexRef.current + steps;
+        if (nextIndex > maxIndex) {
+          if (isLoopingRef.current && records.length > 0) {
+            nextIndex %= records.length;
+          } else {
+            nextIndex = maxIndex;
+            setIsPlaying(false);
+          }
+        }
+        currentIndexRef.current = nextIndex;
+        setCurrentIndex(nextIndex);
+        lastPlaybackTimeRef.current = time - (deltaTime % playbackSpeed);
+      }
+
+      playbackFrameRef.current = window.requestAnimationFrame(animate);
+    };
+
+    playbackFrameRef.current = window.requestAnimationFrame(animate);
+    return () => {
+      if (playbackFrameRef.current !== undefined) {
+        window.cancelAnimationFrame(playbackFrameRef.current);
+      }
+    };
+  }, [hasRecords, isPlaying, maxIndex, playbackSpeed, records.length, setCurrentIndex, setIsPlaying]);
 
   useEffect(() => {
     listArenaModelTypes()
@@ -152,8 +230,20 @@ export const PilotArenaPage: React.FC = () => {
     }
   }, [configPath, updateViewer]);
 
-  const refreshPrediction = useCallback(async (viewer: ViewerState, recordIndex: number) => {
+  const refreshPrediction = useCallback(async (
+    viewer: ViewerState,
+    recordIndex: number,
+    options: { playback?: boolean; force?: boolean } = {},
+  ) => {
     if (!viewer.pilot || !hasRecords) return;
+    if (options.playback && !options.force) {
+      if (predictionInFlightRef.current[viewer.localId] || previewInFlightRef.current[viewer.localId]) {
+        pendingViewerIndexRef.current[viewer.localId] = recordIndex;
+        return;
+      }
+    }
+
+    predictionInFlightRef.current[viewer.localId] = true;
     const requestId = (predictionRequestRef.current[viewer.localId] ?? 0) + 1;
     predictionRequestRef.current[viewer.localId] = requestId;
     updateViewer(viewer.localId, { loading: true, error: undefined });
@@ -168,15 +258,20 @@ export const PilotArenaPage: React.FC = () => {
         blur: predictionOptions.blur,
       });
       if (predictionRequestRef.current[viewer.localId] !== requestId) return;
+      previewInFlightRef.current[viewer.localId] = true;
       updateViewer(viewer.localId, {
         user: data.user,
         prediction: data.pilot,
         previewUrl: getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions }),
+        previewLoading: true,
+        lastEvaluatedIndex: recordIndex,
         loading: false,
       });
     } catch (error) {
       if (predictionRequestRef.current[viewer.localId] !== requestId) return;
       updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
+    } finally {
+      predictionInFlightRef.current[viewer.localId] = false;
     }
   }, [configPath, hasRecords, predictionOptions, updateViewer]);
 
@@ -210,24 +305,79 @@ export const PilotArenaPage: React.FC = () => {
       }
     }
     delete predictionRequestRef.current[viewer.localId];
+    delete predictionInFlightRef.current[viewer.localId];
+    delete previewInFlightRef.current[viewer.localId];
+    delete pendingViewerIndexRef.current[viewer.localId];
     setViewers((items) => items.filter((item) => item.localId !== viewer.localId));
   }, []);
 
+  const evaluateLoadedViewers = useCallback((recordIndex: number, playback = false) => {
+    viewersRef.current.forEach((viewer) => {
+      if (viewer.pilot) {
+        refreshPrediction(viewer, recordIndex, { playback });
+      }
+    });
+  }, [refreshPrediction]);
+
+  const handlePreviewSettled = useCallback((localId: string) => {
+    previewInFlightRef.current[localId] = false;
+    updateViewer(localId, { previewLoading: false });
+    const pendingIndex = pendingViewerIndexRef.current[localId];
+    if (pendingIndex === undefined || !isPlayingRef.current) return;
+    const viewer = viewersRef.current.find((item) => item.localId === localId);
+    if (!viewer) return;
+    delete pendingViewerIndexRef.current[localId];
+    refreshPrediction(viewer, pendingIndex, { playback: true });
+  }, [refreshPrediction, updateViewer]);
+
   useEffect(() => {
+    if (isPlaying) return;
     const timer = window.setTimeout(() => {
-      viewersRef.current.forEach((viewer) => {
-        if (viewer.pilot) {
-          refreshPrediction(viewer, currentIndex);
-        }
-      });
+      evaluateLoadedViewers(currentIndex, false);
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [currentIndex, refreshPrediction]);
+  }, [currentIndex, evaluateLoadedViewers, isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const scheduleEvaluation = (delay: number) => {
+      evaluationTimerRef.current = window.setTimeout(() => {
+        lastEvaluationAtRef.current = window.performance.now();
+        evaluateLoadedViewers(currentIndexRef.current, true);
+        scheduleEvaluation(evaluationIntervalMs);
+      }, delay);
+    };
+
+    const now = window.performance.now();
+    const elapsed = now - lastEvaluationAtRef.current;
+    scheduleEvaluation(Math.max(0, evaluationIntervalMs - elapsed));
+
+    return () => {
+      if (evaluationTimerRef.current !== undefined) {
+        window.clearTimeout(evaluationTimerRef.current);
+      }
+    };
+  }, [evaluateLoadedViewers, evaluationIntervalMs, isPlaying]);
 
   const toggleTransformation = (name: string, target: 'pre' | 'post') => {
     const setter = target === 'pre' ? setPreTransformations : setPostTransformations;
     setter((items) => (items.includes(name) ? items.filter((item) => item !== name) : [...items, name]));
   };
+
+  const jumpToRecord = useCallback((recordIndex: number) => {
+    setIsPlaying(false);
+    setCurrentIndex(Math.max(0, Math.min(maxIndex, recordIndex)));
+  }, [maxIndex, setCurrentIndex, setIsPlaying]);
+
+  const togglePlayback = useCallback(() => {
+    if (!hasRecords) return;
+    if (!isPlaying && currentIndex >= maxIndex && !isLooping) {
+      setCurrentIndex(0);
+      currentIndexRef.current = 0;
+    }
+    setIsPlaying(!isPlaying);
+  }, [currentIndex, hasRecords, isLooping, isPlaying, maxIndex, setCurrentIndex, setIsPlaying]);
 
   const loadedPilots = viewers.filter((viewer) => viewer.pilot);
 
@@ -328,12 +478,23 @@ export const PilotArenaPage: React.FC = () => {
           <input
             type="range"
             min="0"
-            max={Math.max(0, records.length - 1)}
-            value={Math.min(currentIndex, Math.max(0, records.length - 1))}
+            max={maxIndex}
+            value={Math.min(currentIndex, maxIndex)}
             disabled={!hasRecords}
-            onChange={(event) => setCurrentIndex(Number(event.target.value))}
+            onChange={(event) => jumpToRecord(Number(event.target.value))}
             className="w-full accent-cyan-500"
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => jumpToRecord(0)} disabled={!hasRecords}>首帧</Button>
+            <Button variant="secondary" size="sm" onClick={() => jumpToRecord(currentIndex - 1)} disabled={!hasRecords}>上一帧</Button>
+            <Button size="sm" onClick={togglePlayback} disabled={!hasRecords}>{isPlaying ? '暂停' : '播放'}</Button>
+            <Button variant={isLooping ? 'primary' : 'secondary'} size="sm" onClick={() => setIsLooping(!isLooping)} disabled={!hasRecords}>
+              {isLooping ? '循环' : '单次'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => jumpToRecord(currentIndex + 1)} disabled={!hasRecords}>下一帧</Button>
+            <Button variant="secondary" size="sm" onClick={() => jumpToRecord(maxIndex)} disabled={!hasRecords}>末帧</Button>
+            <span className="text-xs text-zinc-500">评估间隔 {Math.round(evaluationIntervalMs)}ms</span>
+          </div>
           <div className="flex flex-wrap gap-3 text-sm text-zinc-400">
             <span>当前序号: {currentIndex}</span>
             <span>Record index: {currentRecord?._index ?? '--'}</span>
@@ -526,7 +687,13 @@ export const PilotArenaPage: React.FC = () => {
 
               <div className="aspect-video overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 flex items-center justify-center">
                 {viewer.previewUrl ? (
-                  <img src={viewer.previewUrl} alt="Pilot preview" className="h-full w-full object-contain" />
+                  <img
+                    src={viewer.previewUrl}
+                    alt="Pilot preview"
+                    className="h-full w-full object-contain"
+                    onLoad={() => handlePreviewSettled(viewer.localId)}
+                    onError={() => handlePreviewSettled(viewer.localId)}
+                  />
                 ) : (
                   <span className="text-sm text-zinc-500">加载模型后显示叠线预览</span>
                 )}
