@@ -139,6 +139,7 @@ export const PilotArenaPage: React.FC = () => {
   const [plotPoints, setPlotPoints] = useState<ArenaPredictionPoint[]>([]);
   const [plotError, setPlotError] = useState<string | null>(null);
   const [plotLoading, setPlotLoading] = useState(false);
+  const [imageProcessingCollapsed, setImageProcessingCollapsed] = useState(true);
   const [displayRecordIndex, setDisplayRecordIndex] = useState(currentIndex);
   const viewersRef = useRef(viewers);
   const predictionRequestRef = useRef<Record<string, number>>({});
@@ -777,121 +778,6 @@ export const PilotArenaPage: React.FC = () => {
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>图像处理</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <label className="space-y-2 text-sm text-zinc-300">
-              <span className="flex items-center gap-2">
-                <input type="checkbox" checked={brightnessEnabled} onChange={(event) => setBrightnessEnabled(event.target.checked)} />
-                Brightness {brightness.toFixed(2)}
-              </span>
-              <input
-                type="range"
-                min="-0.5"
-                max="0.5"
-                step="0.01"
-                value={brightness}
-                disabled={!brightnessEnabled}
-                onChange={(event) => setBrightness(Number(event.target.value))}
-                className="w-full accent-cyan-500"
-              />
-            </label>
-            <label className="space-y-2 text-sm text-zinc-300">
-              <span className="flex items-center gap-2">
-                <input type="checkbox" checked={blurEnabled} onChange={(event) => setBlurEnabled(event.target.checked)} />
-                Blur {blur.toFixed(2)}
-              </span>
-              <input
-                type="range"
-                min="0.1"
-                max="3"
-                step="0.1"
-                value={blur}
-                disabled={!blurEnabled}
-                onChange={(event) => setBlur(Number(event.target.value))}
-                className="w-full accent-cyan-500"
-              />
-            </label>
-          </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div>
-              <div className="mb-2 text-sm font-medium text-zinc-300">Pre Transformations</div>
-              <div className="flex flex-wrap gap-2">
-                {TRANSFORMATION_OPTIONS.map((name) => (
-                  <button
-                    key={`pre-${name}`}
-                    type="button"
-                    onClick={() => toggleTransformation(name, 'pre')}
-                    className={`rounded-md border px-2 py-1 text-xs ${preTransformations.includes(name) ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-zinc-700 bg-zinc-950 text-zinc-400'}`}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="mb-2 text-sm font-medium text-zinc-300">Post Transformations</div>
-              <div className="flex flex-wrap gap-2">
-                {TRANSFORMATION_OPTIONS.map((name) => (
-                  <button
-                    key={`post-${name}`}
-                    type="button"
-                    onClick={() => toggleTransformation(name, 'post')}
-                    className={`rounded-md border px-2 py-1 text-xs ${postTransformations.includes(name) ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-zinc-700 bg-zinc-950 text-zinc-400'}`}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Tub Plot</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_140px_auto]">
-            <select
-              value={plotPilotId}
-              onChange={(event) => setPlotPilotId(event.target.value)}
-              className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-            >
-              <option value="">选择已加载 Pilot</option>
-              {loadedPilots.map((viewer) => viewer.pilot && (
-                <option key={viewer.pilot.id} value={viewer.pilot.id}>{viewer.pilot.name}</option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min="1"
-              max={Math.max(1, records.length)}
-              value={plotLimit}
-              onChange={(event) => setPlotLimit(Number(event.target.value))}
-              className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-            />
-            <Button onClick={loadPlot} disabled={plotLoading || !plotPilotId || !hasRecords}>
-              {plotLoading ? '生成中...' : '生成曲线'}
-            </Button>
-          </div>
-          {plotError && (
-            <div className="rounded-md border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-200">
-              {plotError}
-            </div>
-          )}
-          {plotPoints.length > 0 && (
-            <div className="rounded-md border border-zinc-800 bg-zinc-950 p-4">
-              <Line data={plotData} options={{ responsive: true, plugins: { legend: { labels: { color: '#d4d4d8' } } }, scales: { x: { ticks: { color: '#a1a1aa' } }, y: { ticks: { color: '#a1a1aa' } } } }} />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       <div className={`grid gap-4 ${gridClass}`}>
         {viewers.map((viewer) => (
           <Card key={viewer.localId}>
@@ -996,6 +882,126 @@ export const PilotArenaPage: React.FC = () => {
           </Card>
         ))}
       </div>
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle>图像处理</CardTitle>
+          <Button variant="secondary" size="sm" onClick={() => setImageProcessingCollapsed((collapsed) => !collapsed)}>
+            {imageProcessingCollapsed ? '展开' : '折叠'}
+          </Button>
+        </CardHeader>
+        {!imageProcessingCollapsed && (
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <label className="space-y-2 text-sm text-zinc-300">
+                <span className="flex items-center gap-2">
+                  <input type="checkbox" checked={brightnessEnabled} onChange={(event) => setBrightnessEnabled(event.target.checked)} />
+                  Brightness {brightness.toFixed(2)}
+                </span>
+                <input
+                  type="range"
+                  min="-0.5"
+                  max="0.5"
+                  step="0.01"
+                  value={brightness}
+                  disabled={!brightnessEnabled}
+                  onChange={(event) => setBrightness(Number(event.target.value))}
+                  className="w-full accent-cyan-500"
+                />
+              </label>
+              <label className="space-y-2 text-sm text-zinc-300">
+                <span className="flex items-center gap-2">
+                  <input type="checkbox" checked={blurEnabled} onChange={(event) => setBlurEnabled(event.target.checked)} />
+                  Blur {blur.toFixed(2)}
+                </span>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="3"
+                  step="0.1"
+                  value={blur}
+                  disabled={!blurEnabled}
+                  onChange={(event) => setBlur(Number(event.target.value))}
+                  className="w-full accent-cyan-500"
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div>
+                <div className="mb-2 text-sm font-medium text-zinc-300">Pre Transformations</div>
+                <div className="flex flex-wrap gap-2">
+                  {TRANSFORMATION_OPTIONS.map((name) => (
+                    <button
+                      key={`pre-${name}`}
+                      type="button"
+                      onClick={() => toggleTransformation(name, 'pre')}
+                      className={`rounded-md border px-2 py-1 text-xs ${preTransformations.includes(name) ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-zinc-700 bg-zinc-950 text-zinc-400'}`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 text-sm font-medium text-zinc-300">Post Transformations</div>
+                <div className="flex flex-wrap gap-2">
+                  {TRANSFORMATION_OPTIONS.map((name) => (
+                    <button
+                      key={`post-${name}`}
+                      type="button"
+                      onClick={() => toggleTransformation(name, 'post')}
+                      className={`rounded-md border px-2 py-1 text-xs ${postTransformations.includes(name) ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-zinc-700 bg-zinc-950 text-zinc-400'}`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tub Plot</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_140px_auto]">
+            <select
+              value={plotPilotId}
+              onChange={(event) => setPlotPilotId(event.target.value)}
+              className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+            >
+              <option value="">选择已加载 Pilot</option>
+              {loadedPilots.map((viewer) => viewer.pilot && (
+                <option key={viewer.pilot.id} value={viewer.pilot.id}>{viewer.pilot.name}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              max={Math.max(1, records.length)}
+              value={plotLimit}
+              onChange={(event) => setPlotLimit(Number(event.target.value))}
+              className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+            />
+            <Button onClick={loadPlot} disabled={plotLoading || !plotPilotId || !hasRecords}>
+              {plotLoading ? '生成中...' : '生成曲线'}
+            </Button>
+          </div>
+          {plotError && (
+            <div className="rounded-md border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-200">
+              {plotError}
+            </div>
+          )}
+          {plotPoints.length > 0 && (
+            <div className="rounded-md border border-zinc-800 bg-zinc-950 p-4">
+              <Line data={plotData} options={{ responsive: true, plugins: { legend: { labels: { color: '#d4d4d8' } } }, scales: { x: { ticks: { color: '#a1a1aa' } }, y: { ticks: { color: '#a1a1aa' } } } }} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
