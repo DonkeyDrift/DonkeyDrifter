@@ -1,20 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { AxiosError } from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { useStore } from '../store/useStore';
-import { loadConfig, selectDirectory, loadTub } from '../services/api';
+import { loadConfig, selectDirectory, loadTub, getApiErrorMessage } from '../services/api';
 import { FolderCog, FolderOpen } from 'lucide-react';
-
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error && typeof error === 'object' && 'response' in error) {
-    const response = (error as AxiosError<{ detail?: string }>).response;
-    const detail = response?.data?.detail;
-    if (detail) return detail;
-  }
-  return fallback;
-};
 
 export const ConfigLoader: React.FC = () => {
   const { configPath, setConfig, setError, setLoading, config, setTub } = useStore();
@@ -55,13 +45,14 @@ export const ConfigLoader: React.FC = () => {
         await autoLoadTub(selectData.path);
       }
     } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Failed to select or load config'));
+      setError(getApiErrorMessage(err, 'Failed to select or load config'));
     } finally {
       setLoading(false);
     }
   }, [setConfig, setError, setLoading, autoLoadTub]);
 
   const handleManualLoad = useCallback(async () => {
+    if (!path.trim()) return;
     setLoading(true);
     try {
       const data = await loadConfig(path);
@@ -80,7 +71,10 @@ export const ConfigLoader: React.FC = () => {
         await autoLoadTub(path);
       }
     } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Failed to load config'));
+      const message = getApiErrorMessage(err, 'Failed to load config');
+      if (message !== 'Directory not found' && message !== 'config.py not found in directory') {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -104,7 +98,7 @@ export const ConfigLoader: React.FC = () => {
       <CardContent>
         <div className="flex flex-col gap-3">
           <Input
-            placeholder="Config path, e.g. /home/dkc/projects/mycar"
+            placeholder="Config path, e.g. ~/mycar or /home/dkc/projects/mycar"
             value={path}
             onChange={(e) => setPath(e.target.value)}
             aria-label="Config path input field"

@@ -114,8 +114,8 @@ export const useStore = create<AppState>()(
   persist(
     (set) => ({
       config: null,
-      configPath: '/home/dkc/projects/mycar',
-      tubPath: '/home/dkc/projects/mycar/data',
+      configPath: '',
+      tubPath: '',
       originalRecords: [],
       records: [],
       totalRecords: 0,
