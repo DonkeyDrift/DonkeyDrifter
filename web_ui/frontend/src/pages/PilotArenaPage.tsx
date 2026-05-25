@@ -129,7 +129,9 @@ export const PilotArenaPage: React.FC = () => {
   const viewersRef = useRef(viewers);
   const predictionRequestRef = useRef<Record<string, number>>({});
   const predictionInFlightRef = useRef<Record<string, boolean>>({});
+  const predictionInFlightCountRef = useRef<Record<string, number>>({});
   const pendingViewerIndexRef = useRef<Record<string, number>>({});
+  const predictionCacheRef = useRef<Record<string, Record<number, { user: { angle: number; throttle: number }; pilot: { angle: number; throttle: number } }>>>({});
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const playbackFpsStartRef = useRef<Record<string, number>>({});
@@ -149,7 +151,8 @@ export const PilotArenaPage: React.FC = () => {
   const hasRecords = records.length > 0;
   const maxIndex = Math.max(0, records.length - 1);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
-  const evaluationIntervalMs = Math.max(playbackSpeed, 100);
+  const evaluationIntervalMs = playbackSpeed;
+  const maxInferenceConcurrency = Math.max(2, Math.min(4, Number(config?.ARENA_INFERENCE_CONCURRENCY) || 2));
   const predictionOptions = useMemo(() => ({
     preTransformations,
     augmentations: [
@@ -256,8 +259,9 @@ export const PilotArenaPage: React.FC = () => {
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(imageToDraw, 0, 0);
-      drawControlLine(ctx, viewer.user?.angle, viewer.user?.throttle, '#22c55e');
-      drawControlLine(ctx, viewer.prediction?.angle, viewer.prediction?.throttle, '#3b82f6');
+      const cachedPrediction = predictionCacheRef.current[viewer.localId]?.[recordIndex];
+      drawControlLine(ctx, cachedPrediction?.user.angle ?? viewer.user?.angle, cachedPrediction?.user.throttle ?? viewer.user?.throttle, '#22c55e');
+      drawControlLine(ctx, cachedPrediction?.pilot.angle ?? viewer.prediction?.angle, cachedPrediction?.pilot.throttle ?? viewer.prediction?.throttle, '#3b82f6');
       updateFps(viewer.localId, 'playback');
     };
     if (!image) {
@@ -338,12 +342,14 @@ export const PilotArenaPage: React.FC = () => {
     options: { playback?: boolean; force?: boolean } = {},
   ) => {
     if (!viewer.pilot || !hasRecords) return;
-    if (options.playback && !options.force && predictionInFlightRef.current[viewer.localId]) {
+    const inFlightCount = predictionInFlightCountRef.current[viewer.localId] ?? 0;
+    if (options.playback && !options.force && inFlightCount >= maxInferenceConcurrency) {
       pendingViewerIndexRef.current[viewer.localId] = recordIndex;
       return;
     }
 
     predictionInFlightRef.current[viewer.localId] = true;
+    predictionInFlightCountRef.current[viewer.localId] = inFlightCount + 1;
     const requestId = (predictionRequestRef.current[viewer.localId] ?? 0) + 1;
     predictionRequestRef.current[viewer.localId] = requestId;
     if (!options.playback) {
@@ -359,8 +365,19 @@ export const PilotArenaPage: React.FC = () => {
         brightness: predictionOptions.brightness,
         blur: predictionOptions.blur,
       });
-      if (predictionRequestRef.current[viewer.localId] !== requestId) return;
+      if (!options.playback && predictionRequestRef.current[viewer.localId] !== requestId) return;
       updateFps(viewer.localId, 'inference');
+      predictionCacheRef.current[viewer.localId] = {
+        ...(predictionCacheRef.current[viewer.localId] ?? {}),
+        [recordIndex]: { user: data.user, pilot: data.pilot },
+      };
+      const cachedIndexes = Object.keys(predictionCacheRef.current[viewer.localId]).map(Number).sort((a, b) => a - b);
+      while (cachedIndexes.length > 300) {
+        const indexToDelete = cachedIndexes.shift();
+        if (indexToDelete !== undefined) {
+          delete predictionCacheRef.current[viewer.localId][indexToDelete];
+        }
+      }
       const patch: Partial<ViewerState> = {
         user: data.user,
         prediction: data.pilot,
@@ -369,16 +386,20 @@ export const PilotArenaPage: React.FC = () => {
       };
       updateViewer(viewer.localId, patch);
     } catch (error) {
-      if (predictionRequestRef.current[viewer.localId] !== requestId) return;
-      updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
+      if (!options.playback && predictionRequestRef.current[viewer.localId] !== requestId) return;
+      if (!options.playback) {
+        updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
+      }
     } finally {
-      predictionInFlightRef.current[viewer.localId] = false;
+      const nextInFlightCount = Math.max(0, (predictionInFlightCountRef.current[viewer.localId] ?? 1) - 1);
+      predictionInFlightCountRef.current[viewer.localId] = nextInFlightCount;
+      predictionInFlightRef.current[viewer.localId] = nextInFlightCount > 0;
       const pendingIndex = pendingViewerIndexRef.current[viewer.localId];
       if (options.playback && pendingIndex === recordIndex) {
         delete pendingViewerIndexRef.current[viewer.localId];
       }
     }
-  }, [configPath, hasRecords, predictionOptions, updateFps, updateViewer]);
+  }, [configPath, hasRecords, maxInferenceConcurrency, predictionOptions, updateFps, updateViewer]);
 
   const loadViewer = useCallback(async (viewer: ViewerState) => {
     if (!viewer.modelPath) {
@@ -411,16 +432,23 @@ export const PilotArenaPage: React.FC = () => {
     }
     delete predictionRequestRef.current[viewer.localId];
     delete predictionInFlightRef.current[viewer.localId];
+    delete predictionInFlightCountRef.current[viewer.localId];
     delete pendingViewerIndexRef.current[viewer.localId];
+    delete predictionCacheRef.current[viewer.localId];
     delete canvasRefs.current[viewer.localId];
     setViewers((items) => items.filter((item) => item.localId !== viewer.localId));
   }, []);
 
   const evaluateLoadedViewers = useCallback((recordIndex: number, playback = false) => {
     viewersRef.current.forEach((viewer) => {
-      if (viewer.pilot) {
-        refreshPrediction(viewer, recordIndex, { playback });
+      if (!viewer.pilot) return;
+      const pendingIndex = pendingViewerIndexRef.current[viewer.localId];
+      const targetIndex = playback && pendingIndex !== undefined ? pendingIndex : recordIndex;
+      if (predictionCacheRef.current[viewer.localId]?.[targetIndex]) return;
+      if (pendingIndex === targetIndex) {
+        delete pendingViewerIndexRef.current[viewer.localId];
       }
+      refreshPrediction(viewer, targetIndex, { playback });
     });
   }, [refreshPrediction]);
 
@@ -588,7 +616,7 @@ export const PilotArenaPage: React.FC = () => {
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(currentIndex + 1)} disabled={!hasRecords}>下一帧</Button>
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(maxIndex)} disabled={!hasRecords}>末帧</Button>
             <span className="text-xs text-zinc-500">
-              播放 {Math.round(playbackSpeed)}ms / 推理 {Math.round(evaluationIntervalMs)}ms
+              播放 {Math.round(playbackSpeed)}ms / 推理目标 {Math.round(evaluationIntervalMs)}ms / 并发 {maxInferenceConcurrency}
             </span>
           </div>
           <div className="flex flex-wrap gap-3 text-sm text-zinc-400">
