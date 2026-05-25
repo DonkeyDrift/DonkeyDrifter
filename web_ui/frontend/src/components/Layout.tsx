@@ -30,6 +30,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             >
               Drive
             </Link>
+            <Link
+              to="/calibrate"
+              className={`transition-colors hover:text-cyan-400 ${isActive('/calibrate') ? 'text-cyan-500' : 'text-zinc-400'}`}
+            >
+              Calibrate
+            </Link>
             <div className="relative h-full flex items-center group">
               <span className="transition-colors hover:text-cyan-400 text-zinc-400 cursor-not-allowed">Pilot Arena</span>
               <div className="absolute top-full left-0 mt-3 px-2 py-1 bg-zinc-900 text-xs text-white rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-[100] shadow-xl border border-zinc-700">

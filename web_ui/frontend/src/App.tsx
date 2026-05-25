@@ -6,6 +6,7 @@ import { TubNavigator } from './components/TubNavigator';
 import { TubEditor } from './components/TubEditor';
 import { TrainerPage } from './pages/TrainerPage';
 import { DrivePage } from './pages/DrivePage';
+import { CalibratePage } from './pages/CalibratePage';
 import { useStore } from './store/useStore';
 
 type ErrorBoundaryProps = {
@@ -78,6 +79,7 @@ function App() {
             <Route path="/" element={<TubManagerPage />} />
             <Route path="/trainer" element={<TrainerPage />} />
             <Route path="/drive" element={<DrivePage />} />
+            <Route path="/calibrate" element={<CalibratePage />} />
           </Routes>
         </Layout>
       </ErrorBoundary>

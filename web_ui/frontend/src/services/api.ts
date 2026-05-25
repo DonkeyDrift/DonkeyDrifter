@@ -100,6 +100,11 @@ export const loadModelToCar = async (modelPath: string, workingDir?: string) => 
   return response.data;
 };
 
+export const sendCalibrate = async (params: Record<string, number | boolean>) => {
+  const response = await api.post('/drive/calibrate', params);
+  return response.data;
+};
+
 export const listBackups = async (workingDir?: string) => {
   const response = await api.get('/trainer/backups', { params: workingDir ? { working_dir: workingDir } : {} });
   return response.data;
