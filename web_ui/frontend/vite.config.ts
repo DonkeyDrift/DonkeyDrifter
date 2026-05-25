@@ -17,6 +17,16 @@ export default defineConfig({
   },
   build: {
     sourcemap: 'hidden',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'chart-vendor': ['chart.js', 'react-chartjs-2'],
+          'ui-vendor': ['lucide-react'],
+          'state-vendor': ['axios', 'zustand'],
+        },
+      },
+    },
   },
   plugins: [
     react({
