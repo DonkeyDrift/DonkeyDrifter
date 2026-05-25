@@ -75,7 +75,7 @@ const TRANSFORMATION_OPTIONS = [
 
 const ARENA_IMAGE_CACHE_LIMIT = 40;
 const ARENA_IMAGE_MAX_IN_FLIGHT = 1;
-const ARENA_IMAGE_MIN_INTERVAL_MS = 120;
+const ARENA_IMAGE_MIN_INTERVAL_MS = 16;
 const ARENA_PREDICTION_MIN_INTERVAL_MS = 250;
 const ARENA_BATCH_PREFETCH_MIN_INTERVAL_MS = 1000;
 
@@ -162,6 +162,7 @@ export const PilotArenaPage: React.FC = () => {
   const playbackFrameRef = useRef<number>();
   const lastPlaybackTimeRef = useRef(0);
   const lastPlaybackSyncTimeRef = useRef(0);
+  const lastDisplaySyncTimeRef = useRef(0);
   const currentIndexRef = useRef(currentIndex);
   const isPlayingRef = useRef(isPlaying);
   const isLoopingRef = useRef(isLooping);
@@ -259,7 +260,7 @@ export const PilotArenaPage: React.FC = () => {
     }
   }, [updateViewer]);
 
-  const cacheImage = useCallback((imageUrl: string) => {
+  const cacheImage = useCallback((imageUrl: string, onLoad?: (image: HTMLImageElement) => void) => {
     const cachedImage = imageCacheRef.current.get(imageUrl);
     if (cachedImage) {
       imageCacheRef.current.delete(imageUrl);
@@ -276,6 +277,7 @@ export const PilotArenaPage: React.FC = () => {
     imageInFlightRef.current.add(imageUrl);
     image.onload = () => {
       imageInFlightRef.current.delete(imageUrl);
+      onLoad?.(image);
     };
     image.onerror = () => {
       imageInFlightRef.current.delete(imageUrl);
@@ -330,8 +332,6 @@ export const PilotArenaPage: React.FC = () => {
     const imagePath = getRecordImagePath(record);
     if (!canvas || !imagePath) return;
     const imageUrl = getImageUrl(imagePath);
-    const image = cacheImage(imageUrl);
-    if (!image) return;
     const draw = (imageToDraw: HTMLImageElement) => {
       if (imageToDraw.naturalWidth === 0) return;
       const ctx = canvas.getContext('2d');
@@ -347,7 +347,12 @@ export const PilotArenaPage: React.FC = () => {
       drawControlLine(ctx, userControl?.angle, userControl?.throttle, '#22c55e');
       drawControlLine(ctx, cachedPrediction?.pilot.angle ?? viewer.prediction?.angle, cachedPrediction?.pilot.throttle ?? viewer.prediction?.throttle, '#3b82f6');
     };
-    if (image.complete) {
+    const image = cacheImage(imageUrl, (loadedImage) => {
+      if (currentIndexRef.current === recordIndex) {
+        draw(loadedImage);
+      }
+    });
+    if (image?.complete) {
       draw(image);
     }
   }, [cacheImage, records]);
@@ -378,10 +383,13 @@ export const PilotArenaPage: React.FC = () => {
         }
         currentIndexRef.current = nextIndex;
         if (advancedFrames > 0) {
-          setDisplayRecordIndex(nextIndex);
           viewersRef.current.forEach((viewer) => updateFps(viewer.localId, 'playback', advancedFrames));
         }
-        if (time - lastPlaybackSyncTimeRef.current > 30 || nextIndex === maxIndex) {
+        if (time - lastDisplaySyncTimeRef.current > 120 || nextIndex === maxIndex) {
+          setDisplayRecordIndex(nextIndex);
+          lastDisplaySyncTimeRef.current = time;
+        }
+        if (time - lastPlaybackSyncTimeRef.current > 250 || nextIndex === maxIndex) {
           setCurrentIndex(nextIndex);
           lastPlaybackSyncTimeRef.current = time;
         }
