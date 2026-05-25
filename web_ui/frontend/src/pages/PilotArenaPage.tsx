@@ -667,6 +667,19 @@ export const PilotArenaPage: React.FC = () => {
     setIsPlaying(!isPlaying);
   }, [currentIndex, hasRecords, isLooping, isPlaying, maxIndex, setCurrentIndex, setIsPlaying]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, button, [contenteditable="true"]')) return;
+      if (event.code !== 'Space') return;
+      event.preventDefault();
+      togglePlayback();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePlayback]);
+
   const loadedPilots = viewers.filter((viewer) => viewer.pilot);
 
   const loadPlot = async () => {
