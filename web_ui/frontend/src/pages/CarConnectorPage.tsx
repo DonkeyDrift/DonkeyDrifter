@@ -110,9 +110,9 @@ export const CarConnectorPage: React.FC = () => {
       const result = await checkConnectorStatus();
       setOnline(result.online);
       setStatusMessage(result.message);
-    } catch {
+    } catch (error) {
       setOnline(false);
-      setStatusMessage('连接检查失败');
+      setStatusMessage(getApiErrorMessage(error, '连接检查失败'));
     } finally {
       setChecking(false);
     }
@@ -127,8 +127,8 @@ export const CarConnectorPage: React.FC = () => {
       ]);
       setTubs(tubResult.items);
       setRemoteModels(modelResult.items);
-    } catch {
-      // 连接可能未配置
+    } catch (error) {
+      setStatusMessage(getApiErrorMessage(error, '远端列表加载失败'));
     }
   }, []);
 
@@ -152,6 +152,9 @@ export const CarConnectorPage: React.FC = () => {
           setJobLogs((prev) => [...prev.slice(-199), data.line || '']);
         } else if (data.type === 'status' && data.status) {
           setJobStatus((prev) => (prev ? { ...prev, status: data.status!, error: data.error } : null));
+          if (data.status === 'completed') {
+            setJobProgress(100);
+          }
           if (['completed', 'failed', 'stopped'].includes(data.status)) {
             es.close();
             eventSourceRef.current = null;
@@ -165,16 +168,22 @@ export const CarConnectorPage: React.FC = () => {
       // 回退轮询
       getConnectorJobStatus(jobId).then((status) => {
         setJobStatus(status);
+        setJobProgress(status.progress);
+        setJobLogs(status.logs);
         if (!['completed', 'failed', 'stopped'].includes(status.status)) {
           const timer = setInterval(async () => {
             const s = await getConnectorJobStatus(jobId);
             setJobStatus(s);
+            setJobProgress(s.progress);
+            setJobLogs(s.logs);
             if (['completed', 'failed', 'stopped'].includes(s.status)) {
               clearInterval(timer);
             }
           }, 2000);
         }
-      }).catch(() => {});
+      }).catch((error) => {
+        setJobLogs([`任务状态读取失败: ${getApiErrorMessage(error)}`]);
+      });
     };
   }, []);
 

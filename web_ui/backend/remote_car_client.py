@@ -148,7 +148,12 @@ class RemoteCarClient:
 
     def check_connection(self) -> tuple[bool, str]:
         command = [*build_ssh_base(self.config), "date"]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=8, check=False)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=8, check=False)
+        except FileNotFoundError:
+            return False, "ssh 命令不可用，请先安装 OpenSSH 客户端"
+        except subprocess.TimeoutExpired:
+            return False, f"连接超时: {self.config.host}"
         if result.returncode == 0:
             return True, f"已连接到 {self.config.host}"
         message = (result.stderr or result.stdout or "SSH 连接失败").strip()
@@ -157,7 +162,12 @@ class RemoteCarClient:
     def list_remote_dir(self, path: str) -> list[str]:
         remote_path = validate_remote_path(path)
         command = [*build_ssh_base(self.config), f"ls -1 {shlex.quote(remote_path)}"]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=15, check=False)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=15, check=False)
+        except FileNotFoundError as exc:
+            raise RuntimeError("ssh 命令不可用，请先安装 OpenSSH 客户端") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"读取远端目录超时: {remote_path}") from exc
         if result.returncode != 0:
             raise RuntimeError((result.stderr or result.stdout or "远端目录读取失败").strip())
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]

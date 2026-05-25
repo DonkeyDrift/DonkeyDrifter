@@ -113,6 +113,46 @@ def test_build_remote_drive_start_command_injects_bridge_url_safely():
     assert "echo $!" in remote_command
 
 
+def test_invalid_config_file_returns_400(monkeypatch, tmp_path):
+    client, _ = make_client(monkeypatch, tmp_path)
+    (tmp_path / "connector.json").write_text("{bad json")
+
+    response = client.get("/api/connector/config")
+
+    assert response.status_code == 400
+    assert "Connector 配置文件无效" in response.json()["detail"]
+
+
+def test_connection_status_handles_missing_ssh(monkeypatch):
+    import subprocess
+    from remote_car_client import ConnectorConfig, RemoteCarClient
+
+    def raise_missing(*args, **kwargs):
+        raise FileNotFoundError("ssh")
+
+    monkeypatch.setattr(subprocess, "run", raise_missing)
+
+    online, message = RemoteCarClient(ConnectorConfig(host="car.local", user="pi")).check_connection()
+
+    assert online is False
+    assert "ssh 命令不可用" in message
+
+
+def test_connection_status_handles_timeout(monkeypatch):
+    import subprocess
+    from remote_car_client import ConnectorConfig, RemoteCarClient
+
+    def raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=8)
+
+    monkeypatch.setattr(subprocess, "run", raise_timeout)
+
+    online, message = RemoteCarClient(ConnectorConfig(host="car.local", user="pi")).check_connection()
+
+    assert online is False
+    assert "连接超时" in message
+
+
 def test_status_uses_remote_client(monkeypatch, tmp_path):
     client, connector = make_client(monkeypatch, tmp_path)
 
