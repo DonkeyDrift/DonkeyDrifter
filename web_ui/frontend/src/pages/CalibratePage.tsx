@@ -25,8 +25,9 @@ const SliderRow: React.FC<{
   max: number;
   onChange: (v: number) => void;
   onTest: () => void;
+  isTesting?: boolean;
   hint?: string;
-}> = ({ label, value, min, max, onChange, onTest, hint }) => (
+}> = ({ label, value, min, max, onChange, onTest, isTesting = false, hint }) => (
   <div className="space-y-2">
     <div className="flex items-center justify-between">
       <span className="text-sm text-zinc-300">{label}</span>
@@ -34,10 +35,11 @@ const SliderRow: React.FC<{
         <span className="text-xs text-cyan-400 font-mono w-12 text-right">{value}</span>
         <button
           onClick={onTest}
-          className="p-1 text-zinc-500 hover:text-cyan-400 transition-colors"
+          disabled={isTesting}
+          className="p-1 text-zinc-500 hover:text-cyan-400 transition-colors disabled:opacity-50"
           title="实时测试当前值"
         >
-          <Send className="w-3.5 h-3.5" />
+          <Send className={`w-3.5 h-3.5 ${isTesting ? 'animate-pulse text-cyan-400' : ''}`} />
         </button>
       </div>
     </div>
@@ -109,6 +111,7 @@ export const CalibratePage: React.FC = () => {
               max={600}
               onChange={(v) => setParam('STEERING_LEFT_PWM', v)}
               onTest={() => testValue('STEERING_LEFT_PWM')}
+              isTesting={testing === 'STEERING_LEFT_PWM'}
               hint="向左打满舵时的 PWM 值"
             />
             <SliderRow
@@ -118,6 +121,7 @@ export const CalibratePage: React.FC = () => {
               max={600}
               onChange={(v) => setParam('STEERING_RIGHT_PWM', v)}
               onTest={() => testValue('STEERING_RIGHT_PWM')}
+              isTesting={testing === 'STEERING_RIGHT_PWM'}
               hint="向右打满舵时的 PWM 值"
             />
           </div>
@@ -133,6 +137,7 @@ export const CalibratePage: React.FC = () => {
               max={700}
               onChange={(v) => setParam('THROTTLE_FORWARD_PWM', v)}
               onTest={() => testValue('THROTTLE_FORWARD_PWM')}
+              isTesting={testing === 'THROTTLE_FORWARD_PWM'}
               hint="踩满油门时的 PWM 值，先从小值开始测试"
             />
             <SliderRow
@@ -142,6 +147,7 @@ export const CalibratePage: React.FC = () => {
               max={600}
               onChange={(v) => setParam('THROTTLE_STOPPED_PWM', v)}
               onTest={() => testValue('THROTTLE_STOPPED_PWM')}
+              isTesting={testing === 'THROTTLE_STOPPED_PWM'}
               hint="电机完全静止时的 PWM 值"
             />
             <SliderRow
@@ -151,6 +157,7 @@ export const CalibratePage: React.FC = () => {
               max={500}
               onChange={(v) => setParam('THROTTLE_REVERSE_PWM', v)}
               onTest={() => testValue('THROTTLE_REVERSE_PWM')}
+              isTesting={testing === 'THROTTLE_REVERSE_PWM'}
               hint="踩满倒车时的 PWM 值，先从小值开始测试"
             />
           </div>
