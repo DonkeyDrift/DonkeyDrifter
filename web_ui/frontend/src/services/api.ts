@@ -265,6 +265,11 @@ export const getArenaPredictions = async (pilotId: string, payload: {
   limit?: number;
   user_angle_field?: string;
   user_throttle_field?: string;
+  pre_transformations?: string[];
+  augmentations?: string[];
+  post_transformations?: string[];
+  brightness?: number | null;
+  blur?: number | null;
 }) => {
   const response = await api.post(`/arena/pilots/${pilotId}/predictions`, payload);
   return response.data as { status: boolean; limit: number; points: ArenaPredictionPoint[] };

@@ -138,7 +138,9 @@ export const PilotArenaPage: React.FC = () => {
   const predictionRequestRef = useRef<Record<string, number>>({});
   const predictionInFlightRef = useRef<Record<string, boolean>>({});
   const predictionInFlightCountRef = useRef<Record<string, number>>({});
+  const predictionBatchInFlightRef = useRef<Record<string, boolean>>({});
   const pendingViewerIndexRef = useRef<Record<string, number>>({});
+  const pendingBatchStartRef = useRef<Record<string, number>>({});
   const predictionCacheRef = useRef<Record<string, Record<number, { pilot: { angle: number; throttle: number } }>>>({});
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
@@ -162,6 +164,7 @@ export const PilotArenaPage: React.FC = () => {
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
   const evaluationIntervalMs = playbackSpeed;
   const maxInferenceConcurrency = Math.max(2, Math.min(4, Number(config?.ARENA_INFERENCE_CONCURRENCY) || 2));
+  const prefetchFrameCount = Math.max(1, Math.min(60, Number(config?.ARENA_PREFETCH_FRAMES) || 12));
   const predictionOptions = useMemo(() => ({
     preTransformations,
     augmentations: [
@@ -259,6 +262,30 @@ export const PilotArenaPage: React.FC = () => {
     }
   }, [updateViewer]);
 
+  const cachePilotPrediction = useCallback((localId: string, recordIndex: number, pilot: { angle: number; throttle: number }) => {
+    predictionCacheRef.current[localId] = {
+      ...(predictionCacheRef.current[localId] ?? {}),
+      [recordIndex]: { pilot },
+    };
+    const cachedIndexes = Object.keys(predictionCacheRef.current[localId]).map(Number).sort((a, b) => a - b);
+    while (cachedIndexes.length > 1000) {
+      const indexToDelete = cachedIndexes.shift();
+      if (indexToDelete !== undefined) {
+        delete predictionCacheRef.current[localId][indexToDelete];
+      }
+    }
+  }, []);
+
+  const clearViewerPredictionState = useCallback((localId: string) => {
+    delete predictionRequestRef.current[localId];
+    delete predictionInFlightRef.current[localId];
+    delete predictionInFlightCountRef.current[localId];
+    delete predictionBatchInFlightRef.current[localId];
+    delete pendingViewerIndexRef.current[localId];
+    delete pendingBatchStartRef.current[localId];
+    delete predictionCacheRef.current[localId];
+  }, []);
+
   const drawViewerFrame = useCallback((viewer: ViewerState, recordIndex: number) => {
     const canvas = canvasRefs.current[viewer.localId];
     const record = records[recordIndex];
@@ -347,6 +374,7 @@ export const PilotArenaPage: React.FC = () => {
   }, [currentIndex, drawViewerFrame, hasRecords, isPlaying, viewers]);
 
   const refreshModels = useCallback(async (viewer: ViewerState) => {
+    clearViewerPredictionState(viewer.localId);
     updateViewer(viewer.localId, { loading: true, error: undefined });
     try {
       const data = await listArenaModels({ workingDir: configPath, modelType: viewer.modelType });
@@ -358,7 +386,7 @@ export const PilotArenaPage: React.FC = () => {
     } catch (error) {
       updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
     }
-  }, [configPath, updateViewer]);
+  }, [clearViewerPredictionState, configPath, updateViewer]);
 
   const refreshPrediction = useCallback(async (
     viewer: ViewerState,
@@ -391,17 +419,7 @@ export const PilotArenaPage: React.FC = () => {
       });
       if (!options.playback && predictionRequestRef.current[viewer.localId] !== requestId) return;
       updateFps(viewer.localId, 'inference');
-      predictionCacheRef.current[viewer.localId] = {
-        ...(predictionCacheRef.current[viewer.localId] ?? {}),
-        [recordIndex]: { pilot: data.pilot },
-      };
-      const cachedIndexes = Object.keys(predictionCacheRef.current[viewer.localId]).map(Number).sort((a, b) => a - b);
-      while (cachedIndexes.length > 300) {
-        const indexToDelete = cachedIndexes.shift();
-        if (indexToDelete !== undefined) {
-          delete predictionCacheRef.current[viewer.localId][indexToDelete];
-        }
-      }
+      cachePilotPrediction(viewer.localId, recordIndex, data.pilot);
       const patch: Partial<ViewerState> = {
         prediction: data.pilot,
         lastEvaluatedIndex: recordIndex,
@@ -422,7 +440,53 @@ export const PilotArenaPage: React.FC = () => {
         delete pendingViewerIndexRef.current[viewer.localId];
       }
     }
-  }, [configPath, hasRecords, maxInferenceConcurrency, predictionOptions, updateFps, updateViewer]);
+  }, [cachePilotPrediction, configPath, hasRecords, maxInferenceConcurrency, predictionOptions, updateFps, updateViewer]);
+
+  const prefetchPredictions = useCallback(async (viewer: ViewerState, start: number, limit: number) => {
+    if (!viewer.pilot || !hasRecords || limit <= 0) return;
+    if (predictionBatchInFlightRef.current[viewer.localId]) {
+      pendingBatchStartRef.current[viewer.localId] = start;
+      return;
+    }
+
+    predictionBatchInFlightRef.current[viewer.localId] = true;
+    try {
+      const data = await getArenaPredictions(viewer.pilot.id, {
+        config_path: configPath,
+        start,
+        limit,
+        pre_transformations: predictionOptions.preTransformations,
+        augmentations: predictionOptions.augmentations,
+        post_transformations: predictionOptions.postTransformations,
+        brightness: predictionOptions.brightness,
+        blur: predictionOptions.blur,
+      });
+      let inferredFrames = 0;
+      data.points.forEach((point, offset) => {
+        const recordIndex = start + offset;
+        if (recordIndex < 0 || recordIndex > maxIndex) return;
+        const existing = predictionCacheRef.current[viewer.localId]?.[recordIndex];
+        cachePilotPrediction(viewer.localId, recordIndex, { angle: point.pilot_angle, throttle: point.pilot_throttle });
+        if (!existing) inferredFrames += 1;
+      });
+      if (inferredFrames > 0) {
+        updateFps(viewer.localId, 'inference', inferredFrames);
+      }
+      const currentPrediction = predictionCacheRef.current[viewer.localId]?.[currentIndexRef.current];
+      if (currentPrediction) {
+        updateViewer(viewer.localId, {
+          prediction: currentPrediction.pilot,
+          lastEvaluatedIndex: currentIndexRef.current,
+          loading: false,
+        });
+      }
+    } catch (error) {
+      updateViewer(viewer.localId, { error: getApiErrorMessage(error) });
+    } finally {
+      predictionBatchInFlightRef.current[viewer.localId] = false;
+      delete pendingBatchStartRef.current[viewer.localId];
+    }
+  }, [cachePilotPrediction, configPath, hasRecords, maxIndex, predictionOptions, updateFps, updateViewer]);
 
   const loadViewer = useCallback(async (viewer: ViewerState) => {
     if (!viewer.modelPath) {
@@ -430,6 +494,7 @@ export const PilotArenaPage: React.FC = () => {
       return;
     }
 
+    clearViewerPredictionState(viewer.localId);
     updateViewer(viewer.localId, { loading: true, error: undefined });
     try {
       const data = await loadArenaPilot({
@@ -443,7 +508,7 @@ export const PilotArenaPage: React.FC = () => {
     } catch (error) {
       updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
     }
-  }, [configPath, currentIndex, refreshPrediction, updateViewer]);
+  }, [clearViewerPredictionState, configPath, currentIndex, refreshPrediction, updateViewer]);
 
   const unloadViewer = useCallback(async (viewer: ViewerState) => {
     if (viewer.pilot) {
@@ -453,27 +518,38 @@ export const PilotArenaPage: React.FC = () => {
         // 后端可能已重启，前端仍应允许移除本地状态。
       }
     }
-    delete predictionRequestRef.current[viewer.localId];
-    delete predictionInFlightRef.current[viewer.localId];
-    delete predictionInFlightCountRef.current[viewer.localId];
-    delete pendingViewerIndexRef.current[viewer.localId];
-    delete predictionCacheRef.current[viewer.localId];
+    clearViewerPredictionState(viewer.localId);
     delete canvasRefs.current[viewer.localId];
     setViewers((items) => items.filter((item) => item.localId !== viewer.localId));
-  }, []);
+  }, [clearViewerPredictionState]);
 
   const evaluateLoadedViewers = useCallback((recordIndex: number, playback = false) => {
     viewersRef.current.forEach((viewer) => {
       if (!viewer.pilot) return;
       const pendingIndex = pendingViewerIndexRef.current[viewer.localId];
       const targetIndex = playback && pendingIndex !== undefined ? pendingIndex : recordIndex;
-      if (predictionCacheRef.current[viewer.localId]?.[targetIndex]) return;
-      if (pendingIndex === targetIndex) {
-        delete pendingViewerIndexRef.current[viewer.localId];
+      const cachedPrediction = predictionCacheRef.current[viewer.localId]?.[targetIndex];
+      if (cachedPrediction) {
+        updateViewer(viewer.localId, {
+          prediction: cachedPrediction.pilot,
+          lastEvaluatedIndex: targetIndex,
+        });
+      } else {
+        if (pendingIndex === targetIndex) {
+          delete pendingViewerIndexRef.current[viewer.localId];
+        }
+        refreshPrediction(viewer, targetIndex, { playback, force: playback });
       }
-      refreshPrediction(viewer, targetIndex, { playback });
+
+      if (playback) {
+        const prefetchStart = Math.min(maxIndex, recordIndex + 1);
+        const prefetchLimit = Math.min(prefetchFrameCount, maxIndex - prefetchStart + 1);
+        if (prefetchLimit > 0) {
+          void prefetchPredictions(viewer, prefetchStart, prefetchLimit);
+        }
+      }
     });
-  }, [refreshPrediction]);
+  }, [maxIndex, prefetchFrameCount, prefetchPredictions, refreshPrediction, updateViewer]);
 
   useEffect(() => {
     if (isPlaying) return;
@@ -504,6 +580,10 @@ export const PilotArenaPage: React.FC = () => {
       }
     };
   }, [evaluateLoadedViewers, evaluationIntervalMs, isPlaying]);
+
+  useEffect(() => {
+    viewersRef.current.forEach((viewer) => clearViewerPredictionState(viewer.localId));
+  }, [clearViewerPredictionState, predictionOptions]);
 
   const toggleTransformation = (name: string, target: 'pre' | 'post') => {
     const setter = target === 'pre' ? setPreTransformations : setPostTransformations;

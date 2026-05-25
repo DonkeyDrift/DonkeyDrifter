@@ -1,5 +1,6 @@
 import os
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
@@ -71,9 +72,16 @@ class PredictionsRequest(BaseModel):
     limit: int = 1000
     user_angle_field: str = "user/angle"
     user_throttle_field: str = "user/throttle"
+    pre_transformations: List[str] = Field(default_factory=list)
+    augmentations: List[str] = Field(default_factory=list)
+    post_transformations: List[str] = Field(default_factory=list)
+    brightness: Optional[float] = None
+    blur: Optional[float] = None
 
 
 loaded_pilots: dict[str, LoadedPilot] = {}
+prediction_cache: OrderedDict[tuple[Any, ...], dict[str, float]] = OrderedDict()
+PREDICTION_CACHE_LIMIT_PER_PILOT = 1500
 
 
 def _serialise_pilot(pilot: LoadedPilot) -> dict[str, Any]:
@@ -150,6 +158,37 @@ def load_record_image(record: dict[str, Any]) -> np.ndarray:
     return np.asarray(Image.open(image_path).convert("RGB"))
 
 
+def _prediction_cache_key(pilot_id: str, request: PredictRequest) -> tuple[Any, ...]:
+    return (
+        pilot_id,
+        request.record_index,
+        request.config_path,
+        request.user_angle_field,
+        request.user_throttle_field,
+        tuple(request.pre_transformations),
+        tuple(request.augmentations),
+        tuple(request.post_transformations),
+        request.brightness,
+        request.blur,
+    )
+
+
+def _cache_prediction(key: tuple[Any, ...], pilot: dict[str, float]) -> None:
+    prediction_cache[key] = pilot
+    prediction_cache.move_to_end(key)
+    pilot_id = key[0]
+    pilot_keys = [cache_key for cache_key in prediction_cache if cache_key[0] == pilot_id]
+    while len(pilot_keys) > PREDICTION_CACHE_LIMIT_PER_PILOT:
+        key_to_delete = pilot_keys.pop(0)
+        del prediction_cache[key_to_delete]
+
+
+def _clear_prediction_cache(pilot_id: str) -> None:
+    for key in list(prediction_cache):
+        if key[0] == pilot_id:
+            del prediction_cache[key]
+
+
 def _build_processing_config(base_cfg: Any, request: PredictRequest) -> Any:
     values = {}
     if base_cfg:
@@ -207,6 +246,16 @@ def _predict_loaded_pilot(pilot_id: str, request: PredictRequest) -> tuple[dict[
         raise HTTPException(status_code=404, detail="Pilot not loaded")
 
     record = _get_record(request.record_index)
+    user = {
+        "angle": _get_number(record, request.user_angle_field),
+        "throttle": _get_number(record, request.user_throttle_field),
+    }
+    cache_key = _prediction_cache_key(pilot_id, request)
+    cached_pilot = prediction_cache.get(cache_key)
+    if cached_pilot is not None:
+        prediction_cache.move_to_end(cache_key)
+        return user, cached_pilot
+
     base_cfg = load_car_config(request.config_path) if request.config_path else None
     image = apply_image_processing(load_record_image(record), base_cfg, request)
 
@@ -220,11 +269,8 @@ def _predict_loaded_pilot(pilot_id: str, request: PredictRequest) -> tuple[dict[
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    user = {
-        "angle": _get_number(record, request.user_angle_field),
-        "throttle": _get_number(record, request.user_throttle_field),
-    }
     pilot = {"angle": float(angle), "throttle": float(throttle)}
+    _cache_prediction(cache_key, pilot)
     return user, pilot
 
 
@@ -299,6 +345,7 @@ async def unload_pilot(pilot_id: str):
     if pilot_id not in loaded_pilots:
         raise HTTPException(status_code=404, detail="Pilot not loaded")
     del loaded_pilots[pilot_id]
+    _clear_prediction_cache(pilot_id)
     return {"status": True, "pilot_id": pilot_id}
 
 
@@ -376,6 +423,11 @@ async def predict_pilot_records(pilot_id: str, request: PredictionsRequest):
             config_path=request.config_path,
             user_angle_field=request.user_angle_field,
             user_throttle_field=request.user_throttle_field,
+            pre_transformations=request.pre_transformations,
+            augmentations=request.augmentations,
+            post_transformations=request.post_transformations,
+            brightness=request.brightness,
+            blur=request.blur,
         )
         user, pilot = _predict_loaded_pilot(pilot_id, predict_request)
         points.append({

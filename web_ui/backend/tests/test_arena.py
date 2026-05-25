@@ -240,3 +240,133 @@ def test_predictions_returns_limited_points(monkeypatch, tmp_path):
             "pilot_throttle": 0.5,
         }
     ]
+
+
+def test_predictions_apply_image_processing_options(monkeypatch, tmp_path):
+    client, arena = make_client(monkeypatch)
+    model_path = tmp_path / "pilot.tflite"
+    model_path.write_text("model")
+    processed = np.ones((120, 160, 3), dtype=np.uint8)
+
+    def apply_processing(image, cfg, request):
+        assert request.pre_transformations == ["CROP"]
+        assert request.augmentations == ["BLUR"]
+        assert request.post_transformations == ["RGB2GRAY"]
+        assert request.brightness == 0.2
+        assert request.blur == 1.5
+        return processed
+
+    monkeypatch.setattr(arena, "apply_image_processing", apply_processing)
+
+    load_response = client.post(
+        "/api/arena/pilots/load",
+        json={
+            "model_path": str(model_path),
+            "model_type": "tflite_linear",
+            "config_path": str(tmp_path),
+        },
+    )
+    pilot_id = load_response.json()["pilot"]["id"]
+
+    response = client.post(
+        f"/api/arena/pilots/{pilot_id}/predictions",
+        json={
+            "start": 0,
+            "limit": 1,
+            "config_path": str(tmp_path),
+            "pre_transformations": ["CROP"],
+            "augmentations": ["BLUR"],
+            "post_transformations": ["RGB2GRAY"],
+            "brightness": 0.2,
+            "blur": 1.5,
+        },
+    )
+
+    assert response.status_code == 200
+    assert FakePilot.last_image is processed
+
+
+def test_predict_uses_cache_for_same_processing_options(monkeypatch, tmp_path):
+    client, _ = make_client(monkeypatch)
+    model_path = tmp_path / "pilot.tflite"
+    model_path.write_text("model")
+
+    load_response = client.post(
+        "/api/arena/pilots/load",
+        json={
+            "model_path": str(model_path),
+            "model_type": "tflite_linear",
+            "config_path": str(tmp_path),
+        },
+    )
+    pilot_id = load_response.json()["pilot"]["id"]
+    payload = {"record_index": 0, "config_path": str(tmp_path), "pre_transformations": ["CROP"]}
+
+    first_response = client.post(f"/api/arena/pilots/{pilot_id}/predict", json=payload)
+    second_response = client.post(f"/api/arena/pilots/{pilot_id}/predict", json=payload)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert FakePilot.run_count == 1
+
+
+def test_predict_cache_separates_processing_options(monkeypatch, tmp_path):
+    client, _ = make_client(monkeypatch)
+    model_path = tmp_path / "pilot.tflite"
+    model_path.write_text("model")
+
+    load_response = client.post(
+        "/api/arena/pilots/load",
+        json={
+            "model_path": str(model_path),
+            "model_type": "tflite_linear",
+            "config_path": str(tmp_path),
+        },
+    )
+    pilot_id = load_response.json()["pilot"]["id"]
+
+    first_response = client.post(
+        f"/api/arena/pilots/{pilot_id}/predict",
+        json={"record_index": 0, "config_path": str(tmp_path), "pre_transformations": ["CROP"]},
+    )
+    second_response = client.post(
+        f"/api/arena/pilots/{pilot_id}/predict",
+        json={"record_index": 0, "config_path": str(tmp_path), "pre_transformations": ["RGB2GRAY"]},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert FakePilot.run_count == 2
+
+
+def test_unload_pilot_clears_prediction_cache(monkeypatch, tmp_path):
+    client, _ = make_client(monkeypatch)
+    model_path = tmp_path / "pilot.tflite"
+    model_path.write_text("model")
+
+    load_response = client.post(
+        "/api/arena/pilots/load",
+        json={
+            "model_path": str(model_path),
+            "model_type": "tflite_linear",
+            "config_path": str(tmp_path),
+        },
+    )
+    pilot_id = load_response.json()["pilot"]["id"]
+    payload = {"record_index": 0, "config_path": str(tmp_path)}
+
+    assert client.post(f"/api/arena/pilots/{pilot_id}/predict", json=payload).status_code == 200
+    assert client.delete(f"/api/arena/pilots/{pilot_id}").status_code == 200
+
+    second_load_response = client.post(
+        "/api/arena/pilots/load",
+        json={
+            "model_path": str(model_path),
+            "model_type": "tflite_linear",
+            "config_path": str(tmp_path),
+        },
+    )
+    second_pilot_id = second_load_response.json()["pilot"]["id"]
+
+    assert client.post(f"/api/arena/pilots/{second_pilot_id}/predict", json=payload).status_code == 200
+    assert FakePilot.run_count == 2
