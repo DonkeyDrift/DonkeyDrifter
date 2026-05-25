@@ -18,7 +18,7 @@ import {
   ArenaPilot,
   ArenaPredictionPoint,
   getArenaPredictions,
-  getArenaPreviewUrl,
+  getImageUrl,
   listArenaModels,
   listArenaModelTypes,
   loadArenaPilot,
@@ -37,9 +37,9 @@ type ViewerState = {
   models: ArenaModel[];
   user?: { angle: number; throttle: number };
   prediction?: { angle: number; throttle: number };
-  previewUrl?: string;
-  previewLoading?: boolean;
   lastEvaluatedIndex?: number;
+  playbackFps: number;
+  inferenceFps: number;
   loading: boolean;
   error?: string;
 };
@@ -49,6 +49,8 @@ const defaultViewer = (): ViewerState => ({
   modelType: 'tflite_linear',
   modelPath: '',
   models: [],
+  playbackFps: 0,
+  inferenceFps: 0,
   loading: false,
 });
 
@@ -74,6 +76,28 @@ const TRANSFORMATION_OPTIONS = [
 
 const formatValue = (value: number | undefined) =>
   value === undefined || Number.isNaN(value) ? '--' : value.toFixed(3);
+
+const getRecordImagePath = (record: Record<string, unknown> | undefined) => {
+  if (!record) return null;
+  const imageKey = Object.keys(record).find((key) => key.endsWith('image_array') || key === 'cam/image' || key === 'image');
+  const imagePath = imageKey ? record[imageKey] : null;
+  return typeof imagePath === 'string' ? imagePath : null;
+};
+
+const drawControlLine = (ctx: CanvasRenderingContext2D, angle: number | undefined, throttle: number | undefined, color: string) => {
+  if (angle === undefined || throttle === undefined || Number.isNaN(angle) || Number.isNaN(throttle)) return;
+  const { width, height } = ctx.canvas;
+  const startX = width / 2;
+  const startY = height - 1;
+  const endX = startX + Math.max(-1, Math.min(1, angle)) * width * 0.4;
+  const endY = startY - Math.max(-1, Math.min(1, throttle)) * height * 0.6;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, width / 160);
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+};
 
 export const PilotArenaPage: React.FC = () => {
   const configPath = useStore((state) => state.configPath);
@@ -105,15 +129,20 @@ export const PilotArenaPage: React.FC = () => {
   const viewersRef = useRef(viewers);
   const predictionRequestRef = useRef<Record<string, number>>({});
   const predictionInFlightRef = useRef<Record<string, boolean>>({});
-  const previewInFlightRef = useRef<Record<string, boolean>>({});
   const pendingViewerIndexRef = useRef<Record<string, number>>({});
+  const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const playbackFpsStartRef = useRef<Record<string, number>>({});
+  const playbackFpsFramesRef = useRef<Record<string, number>>({});
+  const inferenceFpsStartRef = useRef<Record<string, number>>({});
+  const inferenceFpsFramesRef = useRef<Record<string, number>>({});
   const playbackFrameRef = useRef<number>();
   const lastPlaybackTimeRef = useRef(0);
+  const lastPlaybackSyncTimeRef = useRef(0);
   const currentIndexRef = useRef(currentIndex);
   const isPlayingRef = useRef(isPlaying);
   const isLoopingRef = useRef(isLooping);
   const evaluationTimerRef = useRef<number>();
-  const previewTimerRef = useRef<number>();
   const lastEvaluationAtRef = useRef(0);
 
   const currentRecord = records[currentIndex];
@@ -121,7 +150,6 @@ export const PilotArenaPage: React.FC = () => {
   const maxIndex = Math.max(0, records.length - 1);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
   const evaluationIntervalMs = Math.max(playbackSpeed, 100);
-  const previewIntervalMs = Math.max(evaluationIntervalMs, 500);
   const predictionOptions = useMemo(() => ({
     preTransformations,
     augmentations: [
@@ -168,6 +196,83 @@ export const PilotArenaPage: React.FC = () => {
   }, [hasRecords, isPlaying, setIsPlaying]);
 
   useEffect(() => {
+    if (!hasRecords) return;
+    for (let offset = 0; offset <= 20; offset += 1) {
+      const recordIndex = currentIndex + offset;
+      const imagePath = getRecordImagePath(records[recordIndex]);
+      if (!imagePath) continue;
+      const imageUrl = getImageUrl(imagePath);
+      if (imageCacheRef.current.has(imageUrl)) continue;
+      const image = new Image();
+      image.src = imageUrl;
+      imageCacheRef.current.set(imageUrl, image);
+    }
+  }, [currentIndex, hasRecords, records]);
+
+  useEffect(() => {
+    listArenaModelTypes()
+      .then((data) => {
+        if (Array.isArray(data.model_types) && data.model_types.length > 0) {
+          setModelTypes(data.model_types);
+        }
+      })
+      .catch((error) => setPageError(error?.response?.data?.detail || error.message));
+  }, []);
+
+  const updateViewer = useCallback((localId: string, patch: Partial<ViewerState>) => {
+    setViewers((items) => items.map((item) => (item.localId === localId ? { ...item, ...patch } : item)));
+  }, []);
+
+  const updateFps = useCallback((localId: string, kind: 'playback' | 'inference') => {
+    const startRef = kind === 'playback' ? playbackFpsStartRef : inferenceFpsStartRef;
+    const framesRef = kind === 'playback' ? playbackFpsFramesRef : inferenceFpsFramesRef;
+    const now = window.performance.now();
+    if (!startRef.current[localId]) {
+      startRef.current[localId] = now;
+    }
+    framesRef.current[localId] = (framesRef.current[localId] ?? 0) + 1;
+    const elapsed = now - startRef.current[localId];
+    if (elapsed >= 1000) {
+      const fps = Math.round((framesRef.current[localId] * 1000) / elapsed);
+      updateViewer(localId, kind === 'playback' ? { playbackFps: fps } : { inferenceFps: fps });
+      startRef.current[localId] = now;
+      framesRef.current[localId] = 0;
+    }
+  }, [updateViewer]);
+
+  const drawViewerFrame = useCallback((viewer: ViewerState, recordIndex: number) => {
+    const canvas = canvasRefs.current[viewer.localId];
+    const imagePath = getRecordImagePath(records[recordIndex]);
+    if (!canvas || !imagePath) return;
+    const imageUrl = getImageUrl(imagePath);
+    let image = imageCacheRef.current.get(imageUrl);
+    const draw = (imageToDraw: HTMLImageElement) => {
+      if (imageToDraw.naturalWidth === 0) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      if (canvas.width !== imageToDraw.width || canvas.height !== imageToDraw.height) {
+        canvas.width = imageToDraw.width;
+        canvas.height = imageToDraw.height;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(imageToDraw, 0, 0);
+      drawControlLine(ctx, viewer.user?.angle, viewer.user?.throttle, '#22c55e');
+      drawControlLine(ctx, viewer.prediction?.angle, viewer.prediction?.throttle, '#3b82f6');
+      updateFps(viewer.localId, 'playback');
+    };
+    if (!image) {
+      image = new Image();
+      image.src = imageUrl;
+      imageCacheRef.current.set(imageUrl, image);
+    }
+    if (image.complete) {
+      draw(image);
+    } else {
+      image.onload = () => draw(image as HTMLImageElement);
+    }
+  }, [records, updateFps]);
+
+  useEffect(() => {
     if (!isPlaying || !hasRecords) return;
 
     const animate = (time: number) => {
@@ -189,10 +294,14 @@ export const PilotArenaPage: React.FC = () => {
           }
         }
         currentIndexRef.current = nextIndex;
-        setCurrentIndex(nextIndex);
+        if (time - lastPlaybackSyncTimeRef.current > 30 || nextIndex === maxIndex) {
+          setCurrentIndex(nextIndex);
+          lastPlaybackSyncTimeRef.current = time;
+        }
         lastPlaybackTimeRef.current = time - (deltaTime % playbackSpeed);
       }
 
+      viewersRef.current.forEach((viewer) => drawViewerFrame(viewer, currentIndexRef.current));
       playbackFrameRef.current = window.requestAnimationFrame(animate);
     };
 
@@ -202,21 +311,12 @@ export const PilotArenaPage: React.FC = () => {
         window.cancelAnimationFrame(playbackFrameRef.current);
       }
     };
-  }, [hasRecords, isPlaying, maxIndex, playbackSpeed, records.length, setCurrentIndex, setIsPlaying]);
+  }, [drawViewerFrame, hasRecords, isPlaying, maxIndex, playbackSpeed, records.length, setCurrentIndex, setIsPlaying]);
 
   useEffect(() => {
-    listArenaModelTypes()
-      .then((data) => {
-        if (Array.isArray(data.model_types) && data.model_types.length > 0) {
-          setModelTypes(data.model_types);
-        }
-      })
-      .catch((error) => setPageError(error?.response?.data?.detail || error.message));
-  }, []);
-
-  const updateViewer = useCallback((localId: string, patch: Partial<ViewerState>) => {
-    setViewers((items) => items.map((item) => (item.localId === localId ? { ...item, ...patch } : item)));
-  }, []);
+    if (!hasRecords || isPlaying) return;
+    viewersRef.current.forEach((viewer) => drawViewerFrame(viewer, currentIndex));
+  }, [currentIndex, drawViewerFrame, hasRecords, isPlaying, viewers]);
 
   const refreshModels = useCallback(async (viewer: ViewerState) => {
     updateViewer(viewer.localId, { loading: true, error: undefined });
@@ -260,19 +360,13 @@ export const PilotArenaPage: React.FC = () => {
         blur: predictionOptions.blur,
       });
       if (predictionRequestRef.current[viewer.localId] !== requestId) return;
+      updateFps(viewer.localId, 'inference');
       const patch: Partial<ViewerState> = {
         user: data.user,
         prediction: data.pilot,
         lastEvaluatedIndex: recordIndex,
         loading: false,
       };
-      if (!options.playback || options.force) {
-        if (!previewInFlightRef.current[viewer.localId]) {
-          previewInFlightRef.current[viewer.localId] = true;
-          patch.previewUrl = getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions });
-          patch.previewLoading = true;
-        }
-      }
       updateViewer(viewer.localId, patch);
     } catch (error) {
       if (predictionRequestRef.current[viewer.localId] !== requestId) return;
@@ -284,7 +378,7 @@ export const PilotArenaPage: React.FC = () => {
         delete pendingViewerIndexRef.current[viewer.localId];
       }
     }
-  }, [configPath, hasRecords, predictionOptions, updateViewer]);
+  }, [configPath, hasRecords, predictionOptions, updateFps, updateViewer]);
 
   const loadViewer = useCallback(async (viewer: ViewerState) => {
     if (!viewer.modelPath) {
@@ -317,8 +411,8 @@ export const PilotArenaPage: React.FC = () => {
     }
     delete predictionRequestRef.current[viewer.localId];
     delete predictionInFlightRef.current[viewer.localId];
-    delete previewInFlightRef.current[viewer.localId];
     delete pendingViewerIndexRef.current[viewer.localId];
+    delete canvasRefs.current[viewer.localId];
     setViewers((items) => items.filter((item) => item.localId !== viewer.localId));
   }, []);
 
@@ -329,22 +423,6 @@ export const PilotArenaPage: React.FC = () => {
       }
     });
   }, [refreshPrediction]);
-
-  const refreshLoadedPreviews = useCallback((recordIndex: number) => {
-    viewersRef.current.forEach((viewer) => {
-      if (!viewer.pilot || previewInFlightRef.current[viewer.localId]) return;
-      previewInFlightRef.current[viewer.localId] = true;
-      updateViewer(viewer.localId, {
-        previewUrl: getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions }),
-        previewLoading: true,
-      });
-    });
-  }, [configPath, predictionOptions, updateViewer]);
-
-  const handlePreviewSettled = useCallback((localId: string) => {
-    previewInFlightRef.current[localId] = false;
-    updateViewer(localId, { previewLoading: false });
-  }, [updateViewer]);
 
   useEffect(() => {
     if (isPlaying) return;
@@ -375,26 +453,6 @@ export const PilotArenaPage: React.FC = () => {
       }
     };
   }, [evaluateLoadedViewers, evaluationIntervalMs, isPlaying]);
-
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    const schedulePreview = () => {
-      previewTimerRef.current = window.setTimeout(() => {
-        refreshLoadedPreviews(currentIndexRef.current);
-        schedulePreview();
-      }, previewIntervalMs);
-    };
-
-    refreshLoadedPreviews(currentIndexRef.current);
-    schedulePreview();
-
-    return () => {
-      if (previewTimerRef.current !== undefined) {
-        window.clearTimeout(previewTimerRef.current);
-      }
-    };
-  }, [isPlaying, previewIntervalMs, refreshLoadedPreviews]);
 
   const toggleTransformation = (name: string, target: 'pre' | 'post') => {
     const setter = target === 'pre' ? setPreTransformations : setPostTransformations;
@@ -530,11 +588,11 @@ export const PilotArenaPage: React.FC = () => {
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(currentIndex + 1)} disabled={!hasRecords}>下一帧</Button>
             <Button variant="secondary" size="sm" onClick={() => jumpToRecord(maxIndex)} disabled={!hasRecords}>末帧</Button>
             <span className="text-xs text-zinc-500">
-              数值 {Math.round(evaluationIntervalMs)}ms / 图片 {Math.round(previewIntervalMs)}ms
+              播放 {Math.round(playbackSpeed)}ms / 推理 {Math.round(evaluationIntervalMs)}ms
             </span>
           </div>
           <div className="flex flex-wrap gap-3 text-sm text-zinc-400">
-            <span>当前序号: {currentIndex}</span>
+            <span>当前序号: {isPlaying ? currentIndexRef.current : currentIndex}</span>
             <span>Record index: {currentRecord?._index ?? '--'}</span>
             <span>user/angle: {formatValue(Number(currentRecord?.['user/angle']))}</span>
             <span>user/throttle: {formatValue(Number(currentRecord?.['user/throttle']))}</span>
@@ -723,17 +781,31 @@ export const PilotArenaPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="aspect-video overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 flex items-center justify-center">
-                {viewer.previewUrl ? (
-                  <img
-                    src={viewer.previewUrl}
-                    alt="Pilot preview"
+              <div className="aspect-video overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 flex items-center justify-center relative">
+                <div className="absolute right-2 top-2 z-10 grid grid-cols-2 gap-1 rounded-md border border-white/10 bg-zinc-900/35 px-2 py-1 text-center shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md">
+                  <div>
+                    <div className="text-[10px] uppercase leading-none text-zinc-400">播放</div>
+                    <div className="font-mono text-sm leading-tight text-cyan-400">{viewer.playbackFps}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase leading-none text-zinc-400">推理</div>
+                    <div className="font-mono text-sm leading-tight text-blue-400">{viewer.inferenceFps}</div>
+                  </div>
+                </div>
+                {hasRecords ? (
+                  <canvas
+                    ref={(canvas) => {
+                      canvasRefs.current[viewer.localId] = canvas;
+                      if (canvas && hasRecords) {
+                        window.requestAnimationFrame(() => drawViewerFrame(viewer, isPlaying ? currentIndexRef.current : currentIndex));
+                      }
+                    }}
                     className="h-full w-full object-contain"
-                    onLoad={() => handlePreviewSettled(viewer.localId)}
-                    onError={() => handlePreviewSettled(viewer.localId)}
+                    width={640}
+                    height={240}
                   />
                 ) : (
-                  <span className="text-sm text-zinc-500">加载模型后显示叠线预览</span>
+                  <span className="text-sm text-zinc-500">加载 Tub 后显示播放画面</span>
                 )}
               </div>
 
