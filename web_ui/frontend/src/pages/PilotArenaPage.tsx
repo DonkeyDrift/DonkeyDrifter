@@ -35,7 +35,6 @@ type ViewerState = {
   modelPath: string;
   pilot?: ArenaPilot;
   models: ArenaModel[];
-  user?: { angle: number; throttle: number };
   prediction?: { angle: number; throttle: number };
   lastEvaluatedIndex?: number;
   playbackFps: number;
@@ -99,6 +98,14 @@ const drawControlLine = (ctx: CanvasRenderingContext2D, angle: number | undefine
   ctx.stroke();
 };
 
+const getRecordUserControl = (record: Record<string, unknown> | undefined) => {
+  if (!record) return undefined;
+  return {
+    angle: Number(record['user/angle']),
+    throttle: Number(record['user/throttle']),
+  };
+};
+
 export const PilotArenaPage: React.FC = () => {
   const configPath = useStore((state) => state.configPath);
   const tubPath = useStore((state) => state.tubPath);
@@ -126,12 +133,13 @@ export const PilotArenaPage: React.FC = () => {
   const [plotPoints, setPlotPoints] = useState<ArenaPredictionPoint[]>([]);
   const [plotError, setPlotError] = useState<string | null>(null);
   const [plotLoading, setPlotLoading] = useState(false);
+  const [displayRecordIndex, setDisplayRecordIndex] = useState(currentIndex);
   const viewersRef = useRef(viewers);
   const predictionRequestRef = useRef<Record<string, number>>({});
   const predictionInFlightRef = useRef<Record<string, boolean>>({});
   const predictionInFlightCountRef = useRef<Record<string, number>>({});
   const pendingViewerIndexRef = useRef<Record<string, number>>({});
-  const predictionCacheRef = useRef<Record<string, Record<number, { user: { angle: number; throttle: number }; pilot: { angle: number; throttle: number } }>>>({});
+  const predictionCacheRef = useRef<Record<string, Record<number, { pilot: { angle: number; throttle: number } }>>>({});
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const playbackFpsStartRef = useRef<Record<string, number>>({});
@@ -147,7 +155,8 @@ export const PilotArenaPage: React.FC = () => {
   const evaluationTimerRef = useRef<number>();
   const lastEvaluationAtRef = useRef(0);
 
-  const currentRecord = records[currentIndex];
+  const displayRecord = records[displayRecordIndex];
+  const displayUserControl = getRecordUserControl(displayRecord);
   const hasRecords = records.length > 0;
   const maxIndex = Math.max(0, records.length - 1);
   const playbackSpeed = 1000 / Math.max(1, Number(config?.DRIVE_LOOP_HZ) || 60);
@@ -179,6 +188,9 @@ export const PilotArenaPage: React.FC = () => {
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
+    if (!isPlayingRef.current) {
+      setDisplayRecordIndex(currentIndex);
+    }
   }, [currentIndex]);
 
   useEffect(() => {
@@ -197,6 +209,10 @@ export const PilotArenaPage: React.FC = () => {
       setIsPlaying(false);
     }
   }, [hasRecords, isPlaying, setIsPlaying]);
+
+  useEffect(() => {
+    setDisplayRecordIndex((index) => Math.max(0, Math.min(maxIndex, index)));
+  }, [maxIndex]);
 
   useEffect(() => {
     if (!hasRecords) return;
@@ -245,7 +261,8 @@ export const PilotArenaPage: React.FC = () => {
 
   const drawViewerFrame = useCallback((viewer: ViewerState, recordIndex: number) => {
     const canvas = canvasRefs.current[viewer.localId];
-    const imagePath = getRecordImagePath(records[recordIndex]);
+    const record = records[recordIndex];
+    const imagePath = getRecordImagePath(record);
     if (!canvas || !imagePath) return;
     const imageUrl = getImageUrl(imagePath);
     let image = imageCacheRef.current.get(imageUrl);
@@ -259,8 +276,9 @@ export const PilotArenaPage: React.FC = () => {
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(imageToDraw, 0, 0);
+      const userControl = getRecordUserControl(record);
       const cachedPrediction = predictionCacheRef.current[viewer.localId]?.[recordIndex];
-      drawControlLine(ctx, cachedPrediction?.user.angle ?? viewer.user?.angle, cachedPrediction?.user.throttle ?? viewer.user?.throttle, '#22c55e');
+      drawControlLine(ctx, userControl?.angle, userControl?.throttle, '#22c55e');
       drawControlLine(ctx, cachedPrediction?.pilot.angle ?? viewer.prediction?.angle, cachedPrediction?.pilot.throttle ?? viewer.prediction?.throttle, '#3b82f6');
     };
     if (!image) {
@@ -301,6 +319,7 @@ export const PilotArenaPage: React.FC = () => {
         }
         currentIndexRef.current = nextIndex;
         if (advancedFrames > 0) {
+          setDisplayRecordIndex(nextIndex);
           viewersRef.current.forEach((viewer) => updateFps(viewer.localId, 'playback', advancedFrames));
         }
         if (time - lastPlaybackSyncTimeRef.current > 30 || nextIndex === maxIndex) {
@@ -374,7 +393,7 @@ export const PilotArenaPage: React.FC = () => {
       updateFps(viewer.localId, 'inference');
       predictionCacheRef.current[viewer.localId] = {
         ...(predictionCacheRef.current[viewer.localId] ?? {}),
-        [recordIndex]: { user: data.user, pilot: data.pilot },
+        [recordIndex]: { pilot: data.pilot },
       };
       const cachedIndexes = Object.keys(predictionCacheRef.current[viewer.localId]).map(Number).sort((a, b) => a - b);
       while (cachedIndexes.length > 300) {
@@ -384,7 +403,6 @@ export const PilotArenaPage: React.FC = () => {
         }
       }
       const patch: Partial<ViewerState> = {
-        user: data.user,
         prediction: data.pilot,
         lastEvaluatedIndex: recordIndex,
         loading: false,
@@ -625,10 +643,10 @@ export const PilotArenaPage: React.FC = () => {
             </span>
           </div>
           <div className="flex flex-wrap gap-3 text-sm text-zinc-400">
-            <span>当前序号: {isPlaying ? currentIndexRef.current : currentIndex}</span>
-            <span>Record index: {currentRecord?._index ?? '--'}</span>
-            <span>user/angle: {formatValue(Number(currentRecord?.['user/angle']))}</span>
-            <span>user/throttle: {formatValue(Number(currentRecord?.['user/throttle']))}</span>
+            <span>当前序号: {displayRecordIndex}</span>
+            <span>Record index: {displayRecord?._index ?? '--'}</span>
+            <span>user/angle: {formatValue(displayUserControl?.angle)}</span>
+            <span>user/throttle: {formatValue(displayUserControl?.throttle)}</span>
           </div>
         </CardContent>
       </Card>
@@ -845,8 +863,8 @@ export const PilotArenaPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-md bg-zinc-950 p-3">
                   <div className="text-xs uppercase text-zinc-500">User</div>
-                  <div className="mt-2 font-mono text-green-400">Angle {formatValue(viewer.user?.angle)}</div>
-                  <div className="font-mono text-green-400">Throttle {formatValue(viewer.user?.throttle)}</div>
+                  <div className="mt-2 font-mono text-green-400">Angle {formatValue(displayUserControl?.angle)}</div>
+                  <div className="font-mono text-green-400">Throttle {formatValue(displayUserControl?.throttle)}</div>
                 </div>
                 <div className="rounded-md bg-zinc-950 p-3">
                   <div className="text-xs uppercase text-zinc-500">Pilot</div>
