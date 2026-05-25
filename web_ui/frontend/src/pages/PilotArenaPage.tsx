@@ -226,14 +226,14 @@ export const PilotArenaPage: React.FC = () => {
     setViewers((items) => items.map((item) => (item.localId === localId ? { ...item, ...patch } : item)));
   }, []);
 
-  const updateFps = useCallback((localId: string, kind: 'playback' | 'inference') => {
+  const updateFps = useCallback((localId: string, kind: 'playback' | 'inference', frameCount = 1) => {
     const startRef = kind === 'playback' ? playbackFpsStartRef : inferenceFpsStartRef;
     const framesRef = kind === 'playback' ? playbackFpsFramesRef : inferenceFpsFramesRef;
     const now = window.performance.now();
     if (!startRef.current[localId]) {
       startRef.current[localId] = now;
     }
-    framesRef.current[localId] = (framesRef.current[localId] ?? 0) + 1;
+    framesRef.current[localId] = (framesRef.current[localId] ?? 0) + frameCount;
     const elapsed = now - startRef.current[localId];
     if (elapsed >= 1000) {
       const fps = Math.round((framesRef.current[localId] * 1000) / elapsed);
@@ -262,7 +262,6 @@ export const PilotArenaPage: React.FC = () => {
       const cachedPrediction = predictionCacheRef.current[viewer.localId]?.[recordIndex];
       drawControlLine(ctx, cachedPrediction?.user.angle ?? viewer.user?.angle, cachedPrediction?.user.throttle ?? viewer.user?.throttle, '#22c55e');
       drawControlLine(ctx, cachedPrediction?.pilot.angle ?? viewer.prediction?.angle, cachedPrediction?.pilot.throttle ?? viewer.prediction?.throttle, '#3b82f6');
-      updateFps(viewer.localId, 'playback');
     };
     if (!image) {
       image = new Image();
@@ -274,7 +273,7 @@ export const PilotArenaPage: React.FC = () => {
     } else {
       image.onload = () => draw(image as HTMLImageElement);
     }
-  }, [records, updateFps]);
+  }, [records]);
 
   useEffect(() => {
     if (!isPlaying || !hasRecords) return;
@@ -288,16 +287,22 @@ export const PilotArenaPage: React.FC = () => {
       const deltaTime = time - lastPlaybackTimeRef.current;
       if (deltaTime >= playbackSpeed) {
         const steps = Math.floor(deltaTime / playbackSpeed);
-        let nextIndex = currentIndexRef.current + steps;
+        const previousIndex = currentIndexRef.current;
+        let advancedFrames = steps;
+        let nextIndex = previousIndex + steps;
         if (nextIndex > maxIndex) {
           if (isLoopingRef.current && records.length > 0) {
             nextIndex %= records.length;
           } else {
+            advancedFrames = Math.max(0, maxIndex - previousIndex);
             nextIndex = maxIndex;
             setIsPlaying(false);
           }
         }
         currentIndexRef.current = nextIndex;
+        if (advancedFrames > 0) {
+          viewersRef.current.forEach((viewer) => updateFps(viewer.localId, 'playback', advancedFrames));
+        }
         if (time - lastPlaybackSyncTimeRef.current > 30 || nextIndex === maxIndex) {
           setCurrentIndex(nextIndex);
           lastPlaybackSyncTimeRef.current = time;
@@ -315,7 +320,7 @@ export const PilotArenaPage: React.FC = () => {
         window.cancelAnimationFrame(playbackFrameRef.current);
       }
     };
-  }, [drawViewerFrame, hasRecords, isPlaying, maxIndex, playbackSpeed, records.length, setCurrentIndex, setIsPlaying]);
+  }, [drawViewerFrame, hasRecords, isPlaying, maxIndex, playbackSpeed, records.length, setCurrentIndex, setIsPlaying, updateFps]);
 
   useEffect(() => {
     if (!hasRecords || isPlaying) return;
