@@ -980,9 +980,6 @@ export const TubEditor: React.FC = () => {
       handleZoomIn,
       handleZoomOut,
       handleZoomReset,
-      selectionStartIndex,
-      selectionEndIndex,
-      setSelectionRange,
       redoSelectionRange,
     ]
   );
@@ -1295,72 +1292,6 @@ export const TubEditor: React.FC = () => {
   useEffect(() => {
     requestChartRender({ animateSelection: Boolean(selectionDraft) });
   }, [requestChartRender, selectionDraft]);
-
-  const selectionInfo = useMemo(() => {
-    if (!records.length) {
-      return null;
-    }
-
-    const baseTimestamp =
-      records[0] && typeof records[0]._timestamp_ms === 'number' ? records[0]._timestamp_ms : 0;
-
-    if (selectionDraft) {
-      const start = Math.min(selectionDraft.startIndex, selectionDraft.currentIndex);
-      const endInclusive = Math.max(selectionDraft.startIndex, selectionDraft.currentIndex);
-      const startRecord = records[start];
-      const endRecord = records[endInclusive];
-      const startTimeMs =
-        startRecord && typeof startRecord._timestamp_ms === 'number'
-          ? startRecord._timestamp_ms - baseTimestamp
-          : null;
-      const endTimeMs =
-        endRecord && typeof endRecord._timestamp_ms === 'number'
-          ? endRecord._timestamp_ms - baseTimestamp
-          : null;
-      const durationMs =
-        startTimeMs != null && endTimeMs != null ? Math.max(0, endTimeMs - startTimeMs) : null;
-
-      return {
-        startIndex: start,
-        endIndex: endInclusive,
-        startTimeMs,
-        endTimeMs,
-        durationMs,
-        isDraft: true,
-      };
-    }
-
-    if (selectionStartIndex != null && selectionEndIndex != null) {
-      const start = Math.min(selectionStartIndex, Math.max(0, records.length - 1));
-      const endInclusive = Math.min(
-        Math.max(selectionEndIndex - 1, start),
-        Math.max(0, records.length - 1)
-      );
-      const startRecord = records[start];
-      const endRecord = records[endInclusive];
-      const startTimeMs =
-        startRecord && typeof startRecord._timestamp_ms === 'number'
-          ? startRecord._timestamp_ms - baseTimestamp
-          : null;
-      const endTimeMs =
-        endRecord && typeof endRecord._timestamp_ms === 'number'
-          ? endRecord._timestamp_ms - baseTimestamp
-          : null;
-      const durationMs =
-        startTimeMs != null && endTimeMs != null ? Math.max(0, endTimeMs - startTimeMs) : null;
-
-      return {
-        startIndex: start,
-        endIndex: endInclusive,
-        startTimeMs,
-        endTimeMs,
-        durationMs,
-        isDraft: false,
-      };
-    }
-
-    return null;
-  }, [selectionDraft, selectionStartIndex, selectionEndIndex, records]);
 
   const sliderSelectionRange = useMemo(() => {
     if (!records.length) {

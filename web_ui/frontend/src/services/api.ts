@@ -11,6 +11,17 @@ export const api = axios.create({
   },
 });
 
+export const getApiErrorMessage = (error: unknown, fallback = '未知错误') => {
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    return typeof detail === 'string' ? detail : error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
+};
+
 export const loadConfig = async (path: string) => {
   const response = await api.post('/config/load', { path });
   return response.data;

@@ -68,7 +68,6 @@ export const TubNavigator: React.FC = () => {
   const records = useStore((state) => state.records);
   const setCurrentIndex = useStore((state) => state.setCurrentIndex);
   const totalRecords = useStore((state) => state.totalRecords);
-  const tubTotalRecords = useStore((state) => state.tubTotalRecords);
   const config = useStore((state) => state.config);
   const isDragging = useStore((state) => state.isDragging);
   const setIsDragging = useStore((state) => state.setIsDragging);
@@ -147,7 +146,7 @@ export const TubNavigator: React.FC = () => {
     });
 
     return unsubscribe;
-  }, [isDragging]);
+  }, [isDragging, setIsPlaying]);
 
   // Use a local state for the index to avoid triggering global store re-renders 60 times/sec
   const [localIndex, setLocalIndex] = useState(currentIndexRef.current);
@@ -236,7 +235,7 @@ export const TubNavigator: React.FC = () => {
     }
     
     requestRef.current = requestAnimationFrame(animate);
-  }, [playbackSpeed, totalRecords, setCurrentIndex]);
+  }, [playbackSpeed, totalRecords, setCurrentIndex, setIsPlaying]);
 
   useEffect(() => {
     if (isPlaying) {
@@ -316,7 +315,7 @@ export const TubNavigator: React.FC = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [setIsLooping, setIsPlaying]);
 
   useEffect(() => {
     if (!imageUrl) {
@@ -428,7 +427,7 @@ export const TubNavigator: React.FC = () => {
     setIsPlaying(false); // Stop playing when user scrubs
     displayIndexRef.current = newIndex;
     setLocalIndex(newIndex);
-  }, []);
+  }, [setIsPlaying]);
 
   const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const newIndex = parseInt(e.target.value);
@@ -437,12 +436,12 @@ export const TubNavigator: React.FC = () => {
     displayIndexRef.current = newIndex;
     setLocalIndex(newIndex);
     setCurrentIndex(newIndex);
-  }, [setCurrentIndex, setIsDragging]);
+  }, [setCurrentIndex, setIsDragging, setIsPlaying]);
 
   const handleSliderMouseDown = useCallback(() => {
     setIsDragging(true);
     setIsPlaying(false);
-  }, [setIsDragging]);
+  }, [setIsDragging, setIsPlaying]);
 
   const handleSliderMouseUp = useCallback(() => {
     setIsDragging(false);
@@ -454,7 +453,7 @@ export const TubNavigator: React.FC = () => {
     if (isPlayingRef.current) {
       setIsPlaying(false);
     }
-  }, [localIndex, imagePath]);
+  }, [localIndex, imagePath, setIsPlaying]);
 
   if (!records.length) {
     return (

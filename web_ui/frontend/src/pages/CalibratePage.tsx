@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { sendCalibrate } from '../services/api';
+import { getApiErrorMessage, sendCalibrate } from '../services/api';
 import { Save, Send } from 'lucide-react';
 
 interface CalibrateParams {
@@ -77,8 +77,8 @@ export const CalibratePage: React.FC = () => {
     try {
       await sendCalibrate({ ...params, save: true });
       alert('校准参数已保存到车端配置');
-    } catch (err: any) {
-      alert(`保存失败: ${err.response?.data?.detail || err.message}`);
+    } catch (error) {
+      alert(`保存失败: ${getApiErrorMessage(error)}`);
     } finally {
       setSaving(false);
     }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CategoryScale,
   Chart as ChartJS,
@@ -24,6 +24,7 @@ import {
   loadArenaPilot,
   predictArenaPilot,
   unloadArenaPilot,
+  getApiErrorMessage,
 } from '../services/api';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -94,6 +95,7 @@ export const PilotArenaPage: React.FC = () => {
   const [plotPoints, setPlotPoints] = useState<ArenaPredictionPoint[]>([]);
   const [plotError, setPlotError] = useState<string | null>(null);
   const [plotLoading, setPlotLoading] = useState(false);
+  const viewersRef = useRef(viewers);
 
   const currentRecord = records[currentIndex];
   const hasRecords = records.length > 0;
@@ -118,6 +120,10 @@ export const PilotArenaPage: React.FC = () => {
   }, [columns]);
 
   useEffect(() => {
+    viewersRef.current = viewers;
+  }, [viewers]);
+
+  useEffect(() => {
     listArenaModelTypes()
       .then((data) => {
         if (Array.isArray(data.model_types) && data.model_types.length > 0) {
@@ -140,8 +146,8 @@ export const PilotArenaPage: React.FC = () => {
         modelPath: data.models[0]?.path || viewer.modelPath,
         loading: false,
       });
-    } catch (error: any) {
-      updateViewer(viewer.localId, { loading: false, error: error?.response?.data?.detail || error.message });
+    } catch (error) {
+      updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
     }
   }, [configPath, updateViewer]);
 
@@ -164,8 +170,8 @@ export const PilotArenaPage: React.FC = () => {
         previewUrl: getArenaPreviewUrl(viewer.pilot.id, { recordIndex, configPath, ...predictionOptions }),
         loading: false,
       });
-    } catch (error: any) {
-      updateViewer(viewer.localId, { loading: false, error: error?.response?.data?.detail || error.message });
+    } catch (error) {
+      updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
     }
   }, [configPath, hasRecords, predictionOptions, updateViewer]);
 
@@ -185,8 +191,8 @@ export const PilotArenaPage: React.FC = () => {
       const updated = { ...viewer, pilot: data.pilot, loading: false, error: undefined };
       updateViewer(viewer.localId, updated);
       await refreshPrediction(updated, currentIndex);
-    } catch (error: any) {
-      updateViewer(viewer.localId, { loading: false, error: error?.response?.data?.detail || error.message });
+    } catch (error) {
+      updateViewer(viewer.localId, { loading: false, error: getApiErrorMessage(error) });
     }
   }, [configPath, currentIndex, refreshPrediction, updateViewer]);
 
@@ -202,7 +208,7 @@ export const PilotArenaPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    viewers.forEach((viewer) => {
+    viewersRef.current.forEach((viewer) => {
       if (viewer.pilot) {
         refreshPrediction(viewer, currentIndex);
       }
@@ -230,8 +236,8 @@ export const PilotArenaPage: React.FC = () => {
         limit: plotLimit,
       });
       setPlotPoints(data.points);
-    } catch (error: any) {
-      setPlotError(error?.response?.data?.detail || error.message);
+    } catch (error) {
+      setPlotError(getApiErrorMessage(error));
     } finally {
       setPlotLoading(false);
     }

@@ -71,7 +71,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
               numRecords: Number(msg.num_records) || 0,
             }));
           }
-        } catch (e) {
+        } catch {
           // 忽略格式错误的消息
         }
       };
@@ -88,7 +88,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
       ws.onerror = () => {
         ws.close();
       };
-    } catch (e) {
+    } catch {
       setConnected(false);
       if (autoReconnect) {
         reconnectTimerRef.current = setTimeout(connect, reconnectInterval);
@@ -103,7 +103,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
     try {
       wsRef.current.send(JSON.stringify(data));
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   }, []);

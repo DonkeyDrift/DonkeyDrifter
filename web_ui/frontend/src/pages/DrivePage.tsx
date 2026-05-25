@@ -28,7 +28,7 @@ export const DrivePage: React.FC = () => {
   const [recording, setRecording] = useState(false);
   const [recordStartTime, setRecordStartTime] = useState<number | null>(null);
   const [recordDuration, setRecordDuration] = useState(0);
-  const [currentModel, setCurrentModel] = useState<string>('未加载');
+  const [currentModel] = useState<string>('未加载');
   const [inputSource, setInputSource] = useState<InputSource>('joystick');
   const gamepadRef = useRef({ angle: 0, throttle: 0 });
   const gyroRef = useRef({ angle: 0, throttle: 0 });
@@ -134,16 +134,16 @@ export const DrivePage: React.FC = () => {
     }
   }, [carState.driveMode, carState.recording, recordStartTime]);
 
-  const handleModeChange = (newMode: DriveMode) => {
+  const handleModeChange = useCallback((newMode: DriveMode) => {
     setMode(newMode);
     send({ drive_mode: newMode });
-  };
+  }, [send]);
 
   const cycleMode = useCallback(() => {
     const modes: DriveMode[] = ['user', 'local_angle', 'local'];
     const idx = modes.indexOf(mode);
     handleModeChange(modes[(idx + 1) % modes.length]);
-  }, [mode]);
+  }, [handleModeChange, mode]);
 
   const toggleRecording = useCallback(() => {
     const next = !recording;

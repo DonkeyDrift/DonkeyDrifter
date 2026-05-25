@@ -7,6 +7,12 @@ interface UseGyroDriveOptions {
   throttleSensitivity?: number;  // 油门灵敏度，默认 1.0
 }
 
+type DeviceOrientationPermissionState = 'granted' | 'denied' | 'prompt';
+
+type DeviceOrientationEventWithPermission = typeof DeviceOrientationEvent & {
+  requestPermission?: () => Promise<DeviceOrientationPermissionState>;
+};
+
 /**
  * 设备陀螺仪输入 Hook
  * 设备横屏握持（左侧为头）：
@@ -27,12 +33,13 @@ export const useGyroDrive = ({
   const lastValueRef = useRef({ angle: 0, throttle: 0 });
 
   const requestPermission = useCallback(async () => {
-    if (typeof (DeviceOrientationEvent as any).requestPermission !== 'function') {
+    const OrientationEvent = DeviceOrientationEvent as DeviceOrientationEventWithPermission;
+    if (typeof OrientationEvent.requestPermission !== 'function') {
       setPermissionState('unsupported');
       return false;
     }
     try {
-      const state = await (DeviceOrientationEvent as any).requestPermission();
+      const state = await OrientationEvent.requestPermission();
       setPermissionState(state);
       return state === 'granted';
     } catch {
@@ -51,7 +58,8 @@ export const useGyroDrive = ({
     }
 
     // 非 iOS 设备默认有权限
-    if (typeof (DeviceOrientationEvent as any).requestPermission !== 'function') {
+    const OrientationEvent = DeviceOrientationEvent as DeviceOrientationEventWithPermission;
+    if (typeof OrientationEvent.requestPermission !== 'function') {
       setPermissionState('granted');
     }
 

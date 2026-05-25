@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseGamepadDriveOptions {
   enabled?: boolean;
@@ -24,11 +24,11 @@ export const useGamepadDrive = ({
   onChangeRef.current = onChange;
   const lastValueRef = useRef({ angle: 0, throttle: 0 });
 
-  const applyDeadzone = (v: number) => {
+  const applyDeadzone = useCallback((v: number) => {
     if (Math.abs(v) < deadzone) return 0;
     const sign = v > 0 ? 1 : -1;
     return sign * ((Math.abs(v) - deadzone) / (1 - deadzone));
-  };
+  }, [deadzone]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -78,7 +78,7 @@ export const useGamepadDrive = ({
       window.removeEventListener('gamepaddisconnected', handleDisconnect);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [enabled, deadzone, maxThrottle]);
+  }, [enabled, applyDeadzone, maxThrottle]);
 
   return { connected, angle: lastValueRef.current.angle, throttle: lastValueRef.current.throttle };
 };

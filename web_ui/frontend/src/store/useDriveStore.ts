@@ -22,6 +22,12 @@ export const DEFAULT_PARAMS: DriveParams = {
   brakeRate: 1.2,
 };
 
+declare global {
+  interface Window {
+    __driveSaveTimer?: number;
+  }
+}
+
 interface DriveStore {
   params: DriveParams;
   isLoading: boolean;
@@ -48,8 +54,8 @@ export const useDriveStore = create<DriveStore>()(
           params: { ...state.params, [key]: value },
         }));
         // 防抖保存
-        clearTimeout((window as any).__driveSaveTimer);
-        (window as any).__driveSaveTimer = setTimeout(() => {
+        window.clearTimeout(window.__driveSaveTimer);
+        window.__driveSaveTimer = window.setTimeout(() => {
           get().saveToServer();
         }, 500);
       },
@@ -61,8 +67,8 @@ export const useDriveStore = create<DriveStore>()(
             pid: { ...state.params.pid, [key]: value },
           },
         }));
-        clearTimeout((window as any).__driveSaveTimer);
-        (window as any).__driveSaveTimer = setTimeout(() => {
+        window.clearTimeout(window.__driveSaveTimer);
+        window.__driveSaveTimer = window.setTimeout(() => {
           get().saveToServer();
         }, 500);
       },
@@ -79,7 +85,7 @@ export const useDriveStore = create<DriveStore>()(
           if (res.data?.success && res.data?.params) {
             set({ params: res.data.params, lastSavedAt: res.data.timestamp || null });
           }
-        } catch (e) {
+        } catch {
           console.warn('加载服务端参数失败，使用本地默认值');
         } finally {
           set({ isLoading: false });
@@ -90,7 +96,7 @@ export const useDriveStore = create<DriveStore>()(
         try {
           const res = await api.post('/drive/params', { params: get().params });
           set({ lastSavedAt: res.data.timestamp || null });
-        } catch (e) {
+        } catch {
           console.warn('保存服务端参数失败');
         }
       },
