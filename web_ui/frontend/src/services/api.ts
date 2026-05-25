@@ -170,6 +170,14 @@ export interface ArenaPrediction {
   pilot: { angle: number; throttle: number };
 }
 
+export interface ArenaPredictionPoint {
+  index: number;
+  user_angle: number;
+  user_throttle: number;
+  pilot_angle: number;
+  pilot_throttle: number;
+}
+
 export const listArenaModelTypes = async () => {
   const response = await api.get('/arena/model-types');
   return response.data;
@@ -204,6 +212,11 @@ export const predictArenaPilot = async (pilotId: string, payload: {
   config_path?: string;
   user_angle_field?: string;
   user_throttle_field?: string;
+  pre_transformations?: string[];
+  augmentations?: string[];
+  post_transformations?: string[];
+  brightness?: number | null;
+  blur?: number | null;
 }) => {
   const response = await api.post(`/arena/pilots/${pilotId}/predict`, payload);
   return response.data as ArenaPrediction;
@@ -214,6 +227,11 @@ export const getArenaPreviewUrl = (pilotId: string, params: {
   configPath?: string;
   userAngleField?: string;
   userThrottleField?: string;
+  preTransformations?: string[];
+  augmentations?: string[];
+  postTransformations?: string[];
+  brightness?: number | null;
+  blur?: number | null;
 }) => {
   const search = new URLSearchParams({
     record_index: String(params.recordIndex),
@@ -222,5 +240,21 @@ export const getArenaPreviewUrl = (pilotId: string, params: {
   if (params.configPath) search.set('config_path', params.configPath);
   if (params.userAngleField) search.set('user_angle_field', params.userAngleField);
   if (params.userThrottleField) search.set('user_throttle_field', params.userThrottleField);
+  if (params.preTransformations?.length) search.set('pre_transformations', params.preTransformations.join(','));
+  if (params.augmentations?.length) search.set('augmentations', params.augmentations.join(','));
+  if (params.postTransformations?.length) search.set('post_transformations', params.postTransformations.join(','));
+  if (params.brightness !== undefined && params.brightness !== null) search.set('brightness', String(params.brightness));
+  if (params.blur !== undefined && params.blur !== null) search.set('blur', String(params.blur));
   return `${API_URL}/arena/pilots/${pilotId}/preview?${search.toString()}`;
+};
+
+export const getArenaPredictions = async (pilotId: string, payload: {
+  config_path?: string;
+  start?: number;
+  limit?: number;
+  user_angle_field?: string;
+  user_throttle_field?: string;
+}) => {
+  const response = await api.post(`/arena/pilots/${pilotId}/predictions`, payload);
+  return response.data as { status: boolean; limit: number; points: ArenaPredictionPoint[] };
 };

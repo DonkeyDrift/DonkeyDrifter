@@ -165,6 +165,7 @@ def test_predict_applies_image_processing(monkeypatch, tmp_path):
     assert FakePilot.last_image is processed
 
 
+def test_preview_returns_image_response(monkeypatch, tmp_path):
     client, arena = make_client(monkeypatch)
     model_path = tmp_path / "pilot.tflite"
     model_path.write_text("model")

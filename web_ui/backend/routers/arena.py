@@ -12,8 +12,6 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from donkeycar import load_config
-from donkeycar.parts.image_transformations import ImageTransformations
-from donkeycar.pipeline.augmentations import ImageAugmentation
 from donkeycar.utils import get_model_by_type
 
 from routers import tub as tub_router
@@ -180,14 +178,18 @@ def _build_processing_config(base_cfg: Any, request: PredictRequest) -> Any:
 def apply_image_processing(image: np.ndarray, base_cfg: Any, request: PredictRequest) -> np.ndarray:
     cfg = _build_processing_config(base_cfg, request)
     if request.pre_transformations:
+        from donkeycar.parts.image_transformations import ImageTransformations
         image = ImageTransformations(cfg, "TRANSFORMATIONS").run(image)
     if request.augmentations or request.brightness is not None or request.blur is not None:
+        from donkeycar.pipeline.augmentations import ImageAugmentation
         image = ImageAugmentation(cfg, "AUGMENTATIONS", prob=1.0).run(image)
     if request.post_transformations:
+        from donkeycar.parts.image_transformations import ImageTransformations
         image = ImageTransformations(cfg, "POST_TRANSFORMATIONS").run(image)
     return image
 
 
+def draw_control_line(angle: float, throttle: float, image: np.ndarray, color: tuple[int, int, int]) -> None:
     height, width = image.shape[:2]
     start_x = width // 2
     start_y = height - 1

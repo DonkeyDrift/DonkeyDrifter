@@ -30,7 +30,11 @@ const ParamSlider: React.FC<ParamSliderProps> = ({ label, value, min, max, step,
   </div>
 );
 
-export const ParameterPanel: React.FC = () => {
+interface ParameterPanelProps {
+  className?: string;
+}
+
+export const ParameterPanel: React.FC<ParameterPanelProps> = ({ className = '' }) => {
   const { params, setParam, setPidParam, resetToDefault, importParams } = useDriveStore();
   const [open, setOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
@@ -62,7 +66,7 @@ export const ParameterPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-full bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden">
+    <div className={`w-full bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden ${className}`}>
       <button
         onClick={() => setOpen(!open)}
         className="w-full px-3 py-2 flex items-center justify-between text-xs text-zinc-400 hover:text-zinc-200"

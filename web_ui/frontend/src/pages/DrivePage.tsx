@@ -20,7 +20,7 @@ export const DrivePage: React.FC = () => {
   // 输入合并：摇杆 + 键盘，后发生效
   const joystickRef = useRef({ angle: 0, throttle: 0 });
   const keyboardRef = useRef({ angle: 0, throttle: 0 });
-  const lastInputType = useRef<'joystick' | 'keyboard'>('joystick');
+  const lastInputType = useRef<'joystick' | 'keyboard' | 'gamepad' | 'gyro'>('joystick');
 
   const [angle, setAngle] = useState(0);
   const [throttle, setThrottle] = useState(0);
