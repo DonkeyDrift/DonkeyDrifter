@@ -58,15 +58,27 @@ class ConnectorJobManager:
         await job.log_queue.put({"type": "status", "status": job.status})
 
     async def run_pull_tub(self, job: ConnectorJob, config: ConnectorConfig, remote_tub: str, local_data_path: str, create_new_dir: bool):
-        command = build_pull_tub_command(config, remote_tub, local_data_path, create_new_dir)
+        try:
+            command = build_pull_tub_command(config, remote_tub, local_data_path, create_new_dir)
+        except Exception as exc:
+            await self._fail_job(job, exc)
+            return
         await self._run_rsync(job, command)
 
     async def run_push_pilots(self, job: ConnectorJob, config: ConnectorConfig, local_models_path: str, formats: list[str]):
-        command = build_push_pilots_command(config, local_models_path, formats)
+        try:
+            command = build_push_pilots_command(config, local_models_path, formats)
+        except Exception as exc:
+            await self._fail_job(job, exc)
+            return
         await self._run_rsync(job, command)
 
     async def run_drive_start(self, job: ConnectorJob, config: ConnectorConfig, model_type: str | None, pilot: str | None, bridge_server_url: str | None):
-        command = build_remote_drive_start_command(config, model_type, pilot, bridge_server_url)
+        try:
+            command = build_remote_drive_start_command(config, model_type, pilot, bridge_server_url)
+        except Exception as exc:
+            await self._fail_job(job, exc)
+            return
         await self._run_drive_command(job, command, capture_pid=True)
 
     async def run_drive_stop(self, job: ConnectorJob, config: ConnectorConfig, pid: int | None = None):
@@ -77,10 +89,20 @@ class ConnectorJobManager:
             job.finished_at = datetime.now().isoformat()
             await job.log_queue.put({"type": "status", "status": job.status, "error": job.error_message})
             return
-        command = build_remote_drive_stop_command(config, target_pid)
+        try:
+            command = build_remote_drive_stop_command(config, target_pid)
+        except Exception as exc:
+            await self._fail_job(job, exc)
+            return
         await self._run_drive_command(job, command, capture_pid=False)
         if job.status == "completed":
             self.drive_pid = None
+
+    async def _fail_job(self, job: ConnectorJob, exc: Exception):
+        job.status = "failed"
+        job.error_message = str(exc)
+        job.finished_at = datetime.now().isoformat()
+        await job.log_queue.put({"type": "status", "status": job.status, "error": job.error_message})
 
     async def _run_drive_command(self, job: ConnectorJob, command: list[str], capture_pid: bool):
         job.status = "running"

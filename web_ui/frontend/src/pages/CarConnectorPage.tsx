@@ -97,6 +97,19 @@ export const CarConnectorPage: React.FC = () => {
       .catch(() => {});
   }, []);
 
+  const refreshDriveStatus = useCallback(async () => {
+    try {
+      const result = await getConnectorDriveStatus();
+      setDrivePid(result.pid);
+    } catch {
+      setDrivePid(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshDriveStatus();
+  }, [refreshDriveStatus]);
+
   // 保存配置
   const handleSaveConfig = useCallback(async () => {
     setConfigSaving(true);
@@ -160,6 +173,7 @@ export const CarConnectorPage: React.FC = () => {
             setJobProgress(100);
           }
           if (['completed', 'failed', 'stopped'].includes(data.status)) {
+            refreshDriveStatus();
             es.close();
             eventSourceRef.current = null;
           }
@@ -182,6 +196,7 @@ export const CarConnectorPage: React.FC = () => {
             setJobLogs(s.logs);
             if (['completed', 'failed', 'stopped'].includes(s.status)) {
               clearInterval(timer);
+              refreshDriveStatus();
             }
           }, 2000);
         }
@@ -189,7 +204,7 @@ export const CarConnectorPage: React.FC = () => {
         setJobLogs([`任务状态读取失败: ${getApiErrorMessage(error)}`]);
       });
     };
-  }, []);
+  }, [refreshDriveStatus]);
 
   // 清理 SSE
   useEffect(() => {
@@ -250,8 +265,8 @@ export const CarConnectorPage: React.FC = () => {
 
   // 远程停止驾驶
   const handleDriveStop = useCallback(() => {
-    startJobAndSubscribe(() => stopConnectorDrive());
-  }, [startJobAndSubscribe]);
+    startJobAndSubscribe(() => stopConnectorDrive({ pid: drivePid ?? undefined }));
+  }, [drivePid, startJobAndSubscribe]);
 
   // 取消任务
   const handleCancelJob = useCallback(async () => {
@@ -464,6 +479,9 @@ export const CarConnectorPage: React.FC = () => {
                 <p className="mt-1 text-xs text-zinc-500">
                   车端会使用这个地址连接 Web UI 后端；如果车端在另一台机器，请把 localhost 改成电脑局域网 IP。
                 </p>
+              </div>
+              <div className="text-xs text-zinc-400">
+                当前远程驾驶 PID: {drivePid ?? '未运行'}
               </div>
               <div className="flex items-center gap-3">
                 <Button

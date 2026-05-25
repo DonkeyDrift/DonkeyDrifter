@@ -184,3 +184,32 @@ def test_status_uses_remote_client(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     assert response.json() == {"online": True, "message": "Connected"}
+
+
+def test_pull_tub_job_fails_when_command_building_fails():
+    import asyncio
+
+    from connector_engine import ConnectorJobManager
+    from remote_car_client import ConnectorConfig
+
+    async def run_job():
+        manager = ConnectorJobManager()
+        job = manager.create_job("pull_tub")
+
+        await manager.run_pull_tub(
+            job,
+            ConnectorConfig(host="car.local", user="pi", car_dir="~/mycar"),
+            "bad/name",
+            "./data",
+            False,
+        )
+
+        event = await job.log_queue.get()
+        return job, event
+
+    job, event = asyncio.run(run_job())
+
+    assert job.status == "failed"
+    assert "远端名称不能包含路径分隔符" in job.error_message
+    assert event["type"] == "status"
+    assert event["status"] == "failed"
