@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback, useRef } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -13,26 +13,17 @@ import {
   startConnectorDrive,
   stopConnectorDrive,
   getConnectorDriveStatus,
-  getConnectorJobStatus,
-  stopConnectorJob,
-  createConnectorJobStream,
   getApiErrorMessage,
   getDriveCarWebSocketUrl,
+  loadTub,
   type ConnectorConfig as ConnectorConfigType,
-  type ConnectorJobState,
-  type ConnectorJobStatus,
 } from '../services/api';
+import { useConnectorJob } from '../hooks/useConnectorJob';
+import { useDriveWebsocket } from '../hooks/useDriveWebsocket';
+import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
 
 type FormatOption = 'h5' | 'savedmodel' | 'tflite' | 'trt';
-
-type ConnectorJobEvent = {
-  type: 'progress' | 'log' | 'status' | 'drive_pid';
-  progress?: number;
-  line?: string;
-  status?: ConnectorJobState;
-  error?: string | null;
-};
 
 const FORMAT_OPTIONS: { key: FormatOption; label: string }[] = [
   { key: 'tflite', label: 'TFLite' },
@@ -54,6 +45,8 @@ const MODEL_TYPES = [
 
 export const CarConnectorPage: React.FC = () => {
   const navigate = useNavigate();
+  const { setTub, setError } = useStore();
+  const { connected: driveConnected, carState } = useDriveWebsocket();
 
   // 连接配置
   const [config, setConfig] = useState<ConnectorConfigType>({
@@ -81,13 +74,6 @@ export const CarConnectorPage: React.FC = () => {
   const [drivePid, setDrivePid] = useState<number | null>(null);
   const [selectedFormats, setSelectedFormats] = useState<Set<FormatOption>>(new Set(['tflite']));
 
-  // 任务状态
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<ConnectorJobStatus | null>(null);
-  const [jobProgress, setJobProgress] = useState(0);
-  const [jobLogs, setJobLogs] = useState<string[]>([]);
-  const eventSourceRef = useRef<EventSource | null>(null);
-
   // 加载配置
   useEffect(() => {
     getConnectorConfig()
@@ -109,6 +95,18 @@ export const CarConnectorPage: React.FC = () => {
   useEffect(() => {
     refreshDriveStatus();
   }, [refreshDriveStatus]);
+
+  const {
+    jobStatus,
+    jobProgress,
+    jobLogs,
+    isJobRunning,
+    startJob,
+    cancelJob,
+  } = useConnectorJob({
+    onDrivePid: setDrivePid,
+    onFinished: refreshDriveStatus,
+  });
 
   // 保存配置
   const handleSaveConfig = useCallback(async () => {
@@ -153,128 +151,68 @@ export const CarConnectorPage: React.FC = () => {
     if (online) loadRemoteLists();
   }, [online, loadRemoteLists]);
 
-  // SSE 订阅任务事件
-  const subscribeJobEvents = useCallback((jobId: string) => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+  const refreshLocalTub = useCallback(async (localTubPath: string) => {
+    try {
+      const data = await loadTub(localTubPath);
+      setTub(data.path, data.records || [], data.fields || [], data.total_physical_records, data.deleted_indexes);
+      setStatusMessage(`Tub 已拉取并刷新: ${data.path}`);
+    } catch (error) {
+      const message = getApiErrorMessage(error, '本地 Tub 刷新失败');
+      setStatusMessage(`Tub 已拉取，但本地刷新失败: ${message}`);
+      setError(message);
     }
-    const es = createConnectorJobStream(jobId);
-    eventSourceRef.current = es;
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as ConnectorJobEvent;
-        if (data.type === 'progress' && typeof data.progress === 'number') {
-          setJobProgress(data.progress);
-        } else if (data.type === 'log' && data.line) {
-          setJobLogs((prev) => [...prev.slice(-199), data.line || '']);
-        } else if (data.type === 'status' && data.status) {
-          setJobStatus((prev) => (prev ? { ...prev, status: data.status!, error: data.error } : null));
-          if (data.status === 'completed') {
-            setJobProgress(100);
-          }
-          if (['completed', 'failed', 'stopped'].includes(data.status)) {
-            refreshDriveStatus();
-            es.close();
-            eventSourceRef.current = null;
-          }
-        }
-      } catch { /* 忽略解析错误 */ }
-    };
-    es.onerror = () => {
-      es.close();
-      eventSourceRef.current = null;
-      // 回退轮询
-      getConnectorJobStatus(jobId).then((status) => {
-        setJobStatus(status);
-        setJobProgress(status.progress);
-        setJobLogs(status.logs);
-        if (!['completed', 'failed', 'stopped'].includes(status.status)) {
-          const timer = setInterval(async () => {
-            const s = await getConnectorJobStatus(jobId);
-            setJobStatus(s);
-            setJobProgress(s.progress);
-            setJobLogs(s.logs);
-            if (['completed', 'failed', 'stopped'].includes(s.status)) {
-              clearInterval(timer);
-              refreshDriveStatus();
-            }
-          }, 2000);
-        }
-      }).catch((error) => {
-        setJobLogs([`任务状态读取失败: ${getApiErrorMessage(error)}`]);
-      });
-    };
-  }, [refreshDriveStatus]);
-
-  // 清理 SSE
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) eventSourceRef.current.close();
-    };
-  }, []);
-
-  // 启动任务后订阅
-  const startJobAndSubscribe = useCallback(
-    async (action: () => Promise<{ job_id: string; status: ConnectorJobState }>) => {
-      setJobLogs([]);
-      setJobProgress(0);
-      try {
-        const result = await action();
-        setActiveJobId(result.job_id);
-        setJobStatus({ id: result.job_id, kind: '', status: result.status, progress: 0, logs: [], started_at: new Date().toISOString() });
-        subscribeJobEvents(result.job_id);
-      } catch (err: unknown) {
-        setJobLogs([`启动失败: ${getApiErrorMessage(err)}`]);
-      }
-    },
-    [subscribeJobEvents],
-  );
+  }, [setTub, setError]);
 
   // 拉取 Tub
   const handlePullTub = useCallback(() => {
     if (!selectedTub) return;
-    startJobAndSubscribe(() =>
-      pullConnectorTub({
-        remote_tub: selectedTub,
-        local_data_path: './data',
-        create_new_dir: createNewDir,
+    const localTubPath = createNewDir ? `./data/${selectedTub}` : './data';
+    startJob(
+      () =>
+        pullConnectorTub({
+          remote_tub: selectedTub,
+          local_data_path: './data',
+          create_new_dir: createNewDir,
+        }),
+      {
+        onCompleted: () => refreshLocalTub(localTubPath),
+      },
+    );
+  }, [selectedTub, createNewDir, refreshLocalTub, startJob]);
+
+  const startPushPilotsJob = useCallback((formats: FormatOption[]) => {
+    startJob(() =>
+      pushConnectorPilots({
+        local_models_path: './models',
+        formats,
       }),
     );
-  }, [selectedTub, createNewDir, startJobAndSubscribe]);
+  }, [startJob]);
 
   // 推送 Pilots
   const handlePushPilots = useCallback(() => {
-    startJobAndSubscribe(() =>
-      pushConnectorPilots({
-        local_models_path: './models',
-        formats: Array.from(selectedFormats),
-      }),
-    );
-  }, [selectedFormats, startJobAndSubscribe]);
+    startPushPilotsJob(Array.from(selectedFormats));
+  }, [selectedFormats, startPushPilotsJob]);
+
+  const handlePushAllPilots = useCallback(() => {
+    startPushPilotsJob([]);
+  }, [startPushPilotsJob]);
 
   // 远程启动驾驶
   const handleDriveStart = useCallback(() => {
-    startJobAndSubscribe(() =>
+    startJob(() =>
       startConnectorDrive({
         model_type: selectedPilot ? modelType : undefined,
         pilot: selectedPilot || undefined,
         bridge_server_url: bridgeServerUrl.trim() || undefined,
       }),
     );
-  }, [selectedPilot, modelType, bridgeServerUrl, startJobAndSubscribe]);
+  }, [selectedPilot, modelType, bridgeServerUrl, startJob]);
 
   // 远程停止驾驶
   const handleDriveStop = useCallback(() => {
-    startJobAndSubscribe(() => stopConnectorDrive({ pid: drivePid ?? undefined }));
-  }, [drivePid, startJobAndSubscribe]);
-
-  // 取消任务
-  const handleCancelJob = useCallback(async () => {
-    if (!activeJobId) return;
-    await stopConnectorJob(activeJobId);
-  }, [activeJobId]);
-
-  const isJobRunning = jobStatus?.status === 'running' || jobStatus?.status === 'pending';
+    startJob(() => stopConnectorDrive({ pid: drivePid ?? undefined }));
+  }, [drivePid, startJob]);
 
   return (
     <div className="space-y-6">
@@ -418,14 +356,30 @@ export const CarConnectorPage: React.FC = () => {
                     {label}
                   </button>
                 ))}
+                <button
+                  onClick={() => setSelectedFormats(new Set(FORMAT_OPTIONS.map(({ key }) => key)))}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors border bg-zinc-800 text-zinc-300 border-zinc-700 hover:text-zinc-100"
+                >
+                  一键全选
+                </button>
               </div>
-              <Button
-                onClick={handlePushPilots}
-                disabled={!online || isJobRunning}
-                size="sm"
-              >
-                推送 Pilots（{selectedFormats.size ? Array.from(selectedFormats).join(', ') : '全部'}）
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={handlePushPilots}
+                  disabled={!online || isJobRunning || selectedFormats.size === 0}
+                  size="sm"
+                >
+                  推送选中格式（{Array.from(selectedFormats).join(', ')}）
+                </Button>
+                <Button
+                  onClick={handlePushAllPilots}
+                  disabled={!online || isJobRunning}
+                  variant="secondary"
+                  size="sm"
+                >
+                  同步全部
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -480,6 +434,13 @@ export const CarConnectorPage: React.FC = () => {
                   车端会使用这个地址连接 Web UI 后端；如果车端在另一台机器，请把 localhost 改成电脑局域网 IP。
                 </p>
               </div>
+              <div className={`text-xs ${driveConnected && carState.online ? 'text-green-400' : 'text-zinc-500'}`}>
+                {driveConnected
+                  ? carState.online
+                    ? '车端已在线，可直接打开驾驶控制台'
+                    : '车端尚未连接 Drive 控制通道'
+                  : 'Drive 状态通道连接中...'}
+              </div>
               <div className="text-xs text-zinc-400">
                 当前远程驾驶 PID: {drivePid ?? '未运行'}
               </div>
@@ -518,7 +479,7 @@ export const CarConnectorPage: React.FC = () => {
                   {isJobRunning ? '任务进行中' : '任务日志'}
                 </CardTitle>
                 {isJobRunning && (
-                  <Button onClick={handleCancelJob} variant="danger" size="sm">
+                  <Button onClick={cancelJob} variant="danger" size="sm">
                     取消
                   </Button>
                 )}

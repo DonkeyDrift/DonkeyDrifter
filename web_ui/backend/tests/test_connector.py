@@ -121,7 +121,47 @@ def test_build_remote_drive_start_command_injects_bridge_url_safely():
     assert "DRIVE_API_SERVER_URL=ws://192.168.1.2:8000/api/drive/ws" in remote_command
     assert "--type tflite_linear" in remote_command
     assert "--model '~/mycar/models/pilot.tflite'" in remote_command
-    assert "echo $!" in remote_command
+    assert ".donkeycar_drive.pid" in remote_command
+    assert "echo \"$pid\"" in remote_command
+
+
+def test_build_remote_drive_stop_command_validates_process_before_kill():
+    from remote_car_client import ConnectorConfig, build_remote_drive_stop_command
+
+    config = ConnectorConfig(host="car.local", user="pi", car_dir="~/mycar")
+
+    command = build_remote_drive_stop_command(config, 1234)
+    remote_command = command[-1]
+
+    assert ".donkeycar_drive.pid" in remote_command
+    assert "ps -p \"$pid\" -o args=" in remote_command
+    assert "manage.py drive" in remote_command
+    assert "/proc/$pid/cwd" in remote_command
+    assert "kill -SIGINT \"$pid\"" in remote_command
+
+
+
+def test_build_remote_drive_stop_command_rejects_invalid_pid():
+    from remote_car_client import ConnectorConfig, build_remote_drive_stop_command
+
+    config = ConnectorConfig(host="car.local", user="pi", car_dir="~/mycar")
+
+    with pytest.raises(ValueError, match="PID 无效"):
+        build_remote_drive_stop_command(config, 0)
+
+
+
+def test_build_remote_rsync_check_command_checks_remote_binary():
+    from remote_car_client import ConnectorConfig, build_remote_rsync_check_command
+
+    config = ConnectorConfig(host="car.local", user="pi", car_dir="~/mycar")
+
+    command = build_remote_rsync_check_command(config)
+
+    assert command[:3] == ["ssh", "-p", "22"]
+    assert "command -v rsync" in command[-1]
+    assert "车端缺少 rsync" in command[-1]
+
 
 
 def test_invalid_config_file_returns_400(monkeypatch, tmp_path):
@@ -215,6 +255,37 @@ def test_pull_tub_job_fails_when_command_building_fails():
     assert event["status"] == "failed"
 
 
+def test_pull_tub_job_fails_when_local_rsync_is_missing(monkeypatch):
+    import asyncio
+
+    import connector_engine
+    from connector_engine import ConnectorJobManager
+    from remote_car_client import ConnectorConfig
+
+    async def run_job():
+        manager = ConnectorJobManager()
+        job = manager.create_job("pull_tub")
+        monkeypatch.setattr(connector_engine.shutil, "which", lambda name: None)
+
+        await manager.run_pull_tub(
+            job,
+            ConnectorConfig(host="car.local", user="pi", car_dir="~/mycar"),
+            "data",
+            "./data",
+            False,
+        )
+
+        event = await job.log_queue.get()
+        return job, event
+
+    job, event = asyncio.run(run_job())
+
+    assert job.status == "failed"
+    assert "本机缺少 rsync" in job.error_message
+    assert event["status"] == "failed"
+
+
+
 def test_drive_command_keeps_stopped_status(monkeypatch):
     import asyncio
 
@@ -257,3 +328,44 @@ def test_drive_command_keeps_stopped_status(monkeypatch):
     assert job.status == "stopped"
     assert event["type"] == "status"
     assert event["status"] == "stopped"
+
+
+
+def test_drive_stop_failure_keeps_pid(monkeypatch):
+    import asyncio
+
+    import connector_engine
+    from connector_engine import ConnectorJobManager
+    from remote_car_client import ConnectorConfig
+
+    class FakeStdout:
+        def __init__(self):
+            self.lines = ["拒绝停止\n".encode("utf-8"), b""]
+
+        async def readline(self):
+            return self.lines.pop(0)
+
+    class FakeProcess:
+        stdout = FakeStdout()
+        returncode = 1
+
+        async def wait(self):
+            return self.returncode
+
+    async def create_process(*args, **kwargs):
+        return FakeProcess()
+
+    async def run_job():
+        manager = ConnectorJobManager()
+        manager.drive_pid = 1234
+        job = manager.create_job("drive_stop")
+        monkeypatch.setattr(connector_engine.asyncio, "create_subprocess_exec", create_process)
+
+        await manager.run_drive_stop(job, ConnectorConfig(host="car.local", user="pi", car_dir="~/mycar"), None)
+
+        return manager, job
+
+    manager, job = asyncio.run(run_job())
+
+    assert job.status == "failed"
+    assert manager.drive_pid == 1234

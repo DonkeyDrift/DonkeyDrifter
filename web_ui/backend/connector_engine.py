@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from remote_car_client import (
     build_push_pilots_command,
     build_remote_drive_start_command,
     build_remote_drive_stop_command,
+    build_remote_rsync_check_command,
     parse_rsync_progress,
 )
 
@@ -63,6 +65,8 @@ class ConnectorJobManager:
         except Exception as exc:
             await self._fail_job(job, exc)
             return
+        if not await self._ensure_rsync_available(job, config):
+            return
         await self._run_rsync(job, command)
 
     async def run_push_pilots(self, job: ConnectorJob, config: ConnectorConfig, local_models_path: str, formats: list[str]):
@@ -70,6 +74,8 @@ class ConnectorJobManager:
             command = build_push_pilots_command(config, local_models_path, formats)
         except Exception as exc:
             await self._fail_job(job, exc)
+            return
+        if not await self._ensure_rsync_available(job, config):
             return
         await self._run_rsync(job, command)
 
@@ -104,6 +110,41 @@ class ConnectorJobManager:
         job.finished_at = datetime.now().isoformat()
         await job.log_queue.put({"type": "status", "status": job.status, "error": job.error_message})
 
+    async def _ensure_rsync_available(self, job: ConnectorJob, config: ConnectorConfig) -> bool:
+        if shutil.which("rsync") is None:
+            await self._fail_job(job, RuntimeError("本机缺少 rsync，无法同步文件。请安装 rsync 后重试；Linux/WSL: sudo apt install rsync，macOS: brew install rsync。"))
+            return False
+
+        command = build_remote_rsync_check_command(config)
+        output: list[str] = []
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="ignore").strip()
+                if text:
+                    output.append(text)
+                    job.logs.append(text)
+                    await job.log_queue.put({"type": "log", "line": text, "timestamp": time.time()})
+            await process.wait()
+            if process.returncode == 0:
+                return True
+            message = output[-1] if output else f"车端 rsync 检测失败，退出码: {process.returncode}"
+            await self._fail_job(job, RuntimeError(message))
+            return False
+        except FileNotFoundError:
+            await self._fail_job(job, RuntimeError("ssh 命令不可用，请先安装 OpenSSH 客户端"))
+            return False
+        except Exception as exc:
+            await self._fail_job(job, exc)
+            return False
+
     async def _run_drive_command(self, job: ConnectorJob, command: list[str], capture_pid: bool):
         job.status = "running"
         try:
@@ -137,7 +178,8 @@ class ConnectorJobManager:
                         job.error_message = "未能解析远端驾驶进程 PID"
             else:
                 job.status = "failed"
-                job.error_message = f"远端命令退出码: {job.process.returncode}"
+                detail = "；".join(output[-3:])
+                job.error_message = f"远端命令退出码: {job.process.returncode}" + (f"，{detail}" if detail else "")
         except Exception as exc:
             job.status = "failed"
             job.error_message = str(exc)

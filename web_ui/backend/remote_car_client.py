@@ -129,14 +129,39 @@ def build_remote_drive_start_command(
         if not model_type:
             raise ValueError("选择 pilot 时必须提供模型类型")
         parts.extend(["--type", shlex.quote(model_type), "--model", shlex.quote(remote_join(car_dir, "models", model_name))])
-    remote_command = f"cd {shlex.quote(car_dir)} && nohup {' '.join(parts)} > .donkeycar_drive.log 2>&1 & echo $!"
+    drive_command = " ".join(parts)
+    remote_command = (
+        f"cd {shlex.quote(car_dir)} && "
+        f"nohup {drive_command} > .donkeycar_drive.log 2>&1 & "
+        "pid=$!; "
+        "echo \"$pid\" > .donkeycar_drive.pid; "
+        "echo \"$pid\""
+    )
     return [*build_ssh_base(config), remote_command]
 
 
 def build_remote_drive_stop_command(config: ConnectorConfig, pid: int) -> list[str]:
     if pid <= 0:
         raise ValueError("PID 无效")
-    remote_command = f"kill -SIGINT {pid}"
+    car_dir = validate_remote_path(config.car_dir)
+    remote_command = " && ".join([
+        f"cd {shlex.quote(car_dir)}",
+        "car_dir=$(pwd -P)",
+        f"pid={pid}",
+        "if [ -f .donkeycar_drive.pid ]; then file_pid=$(cat .donkeycar_drive.pid); if [ \"$file_pid\" != \"$pid\" ]; then echo 'PID 与 .donkeycar_drive.pid 不匹配，已拒绝停止'; exit 1; fi; fi",
+        "args=$(ps -p \"$pid\" -o args=) || { echo 'PID 不存在或已退出'; exit 1; }",
+        "case \"$args\" in *'manage.py drive'*) ;; *) echo 'PID 不是 Donkeycar drive 进程，已拒绝停止'; exit 1; ;; esac",
+        "cwd=$(readlink /proc/$pid/cwd) || { echo '无法读取 PID 工作目录，已拒绝停止'; exit 1; }",
+        "if [ \"$cwd\" != \"$car_dir\" ]; then echo 'PID 工作目录不匹配，已拒绝停止'; exit 1; fi",
+        "kill -SIGINT \"$pid\"",
+        "rm -f .donkeycar_drive.pid",
+        "echo '远程驾驶进程已停止'",
+    ])
+    return [*build_ssh_base(config), remote_command]
+
+
+def build_remote_rsync_check_command(config: ConnectorConfig) -> list[str]:
+    remote_command = "command -v rsync >/dev/null 2>&1 || { echo '车端缺少 rsync，请在车端安装: sudo apt install rsync'; exit 127; }"
     return [*build_ssh_base(config), remote_command]
 
 
