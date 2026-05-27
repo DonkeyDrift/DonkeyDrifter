@@ -49,9 +49,9 @@ export const FileBrowserModal: React.FC<FileBrowserModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col overflow-hidden max-h-[80vh]">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl w-full max-w-lg flex flex-col overflow-hidden max-h-[90vh] h-[600px]">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
           <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
             <FolderOpen className="w-5 h-5 text-cyan-500" />
             {title}
@@ -65,12 +65,12 @@ export const FileBrowserModal: React.FC<FileBrowserModalProps> = ({
         </div>
 
         {/* Current Path */}
-        <div className="p-3 bg-zinc-950 border-b border-zinc-800 text-sm font-mono text-cyan-400 break-all">
+        <div className="p-3 bg-zinc-950 border-b border-zinc-800 text-sm font-mono text-cyan-400 break-all shrink-0">
           {currentPath || 'Loading...'}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-2 min-h-[300px]">
+        <div className="flex-1 overflow-y-auto p-2 min-h-0">
           {loading ? (
             <div className="flex justify-center items-center h-full text-zinc-500">
               Loading...
@@ -115,7 +115,7 @@ export const FileBrowserModal: React.FC<FileBrowserModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-zinc-800 bg-zinc-900/50 flex justify-end gap-3">
+        <div className="p-4 border-t border-zinc-800 bg-zinc-900/50 flex justify-end gap-3 shrink-0">
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
