@@ -1096,11 +1096,11 @@ export const TubEditor: React.FC = () => {
             grid: { color: '#27272a' }
         },
         y: {
-            min: -1,
-            max: 1,
+            min: -100,
+            max: 100,
             ticks: {
               color: '#71717a',
-              stepSize: 0.2,
+              stepSize: 20,
             },
             grid: { color: '#27272a' }
         }
