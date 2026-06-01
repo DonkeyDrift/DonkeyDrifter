@@ -26,10 +26,14 @@ pytest                         # 运行全部 Python 测试
 make tests                     # 等价于 pytest
 pytest tests/test_restore_logic.py -q
 pytest tests/test_restore_logic.py::test_name -v
+pytest donkeycar/tests/test_vehicle.py -q
+pytest donkeycar/tests/test_vehicle.py::test_name -v
 
 mypy donkeycar/                # 类型检查
-make package                   # python setup.py sdist
+python -m build --sdist        # 通过 pyproject.toml 构建源码包；需要已安装 build
 ```
+
+仓库根目录没有 `setup.py`，当前 `make package` 目标仍调用 `python setup.py sdist`，打包时不要依赖该目标，除非先修正 Makefile。
 
 ### Web UI 后端
 
