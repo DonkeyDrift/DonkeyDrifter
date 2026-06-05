@@ -28,3 +28,4 @@ htmlcov/
 lightning_logs
 tb_logs
 .donkey_history
+web_ui/frontend/node_modules/
