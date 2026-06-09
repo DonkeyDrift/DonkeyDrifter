@@ -39,6 +39,7 @@ from donkeydrifter.parts.behavior import BehaviorPart
 from donkeydrifter.parts.controller import (JoystickController, LocalWebController,
                                         WebFpv)
 from donkeydrifter.parts.datastore import TubHandler
+from donkeydrifter.parts.drive_api_bridge import DriveApiBridge
 from donkeydrifter.parts.explode import ExplodeDict
 from donkeydrifter.parts.file_watcher import FileWatcher
 from donkeydrifter.parts.kinematics import (Bicycle,
@@ -708,7 +709,11 @@ def add_user_controller(V, cfg, use_joystick, input_image='ui/image_array'):
     # This web controller will create a web server that is capable
     # of managing steering, throttle, and modes, and more.
     #
-    ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
+    server_url = os.environ.get("DRIVE_API_SERVER_URL") or getattr(cfg, "DRIVE_API_SERVER_URL", None)
+    if server_url:
+        ctr = DriveApiBridge(server_url=server_url)
+    else:
+        ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
     V.add(ctr,
           inputs=[input_image, 'tub/num_records', 'user/mode', 'recording'],
           outputs=['user/steering', 'user/throttle', 'user/mode', 'recording', 'web/buttons'],

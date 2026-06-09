@@ -18,11 +18,19 @@ import donkeydrifter as dk
 from donkeydrifter.parts.tub_v2 import TubWriter, TubWiper
 from donkeydrifter.parts.datastore import TubHandler
 from donkeydrifter.parts.controller import LocalWebController, RCReceiver
+from donkeydrifter.parts.drive_api_bridge import DriveApiBridge
 from donkeydrifter.parts.actuator import PCA9685, PWMSteering, PWMThrottle
 from donkeydrifter.pipeline.augmentations import ImageAugmentation
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+def make_web_controller(cfg):
+    server_url = os.environ.get("DRIVE_API_SERVER_URL") or getattr(cfg, "DRIVE_API_SERVER_URL", None)
+    if server_url:
+        return DriveApiBridge(server_url=server_url)
+    return LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
 
 
 class DriveMode:
@@ -112,12 +120,14 @@ def drive(cfg, model_path=None, model_type=None):
         car.add(rc_steering, outputs=['user/angle', 'user/angle_on'])
         car.add(rc_throttle, outputs=['user/throttle', 'user/throttle_on'])
         car.add(rc_wiper, outputs=['user/wiper', 'user/wiper_on'])
-        ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT,
-                                 mode=cfg.WEB_INIT_MODE)
+        ctr = make_web_controller(cfg)
         # web controller sets user mode, its angle, throttle are not used.
+        controller_outputs = ['webcontroller/angle', 'webcontroller/throttle',
+                              'user/mode', 'recording']
+        if isinstance(ctr, DriveApiBridge):
+            controller_outputs.append('web/buttons')
         car.add(ctr, inputs=['cam/image_array'],
-                outputs=['webcontroller/angle', 'webcontroller/throttle',
-                         'user/mode', 'recording'],
+                outputs=controller_outputs,
                 threaded=True)
 
     else:
@@ -130,12 +140,13 @@ def drive(cfg, model_path=None, model_type=None):
                 car.add(netwkJs, threaded=True)
                 ctr.js = netwkJs
         else:
-            ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT,
-                                     mode=cfg.WEB_INIT_MODE)
+            ctr = make_web_controller(cfg)
+        controller_outputs = ['user/angle', 'user/throttle', 'user/mode', 'recording']
+        if isinstance(ctr, DriveApiBridge):
+            controller_outputs.append('web/buttons')
         car.add(ctr,
                 inputs=['cam/image_array'],
-                outputs=['user/angle', 'user/throttle', 'user/mode',
-                         'recording'],
+                outputs=controller_outputs,
                 threaded=True)
 
     # pilot condition to determine if user or ai are driving
