@@ -68,6 +68,15 @@ def test_setup_metadata_uses_donkeydrifter_identity():
     ]
 
 
+def test_base_install_requires_simulator_and_pygame_dependencies():
+    parser = ConfigParser()
+    parser.read(PROJECT_ROOT / "setup.cfg", encoding="utf-8")
+
+    install_requires = parser["options"]["install_requires"]
+    assert "gymnasium" in install_requires
+    assert "pygame" in install_requires
+
+
 def test_readme_documents_donkeydrifter_identity_and_compatibility():
     readme = read_text(PROJECT_ROOT / "README.md")
 
