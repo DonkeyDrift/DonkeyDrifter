@@ -13,9 +13,9 @@ import time
 
 from docopt import docopt
 
-import donkeycar as dk
-from donkeycar.parts.datastore import TubHandler
-from donkeycar.parts.actuator import PCA9685, PWMSteering, PWMThrottle
+import donkeydrifter as dk
+from donkeydrifter.parts.datastore import TubHandler
+from donkeydrifter.parts.actuator import PCA9685, PWMSteering, PWMThrottle
 
 
 def drive(cfg):

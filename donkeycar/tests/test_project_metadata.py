@@ -65,3 +65,47 @@ def test_setup_metadata_uses_donkeydrifter_identity():
     assert "License :: OSI Approved :: Apache Software License" in metadata[
         "classifiers"
     ]
+
+
+def test_readme_documents_donkeydrifter_identity_and_compatibility():
+    readme = read_text(PROJECT_ROOT / "README.md")
+
+    assert readme.startswith("# DonkeyDrifter")
+    assert "pip install donkeydrifter" in readme
+    assert "import donkeydrifter as dk" in readme
+    assert "import donkeycar as dk" in readme
+    assert "CLI command remains `donkey`" in readme
+    assert "not affiliated" in readme.lower()
+    assert "LICENSES/MIT-donkeycar.txt" in readme
+
+
+def test_docs_include_compatibility_and_attribution_guides():
+    compatibility = PROJECT_ROOT / "docs" / "guide" / "donkeycar-compatibility.md"
+    attribution = PROJECT_ROOT / "docs" / "guide" / "license-and-attribution.md"
+
+    assert compatibility.exists()
+    assert attribution.exists()
+
+    compatibility_text = read_text(compatibility)
+    assert "import donkeydrifter as dk" in compatibility_text
+    assert "import donkeycar as dk" in compatibility_text
+    assert "CLI command remains `donkey`" in compatibility_text
+
+    attribution_text = read_text(attribution)
+    assert "Apache License 2.0" in attribution_text
+    assert "MIT License" in attribution_text
+    assert "LICENSES/MIT-donkeycar.txt" in attribution_text
+    assert "not affiliated" in attribution_text.lower()
+
+
+def test_agent_docs_describe_donkeydrifter_migration_contract():
+    for relative_path in ("AGENTS.md", "CLAUDE.md"):
+        text = read_text(PROJECT_ROOT / relative_path)
+        assert "DonkeyDrifter" in text
+        assert "donkeydrifter" in text
+        assert "兼容" in text or "compatibility" in text.lower()
+        assert "donkeycar" in text
+        assert "CLI" in text
+        assert "donkey" in text
+        assert "Apache" in text
+        assert "MIT" in text

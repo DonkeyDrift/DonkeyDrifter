@@ -14,14 +14,14 @@ import time
 
 from docopt import docopt
 
-import donkeycar as dk
+import donkeydrifter as dk
 
 #import parts
-from donkeycar.parts.controller import LocalWebController, \
+from donkeydrifter.parts.controller import LocalWebController, \
     JoystickController, WebFpv
-from donkeycar.parts.throttle_filter import ThrottleFilter
-from donkeycar.parts import pins
-from donkeycar.utils import *
+from donkeydrifter.parts.throttle_filter import ThrottleFilter
+from donkeydrifter.parts import pins
+from donkeydrifter.utils import *
 
 from socket import gethostname
 
@@ -61,7 +61,7 @@ def drive(cfg ):
         # using a PwmPin for steering (servo)
         # and as second PwmPin for throttle (ESC)
         #
-        from donkeycar.parts.actuator import PWMSteering, PWMThrottle, PulseController
+        from donkeydrifter.parts.actuator import PWMSteering, PWMThrottle, PulseController
         dt = cfg.PWM_STEERING_THROTTLE
         steering_controller = PulseController(
             pwm_pin=pins.pwm_pin_by_id(dt["PWM_STEERING_PIN"]),
@@ -88,7 +88,7 @@ def drive(cfg ):
         V.add(throttle, inputs=['throttle'], threaded=True)
 
     elif cfg.DRIVE_TRAIN_TYPE == "I2C_SERVO":
-        from donkeycar.parts.actuator import PCA9685, PWMSteering, PWMThrottle
+        from donkeydrifter.parts.actuator import PCA9685, PWMSteering, PWMThrottle
         steering_controller = PCA9685(cfg.STEERING_CHANNEL,
                                       cfg.PCA9685_I2C_ADDR,
                                       busnum=cfg.PCA9685_I2C_BUSNUM)
@@ -111,7 +111,7 @@ def drive(cfg ):
         V.add(throttle, inputs=['throttle'], threaded=True)
 
     elif cfg.DRIVE_TRAIN_TYPE == "MM1":
-        from donkeycar.parts.robohat import RoboHATDriver
+        from donkeydrifter.parts.robohat import RoboHATDriver
         drive_train = RoboHATDriver(cfg)
         V.add(drive_train, inputs=['angle', 'throttle'])
 

@@ -18,17 +18,17 @@ import logging
 from docopt import docopt
 from simple_pid import PID
 
-import donkeycar as dk
-from donkeycar.parts.tub_v2 import TubWriter
-from donkeycar.parts.datastore import TubHandler
-from donkeycar.parts.line_follower import LineFollower
-from donkeycar.templates.complete import add_odometry, add_camera, \
+import donkeydrifter as dk
+from donkeydrifter.parts.tub_v2 import TubWriter
+from donkeydrifter.parts.datastore import TubHandler
+from donkeydrifter.parts.line_follower import LineFollower
+from donkeydrifter.templates.complete import add_odometry, add_camera, \
     add_user_controller, add_drivetrain, add_simulator, add_imu, DriveMode, \
     UserPilotCondition, ToggleRecording
-from donkeycar.parts.logger import LoggerPart
-from donkeycar.parts.transform import Lambda
-from donkeycar.parts.explode import ExplodeDict
-from donkeycar.parts.controller import JoystickController
+from donkeydrifter.parts.logger import LoggerPart
+from donkeydrifter.parts.transform import Lambda
+from donkeydrifter.parts.explode import ExplodeDict
+from donkeydrifter.parts.controller import JoystickController
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -178,7 +178,7 @@ def drive(cfg, use_joystick=False, camera_type='single', meta=[]):
     # OLED display setup
     #
     if cfg.USE_SSD1306_128_32:
-        from donkeycar.parts.oled import OLEDPart
+        from donkeydrifter.parts.oled import OLEDPart
         auto_record_on_throttle = cfg.USE_JOYSTICK_AS_DEFAULT and cfg.AUTO_RECORD_ON_THROTTLE
         oled_part = OLEDPart(cfg.SSD1306_128_32_I2C_ROTATION, cfg.SSD1306_RESOLUTION, auto_record_on_throttle)
         V.add(oled_part, inputs=['recording', 'tub/num_records', 'user/mode'], outputs=[], threaded=True)

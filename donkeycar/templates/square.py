@@ -16,13 +16,13 @@ Usage:
 
 import os
 from docopt import docopt
-import donkeycar as dk 
+import donkeydrifter as dk 
 
-from donkeycar.parts.datastore import TubGroup, TubHandler
-from donkeycar.parts.transform import Lambda
-from donkeycar.parts.simulation import SquareBoxCamera, MovingSquareTelemetry
-from donkeycar.parts.controller import LocalWebController
-from donkeycar.parts.keras import KerasCategorical
+from donkeydrifter.parts.datastore import TubGroup, TubHandler
+from donkeydrifter.parts.transform import Lambda
+from donkeydrifter.parts.simulation import SquareBoxCamera, MovingSquareTelemetry
+from donkeydrifter.parts.controller import LocalWebController
+from donkeydrifter.parts.keras import KerasCategorical
 
 
 def drive(cfg, model_path=None):

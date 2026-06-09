@@ -20,17 +20,17 @@ import time
 from docopt import docopt
 import numpy as np
 
-import donkeycar as dk
+import donkeydrifter as dk
 
-from donkeycar.parts.transform import TriggeredCallback, DelayedTrigger
-from donkeycar.parts.tub_v2 import TubWriter
-from donkeycar.parts.datastore import TubHandler
-from donkeycar.parts.controller import LocalWebController, JoystickController, WebFpv
-from donkeycar.parts.throttle_filter import ThrottleFilter
-from donkeycar.parts.behavior import BehaviorPart
-from donkeycar.parts.file_watcher import FileWatcher
-from donkeycar.parts.launch import AiLaunch
-from donkeycar.utils import *
+from donkeydrifter.parts.transform import TriggeredCallback, DelayedTrigger
+from donkeydrifter.parts.tub_v2 import TubWriter
+from donkeydrifter.parts.datastore import TubHandler
+from donkeydrifter.parts.controller import LocalWebController, JoystickController, WebFpv
+from donkeydrifter.parts.throttle_filter import ThrottleFilter
+from donkeydrifter.parts.behavior import BehaviorPart
+from donkeydrifter.parts.file_watcher import FileWatcher
+from donkeydrifter.parts.launch import AiLaunch
+from donkeydrifter.utils import *
 
 
 def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type='single', meta=[]):
@@ -60,7 +60,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
     #Initialize car
     V = dk.vehicle.Vehicle()
 
-    from donkeycar.parts.dgym import DonkeyGymEnv
+    from donkeydrifter.parts.dgym import DonkeyGymEnv
 
     inputs = []
 
@@ -74,7 +74,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
         #modify max_throttle closer to 1.0 to have more power
         #modify steering_scale lower than 1.0 to have less responsive steering
         if cfg.CONTROLLER_TYPE == "MM1":
-            from donkeycar.parts.robohat import RoboHATController            
+            from donkeydrifter.parts.robohat import RoboHATController            
             ctr = RoboHATController(cfg)
         elif "custom" == cfg.CONTROLLER_TYPE:
             #
@@ -88,12 +88,12 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
                 auto_record_on_throttle=cfg.AUTO_RECORD_ON_THROTTLE)
             ctr.set_deadzone(cfg.JOYSTICK_DEADZONE)
         else:
-            from donkeycar.parts.controller import get_js_controller
+            from donkeydrifter.parts.controller import get_js_controller
 
             ctr = get_js_controller(cfg)
 
             if cfg.USE_NETWORKED_JS:
-                from donkeycar.parts.controller import JoyStickSub
+                from donkeydrifter.parts.controller import JoyStickSub
                 netwkJs = JoyStickSub(cfg.NETWORK_JS_SERVER_IP)
                 V.add(netwkJs, threaded=True)
                 ctr.js = netwkJs
@@ -167,7 +167,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
             return 0
 
     if cfg.HAVE_RGB_LED and not cfg.DONKEY_GYM:
-        from donkeycar.parts.led_status import RGB_LED
+        from donkeydrifter.parts.led_status import RGB_LED
         led = RGB_LED(cfg.LED_PIN_R, cfg.LED_PIN_G, cfg.LED_PIN_B, cfg.LED_INVERT)
         led.set_rgb(cfg.LED_R, cfg.LED_G, cfg.LED_B)
 
@@ -320,7 +320,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
               run_condition='run_pilot')
     
     if cfg.STOP_SIGN_DETECTOR:
-        from donkeycar.parts.object_detector.stop_sign_detector import StopSignDetector
+        from donkeydrifter.parts.object_detector.stop_sign_detector import StopSignDetector
         V.add(StopSignDetector(cfg.STOP_SIGN_MIN_SCORE, cfg.STOP_SIGN_SHOW_BOUNDING_BOX), inputs=['cam/image_array', 'pilot/throttle'], outputs=['pilot/throttle', 'cam/image_array'])
 
     #Choose what inputs should change the car.
@@ -403,8 +403,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
     V.add(tub_writer, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
 
     if cfg.PUB_CAMERA_IMAGES:
-        from donkeycar.parts.network import TCPServeValue
-        from donkeycar.parts.image import ImgArrToJpg
+        from donkeydrifter.parts.network import TCPServeValue
+        from donkeydrifter.parts.image import ImgArrToJpg
         pub = TCPServeValue("camera")
         V.add(ImgArrToJpg(), inputs=['cam/image_array'], outputs=['jpg/bin'])
         V.add(pub, inputs=['jpg/bin'])

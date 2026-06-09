@@ -55,18 +55,18 @@ except:
 
 from docopt import docopt
 
-import donkeycar as dk
-from donkeycar.parts.controller import JoystickController
-from donkeycar.parts.path import CsvThrottlePath, PathPlot, CTE, PID_Pilot, \
+import donkeydrifter as dk
+from donkeydrifter.parts.controller import JoystickController
+from donkeydrifter.parts.path import CsvThrottlePath, PathPlot, CTE, PID_Pilot, \
     PlotCircle, PImage, OriginOffset
-from donkeycar.parts.transform import PIDController
-from donkeycar.parts.kinematics import TwoWheelSteeringThrottle
-from donkeycar.templates.complete import add_odometry, add_camera, \
+from donkeydrifter.parts.transform import PIDController
+from donkeydrifter.parts.kinematics import TwoWheelSteeringThrottle
+from donkeydrifter.templates.complete import add_odometry, add_camera, \
     add_user_controller, add_drivetrain, add_simulator, add_imu, DriveMode, \
     UserPilotCondition, ToggleRecording
-from donkeycar.parts.logger import LoggerPart
-from donkeycar.parts.transform import Lambda
-from donkeycar.parts.explode import ExplodeDict
+from donkeydrifter.parts.logger import LoggerPart
+from donkeydrifter.parts.transform import Lambda
+from donkeydrifter.parts.explode import ExplodeDict
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -88,7 +88,7 @@ def drive(cfg, use_joystick=False, camera_type='single'):
     V = dk.vehicle.Vehicle()
 
     if cfg.HAVE_SOMBRERO:
-        from donkeycar.utils import Sombrero
+        from donkeydrifter.utils import Sombrero
         s = Sombrero()
    
     #Initialize logging before anything else to allow console logging
@@ -99,7 +99,7 @@ def drive(cfg, use_joystick=False, camera_type='single'):
         logger.addHandler(ch)
 
     if cfg.HAVE_MQTT_TELEMETRY:
-        from donkeycar.parts.telemetry import MqttTelemetry
+        from donkeydrifter.parts.telemetry import MqttTelemetry
         tel = MqttTelemetry(cfg)
 
     #
@@ -132,7 +132,7 @@ def drive(cfg, use_joystick=False, camera_type='single'):
         V.add(NoOdom(), outputs=['enc/vel_m_s'])
 
     if cfg.HAVE_T265:
-        from donkeycar.parts.realsense2 import RS_T265
+        from donkeydrifter.parts.realsense2 import RS_T265
         if cfg.HAVE_ODOM and not os.path.exists(cfg.WHEEL_ODOM_CALIB):
             print("You must supply a json file when using odom with T265. "
                   "There is a sample file in templates.")
@@ -418,7 +418,7 @@ def drive(cfg, use_joystick=False, camera_type='single'):
     # OLED display setup
     #
     if cfg.USE_SSD1306_128_32:
-        from donkeycar.parts.oled import OLEDPart
+        from donkeydrifter.parts.oled import OLEDPart
         auto_record_on_throttle = cfg.USE_JOYSTICK_AS_DEFAULT and cfg.AUTO_RECORD_ON_THROTTLE
         oled_part = OLEDPart(cfg.SSD1306_128_32_I2C_ROTATION, cfg.SSD1306_RESOLUTION, auto_record_on_throttle)
         V.add(oled_part, inputs=['recording', 'tub/num_records', 'user/mode'], outputs=[], threaded=True)
@@ -444,10 +444,10 @@ def drive(cfg, use_joystick=False, camera_type='single'):
 
 def add_gps(V, cfg):
     if cfg.HAVE_GPS:
-        from donkeycar.parts.serial_port import SerialPort, SerialLineReader
-        from donkeycar.parts.gps import GpsNmeaPositions, GpsLatestPosition, GpsPlayer
-        from donkeycar.parts.pipe import Pipe
-        from donkeycar.parts.text_writer import CsvLogger
+        from donkeydrifter.parts.serial_port import SerialPort, SerialLineReader
+        from donkeydrifter.parts.gps import GpsNmeaPositions, GpsLatestPosition, GpsPlayer
+        from donkeydrifter.parts.pipe import Pipe
+        from donkeydrifter.parts.text_writer import CsvLogger
 
         #
         # parts to

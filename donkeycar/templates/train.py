@@ -59,8 +59,8 @@ try:
 except Exception as e:
     print(f"Error setting mixed precision: {e}")
 
-import donkeycar as dk
-from donkeycar.pipeline.training import train
+import donkeydrifter as dk
+from donkeydrifter.pipeline.training import train
 
 
 def main():

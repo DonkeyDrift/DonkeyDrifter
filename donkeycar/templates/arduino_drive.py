@@ -16,9 +16,9 @@ import time
 
 from docopt import docopt
 
-import donkeycar as dk
-from donkeycar.parts.actuator import ArduinoFirmata, ArdPWMSteering, ArdPWMThrottle
-from donkeycar.parts.controller import get_js_controller
+import donkeydrifter as dk
+from donkeydrifter.parts.actuator import ArduinoFirmata, ArdPWMSteering, ArdPWMThrottle
+from donkeydrifter.parts.controller import get_js_controller
 
 
 def drive(cfg):

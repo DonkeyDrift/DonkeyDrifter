@@ -14,12 +14,12 @@ from docopt import docopt
 import logging
 import os
 
-import donkeycar as dk
-from donkeycar.parts.tub_v2 import TubWriter, TubWiper
-from donkeycar.parts.datastore import TubHandler
-from donkeycar.parts.controller import LocalWebController, RCReceiver
-from donkeycar.parts.actuator import PCA9685, PWMSteering, PWMThrottle
-from donkeycar.pipeline.augmentations import ImageAugmentation
+import donkeydrifter as dk
+from donkeydrifter.parts.tub_v2 import TubWriter, TubWiper
+from donkeydrifter.parts.datastore import TubHandler
+from donkeydrifter.parts.controller import LocalWebController, RCReceiver
+from donkeydrifter.parts.actuator import PCA9685, PWMSteering, PWMThrottle
+from donkeydrifter.pipeline.augmentations import ImageAugmentation
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -65,39 +65,39 @@ def drive(cfg, model_path=None, model_type=None):
     # add camera
     inputs = []
     if cfg.DONKEY_GYM:
-        from donkeycar.parts.dgym import DonkeyGymEnv 
+        from donkeydrifter.parts.dgym import DonkeyGymEnv 
         cam = DonkeyGymEnv(cfg.DONKEY_SIM_PATH, host=cfg.SIM_HOST,
                            env_name=cfg.DONKEY_GYM_ENV_NAME, conf=cfg.GYM_CONF,
                            delay=cfg.SIM_ARTIFICIAL_LATENCY)
         inputs = ['angle', 'throttle', 'brake']
     elif cfg.CAMERA_TYPE == "PICAM":
-        from donkeycar.parts.camera import PiCamera
+        from donkeydrifter.parts.camera import PiCamera
         cam = PiCamera(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H,
                        image_d=cfg.IMAGE_DEPTH,
                        vflip=cfg.CAMERA_VFLIP, hflip=cfg.CAMERA_HFLIP)
     elif cfg.CAMERA_TYPE == "WEBCAM":
-        from donkeycar.parts.camera import Webcam
+        from donkeydrifter.parts.camera import Webcam
         cam = Webcam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H,
                      image_d=cfg.IMAGE_DEPTH)
     elif cfg.CAMERA_TYPE == "CVCAM":
-        from donkeycar.parts.cv import CvCam
+        from donkeydrifter.parts.cv import CvCam
         cam = CvCam(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H,
                     image_d=cfg.IMAGE_DEPTH)
     elif cfg.CAMERA_TYPE == "CSIC":
-        from donkeycar.parts.camera import CSICamera
+        from donkeydrifter.parts.camera import CSICamera
         cam = CSICamera(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H,
                         image_d=cfg.IMAGE_DEPTH, framerate=cfg.CAMERA_FRAMERATE,
                         gstreamer_flip=cfg.CSIC_CAM_GSTREAMER_FLIP_PARM)
     elif cfg.CAMERA_TYPE == "V4L":
-        from donkeycar.parts.camera import V4LCamera
+        from donkeydrifter.parts.camera import V4LCamera
         cam = V4LCamera(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H,
                         image_d=cfg.IMAGE_DEPTH, framerate=cfg.CAMERA_FRAMERATE)
     elif cfg.CAMERA_TYPE == "MOCK":
-        from donkeycar.parts.camera import MockCamera
+        from donkeydrifter.parts.camera import MockCamera
         cam = MockCamera(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H,
                          image_d=cfg.IMAGE_DEPTH)
     elif cfg.CAMERA_TYPE == "IMAGE_LIST":
-        from donkeycar.parts.camera import ImageListCamera
+        from donkeydrifter.parts.camera import ImageListCamera
         cam = ImageListCamera(path_mask=cfg.PATH_MASK)
     else:
         raise (Exception("Unkown camera type: %s" % cfg.CAMERA_TYPE))
@@ -122,10 +122,10 @@ def drive(cfg, model_path=None, model_type=None):
 
     else:
         if cfg.USE_JOYSTICK_AS_DEFAULT:
-            from donkeycar.parts.controller import get_js_controller
+            from donkeydrifter.parts.controller import get_js_controller
             ctr = get_js_controller(cfg)
             if cfg.USE_NETWORKED_JS:
-                from donkeycar.parts.controller import JoyStickSub
+                from donkeydrifter.parts.controller import JoyStickSub
                 netwkJs = JoyStickSub(cfg.NETWORK_JS_SERVER_IP)
                 car.add(netwkJs, threaded=True)
                 ctr.js = netwkJs
