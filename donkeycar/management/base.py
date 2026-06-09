@@ -21,7 +21,7 @@ HELP_CONFIG = 'location of config file to use. default: ./config.py'
 logger = logging.getLogger(__name__)
 
 
-# Web UI backend runtime deps. Kept in sync with setup.cfg [webui] extra and
+# Web UI backend runtime deps. Kept in sync with setup.cfg [fastapi-backend] extra and
 # web_ui/backend/requirements.txt. Used for fast pre-flight checks before
 # spawning `uvicorn` from the `web` command.
 _WEBUI_BACKEND_MODULES = ('fastapi', 'uvicorn', 'multipart')
@@ -675,7 +675,15 @@ class Web(BaseCommand):
 
         npm_exe = shutil.which('npm')
         if not npm_exe:
-            raise SystemExit('找不到 npm 命令，请确保已安装 Node.js 并且 npm 在环境变量中')
+            raise SystemExit(
+                '找不到 npm 命令。Web UI 前端（Vite/React）需要 Node.js/npm，'
+                '这无法通过 pip 安装。\n'
+                '请先系统级安装 Node.js，例如:\n'
+                '  conda install -c conda-forge nodejs\n'
+                '  或参考 https://nodejs.org/ 下载安装\n'
+                '安装完成后运行: donkey installweb --path "{}"\n'
+                '然后再启动: donkey web'.format(web_ui_path)
+            )
         frontend_cmd = [npm_exe, 'run', 'dev', '--', '--host', '--port', str(frontend_port)]
         backend_cmd = [
             sys.executable, '-m', 'uvicorn', 'main:app',
@@ -797,23 +805,28 @@ class Web(BaseCommand):
         """
         Lightweight pre-flight check used by `donkey web` when `--install-deps`
         is NOT passed. Prints a one-line hint per missing dep group so the user
-        can quickly recover with `donkey installweb` (or `pip install -e .[webui]`).
+        can quickly recover with `donkey installweb` (or `pip install -e .[fastapi-backend]`).
         Never raises — the existing process-spawn path will produce a clearer
         error if a dep is actually required.
         """
         missing = []
         if not _BACKEND_DEPS_OK:
-            missing.append('backend (pip install -e .[webui])')
+            missing.append('backend (pip install -e .[fastapi-backend])')
         if shutil.which('npm') is None:
-            missing.append('node/npm runtime')
+            missing.append('node/npm runtime (must be installed system-wide, not via pip)')
         elif not os.path.isdir(os.path.join(frontend_path, 'node_modules')):
             missing.append('frontend (donkey installweb)')
         if missing:
             print('检测到 Web UI 依赖可能不完整: ' + ', '.join(missing))
-            print('  → 自动安装: donkey web --install-deps')
-            print('  → 手动安装: donkey installweb --path "{}"'.format(
-                os.path.dirname(frontend_path)
-            ))
+            if shutil.which('npm') is None:
+                print('  → 请先安装 Node.js（系统级），例如:')
+                print('     conda install -c conda-forge nodejs')
+                print('     或参考 https://nodejs.org/ 下载安装')
+            else:
+                print('  → 自动安装: donkey web --install-deps')
+                print('  → 手动安装: donkey installweb --path "{}"'.format(
+                    os.path.dirname(frontend_path)
+                ))
 
     def _terminate_process(self, proc):
         if proc is None:
@@ -845,7 +858,7 @@ class InstallWebUI(BaseCommand):
     `donkey installweb` — install / repair Web UI dependencies.
 
     Backend (Python): checks for fastapi/uvicorn/python-multipart and runs
-        `pip install -e .[webui]` (or equivalent) into the active interpreter
+        `pip install -e .[fastapi-backend]` (or equivalent) into the active interpreter
         if anything is missing. The user can skip this with `--no-backend`.
 
     Frontend (Node.js): runs `npm install` in `web_ui/frontend` (or `--no-frontend`
@@ -911,7 +924,7 @@ class InstallWebUI(BaseCommand):
         if not (backend_ok and frontend_ok):
             missing = []
             if not backend_ok:
-                missing.append('Python 后端 (pip install -e .[webui])')
+                missing.append('Python 后端 (pip install -e .[fastapi-backend])')
             if not frontend_ok:
                 missing.append('前端 (npm install)')
             raise SystemExit(
@@ -930,13 +943,13 @@ class InstallWebUI(BaseCommand):
 
         print(f'后端缺失依赖: {", ".join(missing)}')
         # Prefer the requirements file shipped with the repo for the canonical
-        # pinned set; fall back to the [webui] extra if it is unreachable.
+        # pinned set; fall back to the [fastapi-backend] extra if it is unreachable.
         req_file = os.path.join(backend_path, 'requirements.txt')
         if os.path.isfile(req_file):
             cmd = [sys.executable, '-m', 'pip', 'install', '-r', req_file]
             print('  → 执行: ' + ' '.join(cmd))
         else:
-            cmd = [sys.executable, '-m', 'pip', 'install', '-e', f'{web_ui_path or "."}[webui]']
+            cmd = [sys.executable, '-m', 'pip', 'install', '-e', f'{web_ui_path or "."}[fastapi-backend]']
             print(f'  未找到 {req_file}，回退到: ' + ' '.join(cmd))
 
         try:
