@@ -58,6 +58,18 @@ def test_main_registers_arena_router():
     assert "/api/arena/model-types" in routes
 
 
+def test_processing_config_provides_noop_crop_defaults():
+    from routers import arena
+
+    request = arena.PredictRequest(record_index=0, pre_transformations=["CROP"])
+    cfg = arena._build_processing_config(None, request)
+
+    assert cfg.ROI_CROP_LEFT == 0
+    assert cfg.ROI_CROP_TOP == 0
+    assert cfg.ROI_CROP_RIGHT == 0
+    assert cfg.ROI_CROP_BOTTOM == 0
+
+
 def test_list_models_includes_all_arena_model_formats(tmp_path):
     models_dir = tmp_path / "models"
     models_dir.mkdir()

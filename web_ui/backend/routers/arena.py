@@ -198,6 +198,12 @@ def _build_processing_config(base_cfg: Any, request: PredictRequest) -> Any:
     values["POST_TRANSFORMATIONS"] = list(request.post_transformations)
     values["AUGMENTATIONS"] = list(request.augmentations)
 
+    if "CROP" in values["TRANSFORMATIONS"]:
+        values.setdefault("ROI_CROP_LEFT", 0)
+        values.setdefault("ROI_CROP_TOP", 0)
+        values.setdefault("ROI_CROP_RIGHT", 0)
+        values.setdefault("ROI_CROP_BOTTOM", 0)
+
     if request.brightness is not None and "BRIGHTNESS" not in values["AUGMENTATIONS"]:
         values["AUGMENTATIONS"].append("BRIGHTNESS")
     if request.blur is not None and "BLUR" not in values["AUGMENTATIONS"]:
