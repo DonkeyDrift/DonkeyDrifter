@@ -7,9 +7,10 @@ import asyncio
 import time
 import json
 import logging
+import uuid
 from collections import deque
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal, Any
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -42,6 +43,17 @@ class DriveState:
 
         # 心跳
         self.car_last_seen: Optional[datetime] = None
+
+        # WebRTC 信令状态
+        self.webrtc_session: Optional[dict] = None
+        self.webrtc_stats = {
+            "source_fps": 0.0,
+            "sent_fps": 0.0,
+            "browser_fps": 0.0,
+            "browser_p95_frame_interval_ms": 0.0,
+            "disconnect_count": 0,
+            "degraded": False,
+        }
 
         # 连接管理
         self.car_ws: Optional[WebSocket] = None
@@ -102,6 +114,22 @@ class DriveParams(BaseModel):
 
 class SaveParamsRequest(BaseModel):
     params: DriveParams
+
+
+class WebRtcSessionRequest(BaseModel):
+    client_id: str
+
+
+class WebRtcSessionDescription(BaseModel):
+    session_id: str
+    sdp: str
+    type: Literal["offer", "answer"]
+
+
+class WebRtcIceRequest(BaseModel):
+    session_id: str
+    source: Literal["client", "car"]
+    candidate: Dict[str, Any]
 
 
 # ------------------------------------------------------------------
@@ -198,6 +226,104 @@ async def calibrate(request: CalibrateRequest):
     if not ok:
         raise HTTPException(status_code=500, detail="发送到车端失败")
     return {"success": True, "message": "校准参数已下发"}
+
+
+# ------------------------------------------------------------------
+# WebRTC 信令接口
+# ------------------------------------------------------------------
+def _require_webrtc_session(session_id: str) -> dict:
+    session = drive_state.webrtc_session
+    if not session or session.get("session_id") != session_id:
+        raise HTTPException(status_code=404, detail="WebRTC 会话不存在或已过期")
+    return session
+
+
+@router.post("/webrtc/session")
+async def create_webrtc_session(request: WebRtcSessionRequest):
+    """创建单客户端 WebRTC 视频会话。"""
+    if not drive_state.car_online():
+        raise HTTPException(status_code=400, detail="车端未连接，无法创建 WebRTC 会话")
+
+    session_id = str(uuid.uuid4())
+    drive_state.webrtc_session = {
+        "session_id": session_id,
+        "client_id": request.client_id,
+        "created_at": time.time(),
+    }
+    drive_state.webrtc_stats.update({
+        "browser_fps": 0.0,
+        "browser_p95_frame_interval_ms": 0.0,
+        "disconnect_count": 0,
+        "degraded": False,
+    })
+    return {"success": True, "session_id": session_id, "single_client": True}
+
+
+@router.post("/webrtc/offer")
+async def send_webrtc_offer(request: WebRtcSessionDescription):
+    """浏览器 offer 转发给车端。"""
+    _require_webrtc_session(request.session_id)
+    ok = await drive_state.send_to_car({
+        "type": "webrtc_signal",
+        "signal_type": "offer",
+        "session_id": request.session_id,
+        "sdp": request.sdp,
+        "description_type": request.type,
+    })
+    if not ok:
+        raise HTTPException(status_code=500, detail="发送 WebRTC offer 到车端失败")
+    return {"success": True}
+
+
+@router.post("/webrtc/answer")
+async def send_webrtc_answer(request: WebRtcSessionDescription):
+    """车端 answer 转发给浏览器。"""
+    _require_webrtc_session(request.session_id)
+    await drive_state.broadcast_to_clients({
+        "type": "webrtc_signal",
+        "signal_type": "answer",
+        "session_id": request.session_id,
+        "sdp": request.sdp,
+        "description_type": request.type,
+    })
+    return {"success": True}
+
+
+@router.post("/webrtc/ice")
+async def send_webrtc_ice(request: WebRtcIceRequest):
+    """按来源转发 ICE candidate。"""
+    _require_webrtc_session(request.session_id)
+    payload = {
+        "type": "webrtc_signal",
+        "signal_type": "ice",
+        "session_id": request.session_id,
+        "candidate": request.candidate,
+    }
+    if request.source == "client":
+        ok = await drive_state.send_to_car(payload)
+        if not ok:
+            raise HTTPException(status_code=500, detail="发送 ICE candidate 到车端失败")
+    else:
+        await drive_state.broadcast_to_clients(payload)
+    return {"success": True}
+
+
+@router.get("/webrtc/stats")
+async def webrtc_stats():
+    """返回 WebRTC 视频链路统计。"""
+    session = drive_state.webrtc_session
+    return {
+        "active": session is not None,
+        "session_id": session.get("session_id") if session else None,
+        "webrtc_available": True,
+        "source_fps": drive_state.webrtc_stats["source_fps"],
+        "sent_fps": drive_state.webrtc_stats["sent_fps"],
+        "browser_fps": drive_state.webrtc_stats["browser_fps"],
+        "browser_p95_frame_interval_ms": drive_state.webrtc_stats["browser_p95_frame_interval_ms"],
+        "disconnect_count": drive_state.webrtc_stats["disconnect_count"],
+        "transport": "webrtc",
+        "degraded": drive_state.webrtc_stats["degraded"],
+    }
 
 
 # ------------------------------------------------------------------

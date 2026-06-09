@@ -1,7 +1,11 @@
+import asyncio
 import base64
 import json
 
-from donkeycar.parts.drive_api_bridge import DriveApiBridge
+import numpy as np
+import pytest
+
+from donkeycar.parts.drive_api_bridge import DriveApiBridge, DriveVideoFrameBuffer, DriveWebRtcVideoTrack
 from donkeydrifter.parts.drive_api_bridge import DriveApiBridge as DrifterDriveApiBridge
 
 
@@ -50,7 +54,7 @@ def test_drive_api_bridge_handles_control_message():
 def test_drive_api_bridge_sends_base64_frame(monkeypatch):
     sent_payloads = []
     encoded_images = []
-    bridge = DriveApiBridge(auto_start=False)
+    bridge = DriveApiBridge(auto_start=False, video_transport="mjpeg")
     bridge.connected = True
 
     monkeypatch.setattr(
@@ -76,3 +80,136 @@ def test_drive_api_bridge_sends_base64_frame(monkeypatch):
         "drive_mode": "user",
         "recording": False,
     }]
+
+
+def test_frame_buffer_updates_frame_id_and_keeps_latest_frame():
+    buffer = DriveVideoFrameBuffer(width=320, height=240, clock=lambda: 1.0)
+    first = np.zeros((240, 320, 3), dtype=np.uint8)
+    second = np.full((240, 320, 3), 255, dtype=np.uint8)
+
+    buffer.update(first)
+    buffer.update(second)
+
+    latest = buffer.get_latest()
+    assert latest is not None
+    assert latest.frame_id == 2
+    assert latest.timestamp == 1.0
+    assert np.array_equal(latest.frame, second)
+
+
+def test_frame_buffer_resizes_to_target_resolution(monkeypatch):
+    buffer = DriveVideoFrameBuffer(width=320, height=240)
+    source = np.zeros((120, 160, 3), dtype=np.uint8)
+    resized = np.ones((240, 320, 3), dtype=np.uint8)
+    calls = []
+
+    def fake_resize(image, size):
+        calls.append((image.shape, size))
+        return resized
+
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.cv2.resize", fake_resize)
+
+    buffer.update(source)
+
+    latest = buffer.get_latest()
+    assert calls == [((120, 160, 3), (320, 240))]
+    assert latest is not None
+    assert latest.frame.shape == (240, 320, 3)
+
+
+def test_frame_buffer_ignores_none_frame():
+    buffer = DriveVideoFrameBuffer(width=320, height=240)
+
+    buffer.update(None)
+
+    assert buffer.get_latest() is None
+    assert buffer.stats()["source_fps"] == 0.0
+
+
+def test_frame_buffer_reports_real_source_fps():
+    timestamps = iter([0.0, 1.0 / 30.0, 2.0 / 30.0, 3.0 / 30.0])
+    buffer = DriveVideoFrameBuffer(width=320, height=240, clock=lambda: next(timestamps))
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+    for _ in range(4):
+        buffer.update(frame)
+
+    assert round(buffer.stats()["source_fps"]) == 30
+
+
+def test_drive_api_bridge_webrtc_mode_updates_frame_buffer_without_mjpeg_throttle(monkeypatch):
+    bridge = DriveApiBridge(auto_start=False, video_transport="webrtc")
+    sent_payloads = []
+    monkeypatch.setattr(bridge, "_send_frame", lambda *args, **kwargs: sent_payloads.append(args))
+
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    bridge.run_threaded(img_arr=frame, num_records=1, mode="user", recording=False)
+    bridge.run_threaded(img_arr=frame, num_records=2, mode="user", recording=False)
+
+    latest = bridge.frame_buffer.get_latest()
+    assert latest is not None
+    assert latest.frame_id == 2
+    assert sent_payloads == []
+
+
+@pytest.mark.asyncio
+async def test_webrtc_video_track_only_emits_new_frames():
+    buffer = DriveVideoFrameBuffer(width=320, height=240)
+    track = DriveWebRtcVideoTrack(buffer, fps=60)
+    first = np.zeros((240, 320, 3), dtype=np.uint8)
+    second = np.ones((240, 320, 3), dtype=np.uint8)
+
+    buffer.update(first)
+    first_output = await track.recv()
+    repeat_output = await track.recv()
+    buffer.update(second)
+    second_output = await track.recv()
+
+    assert first_output is not None
+    assert repeat_output is None
+    assert second_output is not None
+    assert track.stats()["sent_fps"] == 0.0
+    assert track.stats()["sent_frames"] == 2
+    assert track.stats()["stale_frames"] == 1
+
+
+def test_drive_api_bridge_derives_http_api_base_from_ws_url():
+    bridge = DriveApiBridge("wss://example.test:8443/api/drive/ws", auto_start=False)
+
+    assert bridge.http_api_base == "https://example.test:8443/api/drive"
+
+
+def test_drive_api_bridge_handles_webrtc_offer_signal(monkeypatch):
+    bridge = DriveApiBridge(auto_start=False)
+    handled = []
+    monkeypatch.setattr(bridge, "_handle_webrtc_signal", handled.append)
+
+    bridge._handle_message({
+        "type": "webrtc_signal",
+        "signal_type": "offer",
+        "session_id": "session-1",
+        "sdp": "offer-sdp",
+        "description_type": "offer",
+    })
+
+    assert handled == [{
+        "type": "webrtc_signal",
+        "signal_type": "offer",
+        "session_id": "session-1",
+        "sdp": "offer-sdp",
+        "description_type": "offer",
+    }]
+
+
+def test_drive_api_bridge_posts_answer_and_ice(monkeypatch):
+    posted = []
+    bridge = DriveApiBridge("ws://host:8000/api/drive/ws", auto_start=False)
+    monkeypatch.setattr(bridge, "_post_json", lambda path, payload: posted.append((path, payload)))
+
+    bridge._post_webrtc_answer("session-1", "answer-sdp")
+    bridge._post_webrtc_ice("session-1", {"candidate": "candidate:1"})
+
+    assert posted == [
+        ("/webrtc/answer", {"session_id": "session-1", "sdp": "answer-sdp", "type": "answer"}),
+        ("/webrtc/ice", {"session_id": "session-1", "source": "car", "candidate": {"candidate": "candidate:1"}}),
+    ]
