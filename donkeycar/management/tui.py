@@ -29,6 +29,11 @@ from rich import box
 from rich.markdown import Markdown
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
+try:
+    from donkeycar.management.ui.rc_file_handler import rc_handler
+except Exception:
+    rc_handler = None
+
 # 初始化 Console
 console = Console()
 
@@ -98,7 +103,103 @@ class HistoryManager:
 # -----------------------------------------------------------------------------
 def is_valid_mycar_folder():
     """检查当前目录是否为有效的 mycar 项目"""
-    return os.path.exists("manage.py") and os.path.exists("myconfig.py")
+    return _is_valid_project_dir(Path.cwd())
+
+
+def _is_valid_project_dir(project_path: Path) -> bool:
+    """检查目录是否为有效的 mycar 项目。"""
+    return (project_path / "manage.py").exists() and (project_path / "myconfig.py").exists()
+
+
+def _find_valid_projects(base_dir: Optional[Path] = None) -> List[Path]:
+    """扫描项目根目录下一层有效的 mycar 项目。"""
+    project_root = base_dir or Path(os.path.expanduser("~/projects"))
+    if not project_root.exists():
+        return []
+
+    valid_projects = []
+    for item in project_root.iterdir():
+        if item.is_dir() and _is_valid_project_dir(item):
+            valid_projects.append(item)
+    return sorted(valid_projects)
+
+
+def _get_last_project_path() -> Optional[Path]:
+    """读取上一次打开的有效项目路径。"""
+    if rc_handler is None:
+        return None
+    last_project = rc_handler.data.get("last_project_path")
+    if not last_project:
+        return None
+
+    project_path = Path(os.path.expanduser(str(last_project)))
+    if _is_valid_project_dir(project_path):
+        return project_path
+    return None
+
+
+def _save_last_project_path(project_path: Path):
+    """持久化上一次打开的项目路径。"""
+    if rc_handler is None:
+        return
+    rc_handler.data["last_project_path"] = str(project_path)
+    try:
+        rc_handler.write_file()
+    except Exception as e:
+        console.print(f"[yellow]保存上次项目失败: {e}[/yellow]")
+
+
+def _change_to_project(project_path: Path, title: str) -> bool:
+    try:
+        os.chdir(project_path)
+        _save_last_project_path(project_path)
+        console.print(Panel(f"[bold green]✓ 已切换工作目录至: {project_path}[/bold green]", title=title))
+        return True
+    except Exception as e:
+        console.print(f"[red]切换目录失败: {e}[/red]")
+        return False
+
+
+def _choose_project(projects: List[Path]) -> Optional[Path]:
+    console.print("[bold]发现多个有效项目:[/bold]")
+    for idx, project_path in enumerate(projects, 1):
+        console.print(f"{idx}. {project_path.name}")
+    console.print("\n[dim]提示: 输入编号选择项目，输入 '0' 取消[/dim]")
+
+    while True:
+        choice = Prompt.ask("请输入编号", default="0")
+        if choice == "0":
+            return None
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(projects):
+                return projects[idx - 1]
+        console.print("[red]无效的选择，请重新输入[/red]")
+
+
+def _auto_open_project(base_dir: Optional[Path] = None) -> bool:
+    """启动 TUI 前自动打开已有项目。"""
+    current_dir = Path.cwd()
+    if _is_valid_project_dir(current_dir):
+        _save_last_project_path(current_dir)
+        return True
+
+    last_project = _get_last_project_path()
+    if last_project is not None:
+        return _change_to_project(last_project, "自动恢复项目")
+
+    projects = _find_valid_projects(base_dir)
+    if not projects:
+        console.print("[yellow]未找到已有 DonkeyCar 项目，已保留当前目录。[/yellow]")
+        return False
+    if len(projects) == 1:
+        return _change_to_project(projects[0], "自动打开项目")
+
+    selected_project = _choose_project(projects)
+    if selected_project is None:
+        return False
+    return _change_to_project(selected_project, "项目切换成功")
+
 
 def _human_readable_size(size_bytes: int) -> str:
     units = ["B", "KB", "MB", "GB", "TB", "PB"]
@@ -437,13 +538,9 @@ class OpenProjectCommand(DonkeyCommand):
              return
 
         console.print(f"[dim]正在扫描 {base_dir} 下的项目...[/dim]")
-        
-        valid_projects = []
+
         try:
-            for item in base_dir.iterdir():
-                if item.is_dir():
-                    if (item / "manage.py").exists() and (item / "myconfig.py").exists():
-                        valid_projects.append(item)
+            valid_projects = _find_valid_projects(base_dir)
         except Exception as e:
              console.print(f"[red]扫描出错: {e}[/red]")
              Prompt.ask("按回车键返回...")
@@ -453,8 +550,6 @@ class OpenProjectCommand(DonkeyCommand):
             console.print(f"[yellow]在 {base_dir} 下未找到有效的 DonkeyCar 项目。[/yellow]")
             Prompt.ask("按回车键返回...")
             return
-            
-        valid_projects.sort()
 
         console.print("[bold]发现以下有效项目:[/bold]")
         for idx, project_path in enumerate(valid_projects, 1):
@@ -470,13 +565,7 @@ class OpenProjectCommand(DonkeyCommand):
                 idx = int(choice)
                 if 1 <= idx <= len(valid_projects):
                     selected_project = valid_projects[idx-1]
-                    try:
-                        os.chdir(selected_project)
-                        console.print(Panel(f"[bold green]✓ 已切换工作目录至: {selected_project}[/bold green]\n"
-                                            f"[dim]现在您可以直接运行 train 或 drive 命令了[/dim]",
-                                            title="项目切换成功"))
-                    except Exception as e:
-                        console.print(f"[red]切换目录失败: {e}[/red]")
+                    _change_to_project(selected_project, "项目切换成功")
                     Prompt.ask("按回车键返回菜单...")
                     return
             console.print("[red]无效的选择，请重新输入[/red]")
@@ -1192,10 +1281,7 @@ class DriveCommand(DonkeyCommand):
                 creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
             
             process = subprocess.Popen(
-                cmd_list, 
-                stdout=sys.stdout, 
-                stderr=sys.stderr,
-                text=True,
+                cmd_list,
                 creationflags=creation_flags
             )
             
@@ -1377,7 +1463,7 @@ class MenuSystem:
             choice = Prompt.ask("\n请选择", default="0")
 
             if choice == "0":
-                if Confirm.ask("确定要退出吗?"):
+                if Confirm.ask("确定要退出吗?", default=True):
                     console.print("再见! 👋")
                     sys.exit(0)
             elif choice == "?":
@@ -1423,6 +1509,7 @@ class MenuSystem:
 # -----------------------------------------------------------------------------
 def main():
     try:
+        _auto_open_project()
         app = MenuSystem()
         app.show_main_menu()
     except KeyboardInterrupt:
