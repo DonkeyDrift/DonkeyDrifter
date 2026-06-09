@@ -30,3 +30,4 @@ tb_logs
 .donkey_history
 web_ui/frontend/node_modules/
 .donkey_history
+.ssh-tmp/
