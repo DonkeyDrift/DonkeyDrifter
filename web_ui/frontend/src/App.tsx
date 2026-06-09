@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { SidePanel } from './components/SidePanel';
@@ -41,11 +41,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 function TubManagerPage() {
   const { isLoading, error, tubPath, setTub, setLoading, setError } = useStore();
   const location = useLocation();
-  const prevLocationRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const shouldRefreshTub =
-      prevLocationRef.current === '/drive' && location.pathname === '/' && Boolean(tubPath);
+    const shouldRefreshTub = location.pathname === '/' && Boolean(tubPath);
 
     if (shouldRefreshTub) {
       const refreshCurrentTub = async () => {
@@ -68,8 +66,6 @@ function TubManagerPage() {
 
       refreshCurrentTub();
     }
-
-    prevLocationRef.current = location.pathname;
   }, [location.pathname, tubPath, setTub, setLoading, setError]);
 
   return (
