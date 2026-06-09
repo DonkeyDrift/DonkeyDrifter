@@ -112,7 +112,8 @@ class DriveApiBridge:
     def _send_frame(self, img_arr, num_records=0, mode=None, recording=None):
         if cv2 is None:
             return
-        ok, encoded = cv2.imencode(".jpg", img_arr)
+        frame = cv2.cvtColor(img_arr, cv2.COLOR_RGB2BGR)
+        ok, encoded = cv2.imencode(".jpg", frame)
         if not ok:
             return
         frame_b64 = base64.b64encode(encoded.tobytes()).decode("ascii")

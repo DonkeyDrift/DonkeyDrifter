@@ -7,6 +7,7 @@ import asyncio
 import time
 import json
 import logging
+from collections import deque
 from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta
@@ -37,6 +38,7 @@ class DriveState:
         self.num_records: int = 0
         self.last_frame_timestamp: float = 0.0
         self.last_frame: Optional[bytes] = None  # JPEG 二进制帧缓存
+        self.frame_timestamps = deque(maxlen=120)
 
         # 心跳
         self.car_last_seen: Optional[datetime] = None
@@ -73,6 +75,15 @@ class DriveState:
         if self.car_last_seen is None:
             return False
         return datetime.now() - self.car_last_seen < timedelta(seconds=5)
+
+    def video_fps(self) -> int:
+        """根据最近帧时间戳估算视频 FPS。"""
+        if len(self.frame_timestamps) < 2:
+            return 0
+        elapsed = self.frame_timestamps[-1] - self.frame_timestamps[0]
+        if elapsed <= 0:
+            return 0
+        return round((len(self.frame_timestamps) - 1) / elapsed)
 
 
 drive_state = DriveState()
@@ -233,6 +244,7 @@ async def drive_ws(websocket: WebSocket, role: str = Query("client", description
                         frame_bytes = base64.b64decode(msg["data"])
                         drive_state.last_frame = frame_bytes
                         drive_state.last_frame_timestamp = time.time()
+                        drive_state.frame_timestamps.append(drive_state.last_frame_timestamp)
                     except Exception as e:
                         logger.warning(f"解码帧失败: {e}")
                     continue
@@ -350,6 +362,12 @@ async def _frame_generator():
             b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n"
             + frame + b"\r\n"
         )
+
+
+@router.get("/stats")
+async def drive_stats():
+    """返回驾驶视频流统计信息。"""
+    return {"online": drive_state.car_online(), "fps": drive_state.video_fps()}
 
 
 @router.get("/video")

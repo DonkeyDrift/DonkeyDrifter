@@ -49,18 +49,26 @@ def test_drive_api_bridge_handles_control_message():
 
 def test_drive_api_bridge_sends_base64_frame(monkeypatch):
     sent_payloads = []
+    encoded_images = []
     bridge = DriveApiBridge(auto_start=False)
     bridge.connected = True
 
     monkeypatch.setattr(
-        "donkeycar.parts.drive_api_bridge.cv2.imencode",
-        lambda extension, image: (True, FakeEncodedFrame()),
+        "donkeycar.parts.drive_api_bridge.cv2.cvtColor",
+        lambda image, code: f"converted-{image}-{code}",
     )
+
+    def fake_imencode(extension, image):
+        encoded_images.append(image)
+        return True, FakeEncodedFrame()
+
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.cv2.imencode", fake_imencode)
     monkeypatch.setattr(bridge, "_send_json", sent_payloads.append)
 
-    outputs = bridge.run_threaded(img_arr=object(), num_records=7, mode="user", recording=False)
+    outputs = bridge.run_threaded(img_arr="rgb-image", num_records=7, mode="user", recording=False)
 
     assert outputs == (0.0, 0.0, "user", False, {})
+    assert encoded_images == ["converted-rgb-image-4"]
     assert sent_payloads == [{
         "type": "frame",
         "data": base64.b64encode(b"jpeg-bytes").decode("ascii"),

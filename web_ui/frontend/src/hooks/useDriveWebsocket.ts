@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { API_URL } from '../services/api';
+import { getDriveCarWebSocketUrl } from '../services/api';
 
 export interface CarState {
   online: boolean;
@@ -27,7 +27,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
     numRecords: 0,
   });
 
-  const wsUrl = `${API_URL.replace(/^http/, 'ws')}/drive/ws?role=client`;
+  const wsUrl = `${getDriveCarWebSocketUrl()}?role=client`;
 
   const clearTimers = () => {
     if (reconnectTimerRef.current) {

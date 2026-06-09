@@ -9,6 +9,7 @@ interface VideoStreamProps {
 export const VideoStream: React.FC<VideoStreamProps> = ({ className = '' }) => {
   const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
   const [retryCount, setRetryCount] = useState(0);
+  const [fps, setFps] = useState(0);
   const imgRef = useRef<HTMLImageElement>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -32,6 +33,30 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '' }) => {
     setStatus('loading');
     return () => resetRetry();
   }, [retryCount]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadStats = async () => {
+      try {
+        const response = await fetch(`${API_URL}/drive/stats`);
+        const data = await response.json();
+        if (mounted) {
+          setFps(Number(data.fps) || 0);
+        }
+      } catch {
+        if (mounted) {
+          setFps(0);
+        }
+      }
+    };
+
+    loadStats();
+    const timer = setInterval(loadStats, 1000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   const statusBadge = (() => {
     switch (status) {
@@ -63,6 +88,10 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '' }) => {
   return (
     <div className={`relative bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden ${className}`}>
       <div className="absolute top-2 left-2 z-10">{statusBadge}</div>
+      <div className="absolute right-2 top-2 z-10 rounded-md border border-white/10 bg-zinc-900/35 px-2 py-1 text-center shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md">
+        <div className="text-[10px] text-zinc-400 uppercase leading-none">FPS</div>
+        <div className="text-base font-mono leading-tight text-cyan-400">{fps}</div>
+      </div>
       <img
         key={retryCount}
         ref={imgRef}
