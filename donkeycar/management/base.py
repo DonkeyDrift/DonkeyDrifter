@@ -21,6 +21,20 @@ HELP_CONFIG = 'location of config file to use. default: ./config.py'
 logger = logging.getLogger(__name__)
 
 
+# Web UI backend runtime deps. Kept in sync with setup.cfg [webui] extra and
+# web_ui/backend/requirements.txt. Used for fast pre-flight checks before
+# spawning `uvicorn` from the `web` command.
+_WEBUI_BACKEND_MODULES = ('fastapi', 'uvicorn', 'multipart')
+try:
+    import importlib
+    _BACKEND_DEPS_OK = all(
+        importlib.util.find_spec(name) is not None
+        for name in _WEBUI_BACKEND_MODULES
+    )
+except Exception:
+    _BACKEND_DEPS_OK = False
+
+
 def make_dir(path):
     real_path = os.path.expanduser(path)
     print('making dir ', real_path)
@@ -630,6 +644,8 @@ class Web(BaseCommand):
                             help='后端端口 (默认: 8000)')
         parser.add_argument('--backend-host', default='0.0.0.0',
                             help='后端监听地址 (默认: 0.0.0.0)')
+        parser.add_argument('--install-deps', action='store_true',
+                            help='启动前自动安装缺失的前后端依赖 (等价于先运行 `donkey installweb`)')
         return parser.parse_args(args)
 
     def run(self, args):
@@ -642,6 +658,11 @@ class Web(BaseCommand):
             raise SystemExit(f'未找到前端目录: {frontend_path}')
         if not os.path.isdir(backend_path):
             raise SystemExit(f'未找到后端目录: {backend_path}')
+
+        if args.install_deps:
+            InstallWebUI()._install_dependencies(web_ui_path, frontend_path, backend_path)
+        else:
+            self._check_dependencies_or_warn(frontend_path)
 
         frontend_bind_host = '0.0.0.0'
         frontend_port = self._choose_available_port(frontend_bind_host, args.frontend_port)
@@ -772,6 +793,28 @@ class Web(BaseCommand):
             and os.path.isdir(os.path.join(path, 'backend'))
         )
 
+    def _check_dependencies_or_warn(self, frontend_path):
+        """
+        Lightweight pre-flight check used by `donkey web` when `--install-deps`
+        is NOT passed. Prints a one-line hint per missing dep group so the user
+        can quickly recover with `donkey installweb` (or `pip install -e .[webui]`).
+        Never raises — the existing process-spawn path will produce a clearer
+        error if a dep is actually required.
+        """
+        missing = []
+        if not _BACKEND_DEPS_OK:
+            missing.append('backend (pip install -e .[webui])')
+        if shutil.which('npm') is None:
+            missing.append('node/npm runtime')
+        elif not os.path.isdir(os.path.join(frontend_path, 'node_modules')):
+            missing.append('frontend (donkey installweb)')
+        if missing:
+            print('检测到 Web UI 依赖可能不完整: ' + ', '.join(missing))
+            print('  → 自动安装: donkey web --install-deps')
+            print('  → 手动安装: donkey installweb --path "{}"'.format(
+                os.path.dirname(frontend_path)
+            ))
+
     def _terminate_process(self, proc):
         if proc is None:
             return
@@ -797,6 +840,156 @@ class Web(BaseCommand):
             proc.wait(timeout=5)
 
 
+class InstallWebUI(BaseCommand):
+    """
+    `donkey installweb` — install / repair Web UI dependencies.
+
+    Backend (Python): checks for fastapi/uvicorn/python-multipart and runs
+        `pip install -e .[webui]` (or equivalent) into the active interpreter
+        if anything is missing. The user can skip this with `--no-backend`.
+
+    Frontend (Node.js): runs `npm install` in `web_ui/frontend` (or `--no-frontend`
+        to skip). Requires `node` and `npm` on PATH.
+
+    The command is idempotent: re-running is safe and will only install what
+    is actually missing.
+    """
+
+    def parse_args(self, args):
+        parser = argparse.ArgumentParser(
+            prog='installweb',
+            usage='%(prog)s [options]',
+            description='Install/repair Web UI backend (Python) and frontend (Node) dependencies.'
+        )
+        parser.add_argument(
+            '--path', default='/home/dkc/projects/donkeycar/web_ui',
+            help='web_ui 根目录路径 (默认: /home/dkc/projects/donkeycar/web_ui)',
+        )
+        parser.add_argument(
+            '--no-backend', action='store_true',
+            help='跳过 Python 后端依赖检查与安装',
+        )
+        parser.add_argument(
+            '--no-frontend', action='store_true',
+            help='跳过前端 npm install',
+        )
+        return parser.parse_args(args)
+
+    def run(self, args):
+        args = self.parse_args(args)
+        web_ui_path = Web()._resolve_web_ui_path(args.path)
+        frontend_path = os.path.join(web_ui_path, 'frontend')
+        backend_path = os.path.join(web_ui_path, 'backend')
+        if not os.path.isdir(frontend_path):
+            raise SystemExit(f'未找到前端目录: {frontend_path}')
+        if not os.path.isdir(backend_path):
+            raise SystemExit(f'未找到后端目录: {backend_path}')
+        self._install_dependencies(web_ui_path, frontend_path, backend_path,
+                                  skip_backend=args.no_backend,
+                                  skip_frontend=args.no_frontend)
+
+    # --- core routine, also reused by `donkey web --install-deps` ---
+    def _install_dependencies(self, web_ui_path, frontend_path, backend_path,
+                              skip_backend=False, skip_frontend=False):
+        print(f'Web UI 路径: {web_ui_path}')
+
+        backend_ok = True
+        if not skip_backend:
+            backend_ok = self._ensure_backend_deps(web_ui_path, backend_path)
+        else:
+            print('跳过 Python 后端依赖安装 (--no-backend)')
+
+        frontend_ok = True
+        if not skip_frontend:
+            frontend_ok = self._ensure_frontend_deps(frontend_path)
+        else:
+            print('跳过前端 npm install (--no-frontend)')
+
+        print('--- Web UI 依赖检查完成 ---')
+        print(f'  后端: {"OK" if backend_ok else "FAILED"}')
+        print(f'  前端: {"OK" if frontend_ok else "FAILED"}')
+        if not (backend_ok and frontend_ok):
+            missing = []
+            if not backend_ok:
+                missing.append('Python 后端 (pip install -e .[webui])')
+            if not frontend_ok:
+                missing.append('前端 (npm install)')
+            raise SystemExit(
+                '依赖安装未完成: ' + ', '.join(missing)
+                + '\n请根据上方错误信息手动重试后，再运行 `donkey web` 启动。'
+            )
+
+    def _ensure_backend_deps(self, web_ui_path, backend_path):
+        """Verify / install Python backend deps (fastapi, uvicorn, python-multipart)."""
+        global _BACKEND_DEPS_OK
+        missing = [m for m in _WEBUI_BACKEND_MODULES
+                   if importlib.util.find_spec(m) is None]
+        if not missing:
+            print(f'后端依赖已就绪: {", ".join(_WEBUI_BACKEND_MODULES)}')
+            return True
+
+        print(f'后端缺失依赖: {", ".join(missing)}')
+        # Prefer the requirements file shipped with the repo for the canonical
+        # pinned set; fall back to the [webui] extra if it is unreachable.
+        req_file = os.path.join(backend_path, 'requirements.txt')
+        if os.path.isfile(req_file):
+            cmd = [sys.executable, '-m', 'pip', 'install', '-r', req_file]
+            print('  → 执行: ' + ' '.join(cmd))
+        else:
+            cmd = [sys.executable, '-m', 'pip', 'install', '-e', f'{web_ui_path or "."}[webui]']
+            print(f'  未找到 {req_file}，回退到: ' + ' '.join(cmd))
+
+        try:
+            subprocess.check_call(cmd)
+        except subprocess.CalledProcessError as exc:
+            print(f'  pip install 失败，返回码: {exc.returncode}')
+            return False
+
+        # Refresh the cached flag now that we've installed.
+        _BACKEND_DEPS_OK = all(
+            importlib.util.find_spec(name) is not None
+            for name in _WEBUI_BACKEND_MODULES
+        )
+        if not _BACKEND_DEPS_OK:
+            still_missing = [m for m in _WEBUI_BACKEND_MODULES
+                             if importlib.util.find_spec(m) is None]
+            print(f'  pip install 报告成功但仍缺失: {", ".join(still_missing)}')
+            return False
+        return True
+
+    def _ensure_frontend_deps(self, frontend_path):
+        """Run `npm install` in the frontend directory if node_modules is missing."""
+        node_modules = os.path.join(frontend_path, 'node_modules')
+        package_json = os.path.join(frontend_path, 'package.json')
+        if not os.path.isfile(package_json):
+            raise SystemExit(f'未找到 package.json: {package_json}')
+
+        npm_exe = shutil.which('npm')
+        if npm_exe is None:
+            print('  未在 PATH 中找到 npm，请先安装 Node.js (https://nodejs.org)')
+            return False
+
+        if os.path.isdir(node_modules):
+            # Cheap sanity check: vite must be resolvable.
+            vite_bin = os.path.join(node_modules, '.bin', 'vite')
+            if os.path.isfile(vite_bin) or os.path.isfile(vite_bin + '.cmd'):
+                print(f'前端依赖已就绪: {node_modules}')
+                return True
+            print(f'  node_modules 存在但缺少 vite，将重新执行 npm install')
+
+        cmd = [npm_exe, 'install']
+        print('  → 执行: ' + ' '.join(cmd) + f'  (cwd={frontend_path})')
+        try:
+            subprocess.check_call(cmd, cwd=frontend_path)
+        except subprocess.CalledProcessError as exc:
+            print(f'  npm install 失败，返回码: {exc.returncode}')
+            return False
+
+        if not os.path.isdir(node_modules):
+            print(f'  npm install 报告成功但未生成: {node_modules}')
+            return False
+        return True
+
 
 def execute_from_command_line():
     """
@@ -817,6 +1010,7 @@ def execute_from_command_line():
         'ui': Gui,
         'tui': Tui,
         'web': Web,
+        'installweb': InstallWebUI,
     }
 
     args = sys.argv[:]

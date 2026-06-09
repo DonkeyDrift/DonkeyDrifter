@@ -156,8 +156,13 @@ The project uses `setuptools` with `setup.cfg` and `pyproject.toml`.
 # Base install (core dependencies only)
 pip install -e .
 
-# PC development (includes TensorFlow, matplotlib, Kivy, albumentations)
+# PC development (includes TensorFlow, matplotlib, Kivy, albumentations,
+# AND the Web UI backend FastAPI stack via the [webui] extra)
 pip install -e .[pc,dev]
+
+# Frontend Node deps are installed separately (pip cannot run npm):
+donkey installweb --path ./web_ui
+# equivalent to: make installweb
 
 # Raspberry Pi
 pip install -e .[pi,dev]
