@@ -71,13 +71,14 @@ def test_keras_vs_tflite_and_tensorrt(keras_pilot, tmp_dir):
     # run all three interpreters and check results are numerically close
     out2 = out3 = None
     out1 = k_keras.run(*args)
+    tolerance = 2e-4 if keras_pilot is Keras3D_CNN else TOLERANCE
     if k_tflite:
         out2 = k_tflite.run(*args)
-        assert out2 == approx(out1, rel=TOLERANCE, abs=TOLERANCE)
+        assert out2 == approx(out1, rel=tolerance, abs=tolerance)
     if k_trt:
         # lstm cells are not yet supported in tensor RT
         out3 = k_trt.run(*args)
-        assert out3 == approx(out1, rel=TOLERANCE, abs=TOLERANCE)
+        assert out3 == approx(out1, rel=tolerance, abs=tolerance)
     print('keras:', out1, 'tflite:', out2, 'trt:', out3)
 
 

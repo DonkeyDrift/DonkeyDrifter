@@ -134,3 +134,12 @@ def test_super_linter_workflow_uses_donkeydrifter_name():
     workflow = read_text(PROJECT_ROOT / ".github" / "workflows" / "superlinter.yml")
 
     assert "Lint DonkeyDrifter" in workflow
+
+
+def test_torch_extra_pins_fastai_below_incompatible_2_8_series():
+    parser = ConfigParser()
+    parser.read(PROJECT_ROOT / "setup.cfg", encoding="utf-8")
+
+    torch_extra = parser["options.extras_require"]["torch"]
+    assert "torch==2.1.*" in torch_extra
+    assert "fastai<2.8" in torch_extra

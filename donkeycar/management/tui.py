@@ -197,32 +197,34 @@ def _list_backup_archives(cache_dir: Path) -> List[Dict[str, Any]]:
     items = []
     if not cache_dir.exists():
         return items
-    
-    # 查找所有 .tar.gz 文件
+
+    # 列出 data 开头的 tar.gz 备份；非标准历史文件仍可展示但不参与序号解析。
     pattern = re.compile(r"^data-(\d{6})-(\d{3})\.tar\.gz$")
-    for item in cache_dir.glob("data-*.tar.gz"):
+    for item in cache_dir.glob("data*.tar.gz"):
         if not item.is_file():
             continue
-            
-        match = pattern.match(item.name)
-        if not match:
-            continue
 
-        date_str, seq = match.groups()
-            
+        match = pattern.match(item.name)
+        if match:
+            date_str, seq = match.groups()
+        elif item.name.startswith("data-"):
+            continue
+        else:
+            date_str, seq = "N/A", "N/A"
+
         size = 0
         try:
             size = item.stat().st_size
         except OSError:
             size = 0
-            
+
         items.append({
             "path": item,
             "date": date_str,
             "seq": seq,
             "size": size
         })
-        
+
     items.sort(key=lambda x: x["path"].name)
     return items
 
