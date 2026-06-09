@@ -168,6 +168,14 @@ def _get_data_cache_dir() -> Path:
     """获取数据备份缓存目录 (当前工作目录下的 data_cache)"""
     return Path.cwd() / "data_cache"
 
+
+def _get_bundled_web_ui_path() -> Optional[Path]:
+    """获取随源码仓库提供的 Web UI 目录。"""
+    web_ui_path = Path(__file__).resolve().parents[2] / "web_ui"
+    if (web_ui_path / "frontend").is_dir() and (web_ui_path / "backend").is_dir():
+        return web_ui_path
+    return None
+
 def _is_valid_archive(path: Path) -> bool:
     """检查是否为有效的 tar.gz 文件"""
     if not path.exists() or not path.is_file():
@@ -1314,7 +1322,10 @@ class WebUICommand(DonkeyCommand):
         self.options = []
 
     def get_command_line(self, params):
-        return ["donkey", "web"]
+        web_ui_path = _get_bundled_web_ui_path()
+        if web_ui_path is None:
+            return ["donkey", "web"]
+        return ["donkey", "web", "--path", str(web_ui_path)]
 
 # -----------------------------------------------------------------------------
 # 菜单系统
