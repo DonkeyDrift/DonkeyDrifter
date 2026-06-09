@@ -8,13 +8,23 @@ export interface CarState {
   numRecords: number;
 }
 
+export interface WebRtcSignal {
+  type: 'webrtc_signal';
+  signal_type: 'offer' | 'answer' | 'ice';
+  session_id: string;
+  sdp?: string;
+  description_type?: 'offer' | 'answer';
+  candidate?: RTCIceCandidateInit;
+}
+
 interface UseDriveWebsocketOptions {
   autoReconnect?: boolean;
   reconnectInterval?: number;
+  onWebRtcSignal?: (signal: WebRtcSignal) => void;
 }
 
 export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
-  const { autoReconnect = true, reconnectInterval = 3000 } = options;
+  const { autoReconnect = true, reconnectInterval = 3000, onWebRtcSignal } = options;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -71,6 +81,9 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
               numRecords: Number(msg.num_records) || 0,
             }));
           }
+          if (msg.type === 'webrtc_signal') {
+            onWebRtcSignal?.(msg as WebRtcSignal);
+          }
         } catch {
           // 忽略格式错误的消息
         }
@@ -94,7 +107,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
         reconnectTimerRef.current = setTimeout(connect, reconnectInterval);
       }
     }
-  }, [wsUrl, autoReconnect, reconnectInterval]);
+  }, [wsUrl, autoReconnect, reconnectInterval, onWebRtcSignal]);
 
   const send = useCallback((data: Record<string, unknown>) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {

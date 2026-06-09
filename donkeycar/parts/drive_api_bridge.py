@@ -12,6 +12,9 @@ from collections import deque
 from dataclasses import dataclass
 from threading import Thread
 from typing import Callable, Dict, Optional
+from urllib.parse import urlsplit, urlunsplit
+
+import requests
 
 try:
     import cv2
@@ -78,6 +81,50 @@ class DriveVideoFrameBuffer:
         return {"source_fps": source_fps, "frame_id": self.frame_id}
 
 
+class DriveWebRtcVideoTrack:
+    """从最新帧缓冲输出真实新帧的 WebRTC 视频轨道。"""
+
+    def __init__(self, frame_buffer: DriveVideoFrameBuffer, fps: int = 60,
+                 clock: Callable[[], float] = time.time):
+        self.frame_buffer = frame_buffer
+        self.fps = fps
+        self.clock = clock
+        self.last_frame_id = 0
+        self.sent_timestamps = deque(maxlen=120)
+        self.sent_frames = 0
+        self.stale_frames = 0
+        self.stopped = False
+
+    async def recv(self):
+        if self.stopped:
+            return None
+        latest = self.frame_buffer.get_latest()
+        if latest is None or latest.frame_id == self.last_frame_id:
+            self.stale_frames += 1
+            await asyncio.sleep(0)
+            return None
+
+        self.last_frame_id = latest.frame_id
+        self.sent_frames += 1
+        self.sent_timestamps.append(self.clock())
+        return latest
+
+    def stop(self):
+        self.stopped = True
+
+    def stats(self):
+        if len(self.sent_timestamps) < 2:
+            sent_fps = 0.0
+        else:
+            elapsed = self.sent_timestamps[-1] - self.sent_timestamps[0]
+            sent_fps = 0.0 if elapsed <= 0 else (len(self.sent_timestamps) - 1) / elapsed
+        return {
+            "sent_fps": sent_fps,
+            "sent_frames": self.sent_frames,
+            "stale_frames": self.stale_frames,
+        }
+
+
 class DriveApiBridge:
     """车端 WebSocket 桥接 Part。"""
 
@@ -87,6 +134,7 @@ class DriveApiBridge:
                  video_width: int = 320, video_height: int = 240,
                  video_fps: int = 60, webrtc_enabled: bool = True):
         self.server_url = self._with_role(server_url, role)
+        self.http_api_base = self._http_api_base(server_url)
         self.reconnect_interval = reconnect_interval
         self.video_transport = video_transport
         self.video_fps = video_fps
@@ -107,6 +155,8 @@ class DriveApiBridge:
         self.running = False
         self.last_frame = 0.0
         self.thread = None
+        self.active_webrtc_session_id = None
+        self.webrtc_track = DriveWebRtcVideoTrack(self.frame_buffer, fps=video_fps)
 
         if auto_start:
             self.start()
@@ -115,6 +165,15 @@ class DriveApiBridge:
     def _with_role(server_url: str, role: str) -> str:
         separator = "&" if "?" in server_url else "?"
         return f"{server_url}{separator}role={role}"
+
+    @staticmethod
+    def _http_api_base(server_url: str) -> str:
+        parsed = urlsplit(server_url)
+        scheme = "https" if parsed.scheme == "wss" else "http"
+        path = parsed.path
+        if path.endswith("/ws"):
+            path = path[:-3]
+        return urlunsplit((scheme, parsed.netloc, path.rstrip("/"), "", ""))
 
     def start(self):
         self.running = True
@@ -153,6 +212,9 @@ class DriveApiBridge:
 
     def _handle_message(self, msg: dict):
         """处理服务端发来的控制消息。"""
+        if msg.get("type") == "webrtc_signal":
+            self._handle_webrtc_signal(msg)
+            return
         if "angle" in msg:
             self.angle = float(msg["angle"])
         if "throttle" in msg:
@@ -168,6 +230,31 @@ class DriveApiBridge:
         if not self.loop or not self.ws:
             return
         asyncio.run_coroutine_threadsafe(self.ws.send(json.dumps(payload)), self.loop)
+
+    def _handle_webrtc_signal(self, msg: dict):
+        """处理 WebRTC 信令；完整 PeerConnection 在后续步骤接入。"""
+        if msg.get("signal_type") == "offer" and msg.get("session_id"):
+            self.active_webrtc_session_id = msg["session_id"]
+
+    def _post_json(self, path: str, payload: dict):
+        url = f"{self.http_api_base}{path}"
+        response = requests.post(url, json=payload, timeout=3)
+        response.raise_for_status()
+        return response
+
+    def _post_webrtc_answer(self, session_id: str, sdp: str):
+        self._post_json("/webrtc/answer", {
+            "session_id": session_id,
+            "sdp": sdp,
+            "type": "answer",
+        })
+
+    def _post_webrtc_ice(self, session_id: str, candidate: dict):
+        self._post_json("/webrtc/ice", {
+            "session_id": session_id,
+            "source": "car",
+            "candidate": candidate,
+        })
 
     def _send_frame(self, img_arr, num_records=0, mode=None, recording=None):
         if cv2 is None:
@@ -221,6 +308,7 @@ class DriveApiBridge:
 
     def shutdown(self):
         self.running = False
+        self.webrtc_track.stop()
         if self.loop and self.ws:
             try:
                 asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)

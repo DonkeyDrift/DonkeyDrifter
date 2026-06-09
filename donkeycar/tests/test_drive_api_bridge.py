@@ -3,7 +3,6 @@ import base64
 import json
 
 import numpy as np
-import pytest
 
 from donkeycar.parts.drive_api_bridge import DriveApiBridge, DriveVideoFrameBuffer, DriveWebRtcVideoTrack
 from donkeydrifter.parts.drive_api_bridge import DriveApiBridge as DrifterDriveApiBridge
@@ -152,23 +151,23 @@ def test_drive_api_bridge_webrtc_mode_updates_frame_buffer_without_mjpeg_throttl
     assert sent_payloads == []
 
 
-@pytest.mark.asyncio
-async def test_webrtc_video_track_only_emits_new_frames():
+def test_webrtc_video_track_only_emits_new_frames():
+    timestamps = iter([0.0, 1.0 / 60.0])
     buffer = DriveVideoFrameBuffer(width=320, height=240)
-    track = DriveWebRtcVideoTrack(buffer, fps=60)
+    track = DriveWebRtcVideoTrack(buffer, fps=60, clock=lambda: next(timestamps))
     first = np.zeros((240, 320, 3), dtype=np.uint8)
     second = np.ones((240, 320, 3), dtype=np.uint8)
 
     buffer.update(first)
-    first_output = await track.recv()
-    repeat_output = await track.recv()
+    first_output = asyncio.run(track.recv())
+    repeat_output = asyncio.run(track.recv())
     buffer.update(second)
-    second_output = await track.recv()
+    second_output = asyncio.run(track.recv())
 
     assert first_output is not None
     assert repeat_output is None
     assert second_output is not None
-    assert track.stats()["sent_fps"] == 0.0
+    assert round(track.stats()["sent_fps"]) == 60
     assert track.stats()["sent_frames"] == 2
     assert track.stats()["stale_frames"] == 1
 
