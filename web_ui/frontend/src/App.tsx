@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { SidePanel } from './components/SidePanel';
 import { TubNavigator } from './components/TubNavigator';
 import { TubEditor } from './components/TubEditor';
 import { useStore } from './store/useStore';
+import { getApiErrorMessage, loadTub } from './services/api';
 
 const TrainerPage = React.lazy(() => import('./pages/TrainerPage').then((module) => ({ default: module.TrainerPage })));
 const DrivePage = React.lazy(() => import('./pages/DrivePage').then((module) => ({ default: module.DrivePage })));
@@ -38,7 +39,38 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 }
 
 function TubManagerPage() {
-  const { isLoading, error } = useStore();
+  const { isLoading, error, tubPath, setTub, setLoading, setError } = useStore();
+  const location = useLocation();
+  const prevLocationRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const shouldRefreshTub =
+      prevLocationRef.current === '/drive' && location.pathname === '/' && Boolean(tubPath);
+
+    if (shouldRefreshTub) {
+      const refreshCurrentTub = async () => {
+        setLoading(true);
+        try {
+          const data = await loadTub(tubPath);
+          setTub(
+            data.path,
+            data.records || [],
+            data.fields || [],
+            data.total_physical_records,
+            data.deleted_indexes,
+          );
+        } catch (err: unknown) {
+          setError(getApiErrorMessage(err, 'Failed to refresh tub'));
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      refreshCurrentTub();
+    }
+
+    prevLocationRef.current = location.pathname;
+  }, [location.pathname, tubPath, setTub, setLoading, setError]);
 
   return (
     <>
