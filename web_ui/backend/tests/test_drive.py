@@ -237,6 +237,38 @@ def test_car_webrtc_stats_message_updates_backend_stats():
     assert data["local_description_elapsed_ms"] == 18.5
 
 
+def test_browser_webrtc_stats_update_backend_stats():
+    client, _ = make_online_client()
+    session = client.post("/api/drive/webrtc/session", json={"client_id": "browser-1"}).json()
+
+    response = client.post("/api/drive/webrtc/browser-stats", json={
+        "session_id": session["session_id"],
+        "browser_fps": 58.4,
+        "browser_p95_frame_interval_ms": 23.7,
+    })
+
+    assert response.status_code == 200
+    data = client.get("/api/drive/webrtc/stats").json()
+    assert data["browser_fps"] == 58.4
+    assert data["browser_p95_frame_interval_ms"] == 23.7
+
+
+def test_browser_webrtc_stats_reject_stale_session():
+    client, _ = make_online_client()
+    client.post("/api/drive/webrtc/session", json={"client_id": "browser-1"})
+
+    response = client.post("/api/drive/webrtc/browser-stats", json={
+        "session_id": "stale-session",
+        "browser_fps": 58.4,
+        "browser_p95_frame_interval_ms": 23.7,
+    })
+
+    assert response.status_code == 404
+    data = client.get("/api/drive/webrtc/stats").json()
+    assert data["browser_fps"] == 0.0
+    assert data["browser_p95_frame_interval_ms"] == 0.0
+
+
 def test_webrtc_stats_exposes_signaling_timestamps():
     client, drive = make_online_client()
     async def ok_send_to_car(_payload):

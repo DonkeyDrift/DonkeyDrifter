@@ -11,7 +11,7 @@ import os
 import time
 from collections import deque
 from dataclasses import dataclass
-from threading import Thread
+from threading import Lock, Thread
 from typing import Callable, Dict, Optional
 from fractions import Fraction
 from urllib.parse import urlsplit, urlunsplit
@@ -93,6 +93,8 @@ class DriveVideoFrameBuffer:
         self.frame_id = 0
         self.latest: Optional[DriveVideoFrame] = None
         self.timestamps = deque(maxlen=history_size)
+        self.lock = Lock()
+        self.waiters = []
 
     def update(self, img_arr):
         if img_arr is None:
@@ -100,9 +102,23 @@ class DriveVideoFrameBuffer:
 
         frame = self._resize(img_arr)
         timestamp = self.clock()
-        self.frame_id += 1
-        self.timestamps.append(timestamp)
-        self.latest = DriveVideoFrame(frame_id=self.frame_id, frame=frame, timestamp=timestamp)
+        wakeups = []
+        with self.lock:
+            self.frame_id += 1
+            self.timestamps.append(timestamp)
+            self.latest = DriveVideoFrame(frame_id=self.frame_id, frame=frame, timestamp=timestamp)
+            pending_waiters = []
+            for waiter in self.waiters:
+                last_frame_id, loop, future = waiter
+                if future.cancelled() or future.done():
+                    continue
+                if self.frame_id > last_frame_id:
+                    wakeups.append((loop, future, self.latest))
+                else:
+                    pending_waiters.append(waiter)
+            self.waiters = pending_waiters
+        for loop, future, latest in wakeups:
+            loop.call_soon_threadsafe(self._set_waiter_result, future, latest)
         return self.latest
 
     def _resize(self, img_arr):
@@ -116,15 +132,43 @@ class DriveVideoFrameBuffer:
         return cv2.resize(img_arr, (self.width, self.height))
 
     def get_latest(self):
-        return self.latest
+        with self.lock:
+            return self.latest
+
+    @staticmethod
+    def _set_waiter_result(future, latest):
+        if not future.done():
+            future.set_result(latest)
+
+    async def wait_for_new_frame(self, last_frame_id: int, timeout: float):
+        loop = asyncio.get_running_loop()
+        with self.lock:
+            if self.latest is not None and self.frame_id > last_frame_id:
+                return self.latest
+            future = loop.create_future()
+            waiter = (last_frame_id, loop, future)
+            self.waiters.append(waiter)
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            with self.lock:
+                self.waiters = [item for item in self.waiters if item[2] is not future]
+            return None
+        except asyncio.CancelledError:
+            with self.lock:
+                self.waiters = [item for item in self.waiters if item[2] is not future]
+            raise
 
     def stats(self):
-        if len(self.timestamps) < 2:
+        with self.lock:
+            timestamps = list(self.timestamps)
+            frame_id = self.frame_id
+        if len(timestamps) < 2:
             source_fps = 0.0
         else:
-            elapsed = self.timestamps[-1] - self.timestamps[0]
-            source_fps = 0.0 if elapsed <= 0 else (len(self.timestamps) - 1) / elapsed
-        return {"source_fps": source_fps, "frame_id": self.frame_id}
+            elapsed = timestamps[-1] - timestamps[0]
+            source_fps = 0.0 if elapsed <= 0 else (len(timestamps) - 1) / elapsed
+        return {"source_fps": source_fps, "frame_id": frame_id}
 
 
 class DriveWebRtcVideoTrack:
@@ -203,7 +247,10 @@ class DriveAiortcVideoTrack(VideoStreamTrack):
                 frame.time_base = self.time_base
                 return frame
             self.stale_frames += 1
-            await asyncio.sleep(1.0 / self.fps)
+            await self.frame_buffer.wait_for_new_frame(
+                self.last_frame_id,
+                timeout=max(1.0 / self.fps, 0.05),
+            )
 
     def stats(self):
         if len(self.sent_timestamps) < 2:

@@ -8,6 +8,7 @@ vi.mock('../services/api', () => ({
   createDriveWebRtcSession: vi.fn(async () => ({ session_id: 'session-1' })),
   sendDriveWebRtcOffer: vi.fn(async () => ({ success: true })),
   sendDriveWebRtcIce: vi.fn(async () => ({ success: true })),
+  sendDriveWebRtcBrowserStats: vi.fn(async () => ({ success: true })),
   getDriveWebRtcStats: vi.fn(async () => ({
     source_fps: 60,
     sent_fps: 60,
@@ -165,6 +166,41 @@ describe('useDriveWebRtcVideo', () => {
 
     await waitFor(() => expect(lastCallValue(onState).state).toBe('degraded'));
     await waitFor(() => expect(api.createDriveWebRtcSession).toHaveBeenCalledTimes(2));
+  });
+
+  it('回传浏览器端真实 FPS 和 P95 指标', async () => {
+    const api = await import('../services/api');
+    const callbacks: VideoFrameRequestCallback[] = [];
+    Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', {
+      configurable: true,
+      value: vi.fn((callback: VideoFrameRequestCallback) => {
+        callbacks.push(callback);
+        return callbacks.length;
+      }),
+    });
+    Object.defineProperty(HTMLVideoElement.prototype, 'cancelVideoFrameCallback', {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const pc = new FakePeerConnection();
+    const factory = () => pc as unknown as RTCPeerConnection;
+    const onState = vi.fn();
+
+    render(<HookProbe onState={onState} factory={factory} />);
+
+    await waitFor(() => expect(pc.localDescription?.sdp).toBe('offer-sdp'));
+    await act(async () => {
+      pc.ontrack?.({ streams: [{} as MediaStream], track: {} as MediaStreamTrack } as unknown as RTCTrackEvent);
+    });
+    await act(async () => {
+      callbacks.shift()?.(0, { presentationTime: 0 } as VideoFrameCallbackMetadata);
+      callbacks.shift()?.(1000, { presentationTime: 1000 } as VideoFrameCallbackMetadata);
+    });
+
+    await waitFor(() => expect(api.sendDriveWebRtcBrowserStats).toHaveBeenCalledWith('session-1', {
+      browser_fps: 1,
+      browser_p95_frame_interval_ms: 1000,
+    }));
   });
 
   it('处理 answer 和 ICE 信令', async () => {

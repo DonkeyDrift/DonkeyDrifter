@@ -160,6 +160,12 @@ class WebRtcIceRequest(BaseModel):
     candidate: Dict[str, Any]
 
 
+class WebRtcBrowserStatsRequest(BaseModel):
+    session_id: str
+    browser_fps: float
+    browser_p95_frame_interval_ms: float
+
+
 # ------------------------------------------------------------------
 # 参数持久化
 # ------------------------------------------------------------------
@@ -349,6 +355,15 @@ async def send_webrtc_ice(request: WebRtcIceRequest):
     else:
         drive_state.webrtc_stats["last_car_ice_at"] = time.time()
         await drive_state.broadcast_to_clients(payload)
+    return {"success": True}
+
+
+@router.post("/webrtc/browser-stats")
+async def update_webrtc_browser_stats(request: WebRtcBrowserStatsRequest):
+    """接收浏览器端真实渲染 FPS 与 P95 帧间隔。"""
+    _require_webrtc_session(request.session_id)
+    drive_state.webrtc_stats["browser_fps"] = request.browser_fps
+    drive_state.webrtc_stats["browser_p95_frame_interval_ms"] = request.browser_p95_frame_interval_ms
     return {"success": True}
 
 

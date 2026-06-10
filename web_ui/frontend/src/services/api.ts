@@ -173,6 +173,14 @@ export const sendDriveWebRtcIce = async (sessionId: string, candidate: RTCIceCan
   return response.data as { success: boolean };
 };
 
+export const sendDriveWebRtcBrowserStats = async (
+  sessionId: string,
+  metrics: { browser_fps: number; browser_p95_frame_interval_ms: number }
+) => {
+  const response = await api.post('/drive/webrtc/browser-stats', { session_id: sessionId, ...metrics });
+  return response.data as { success: boolean };
+};
+
 export const getDriveWebRtcStats = async () => {
   const response = await api.get('/drive/webrtc/stats');
   return response.data as DriveWebRtcStats;

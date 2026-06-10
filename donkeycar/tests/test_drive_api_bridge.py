@@ -179,6 +179,48 @@ def test_frame_buffer_reports_real_source_fps():
     assert round(buffer.stats()["source_fps"]) == 30
 
 
+def test_frame_buffer_waits_for_new_frame():
+    async def scenario():
+        buffer = DriveVideoFrameBuffer(width=320, height=240)
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        waiter = asyncio.create_task(buffer.wait_for_new_frame(last_frame_id=0, timeout=0.1))
+        await asyncio.sleep(0)
+
+        buffer.update(frame)
+        latest = await waiter
+
+        assert latest is not None
+        assert latest.frame_id == 1
+        assert latest.frame is frame
+
+    asyncio.run(scenario())
+
+
+def test_frame_buffer_wait_for_new_frame_returns_existing_frame_immediately():
+    async def scenario():
+        buffer = DriveVideoFrameBuffer(width=320, height=240)
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        buffer.update(frame)
+
+        latest = await buffer.wait_for_new_frame(last_frame_id=0, timeout=0.1)
+
+        assert latest is not None
+        assert latest.frame_id == 1
+
+    asyncio.run(scenario())
+
+
+def test_frame_buffer_wait_for_new_frame_returns_none_on_timeout():
+    async def scenario():
+        buffer = DriveVideoFrameBuffer(width=320, height=240)
+
+        latest = await buffer.wait_for_new_frame(last_frame_id=0, timeout=0.001)
+
+        assert latest is None
+
+    asyncio.run(scenario())
+
+
 def test_drive_api_bridge_webrtc_mode_updates_frame_buffer_without_mjpeg_throttle(monkeypatch):
     bridge = DriveApiBridge(auto_start=False, video_transport="webrtc")
     sent_payloads = []
@@ -286,6 +328,30 @@ def test_aiortc_video_track_converts_latest_frame(monkeypatch):
     assert output.format == "rgb24"
     assert output.pts == 1
     assert output.time_base is not None
+
+
+def test_aiortc_video_track_waits_for_next_frame(monkeypatch):
+    async def scenario():
+        monkeypatch.setattr("donkeycar.parts.drive_api_bridge.av", FakeAvModule)
+        buffer = DriveVideoFrameBuffer(width=320, height=240)
+        track = DriveAiortcVideoTrack(buffer, fps=60)
+        first = np.zeros((240, 320, 3), dtype=np.uint8)
+        second = np.ones((240, 320, 3), dtype=np.uint8)
+
+        buffer.update(first)
+        first_output = await track.recv()
+        second_task = asyncio.create_task(track.recv())
+        await asyncio.sleep(0)
+        assert not second_task.done()
+
+        buffer.update(second)
+        second_output = await asyncio.wait_for(second_task, timeout=0.1)
+
+        assert first_output.image is first
+        assert second_output.image is second
+        assert track.stats()["sent_frames"] == 2
+
+    asyncio.run(scenario())
 
 
 class FakePeerConnection:

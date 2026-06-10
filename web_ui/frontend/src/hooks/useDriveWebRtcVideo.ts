@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createDriveWebRtcSession,
   getDriveWebRtcStats,
+  sendDriveWebRtcBrowserStats,
   sendDriveWebRtcIce,
   sendDriveWebRtcOffer,
   type DriveWebRtcStats,
@@ -83,6 +84,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   const sessionIdRef = useRef<string | null>(null);
   const frameTimestampsRef = useRef<number[]>([]);
   const frameCallbackRef = useRef<number | null>(null);
+  const lastBrowserStatsSentAtRef = useRef(0);
   const trackReceivedRef = useRef(false);
   const negotiationTimerRef = useRef<number | null>(null);
   const retryTimerRef = useRef<number | null>(null);
@@ -131,7 +133,16 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
     }
     const onFrame: VideoFrameRequestCallback = (_now, metadata) => {
       frameTimestampsRef.current = [...frameTimestampsRef.current.slice(-119), metadata.presentationTime];
-      setMetrics(calculateVideoMetrics(frameTimestampsRef.current));
+      const nextMetrics = calculateVideoMetrics(frameTimestampsRef.current);
+      setMetrics(nextMetrics);
+      const sessionId = sessionIdRef.current;
+      if (sessionId && nextMetrics.browserFps > 0 && metadata.presentationTime - lastBrowserStatsSentAtRef.current >= 1000) {
+        lastBrowserStatsSentAtRef.current = metadata.presentationTime;
+        sendDriveWebRtcBrowserStats(sessionId, {
+          browser_fps: nextMetrics.browserFps,
+          browser_p95_frame_interval_ms: nextMetrics.p95FrameIntervalMs,
+        }).catch(() => undefined);
+      }
       frameCallbackRef.current = video.requestVideoFrameCallback(onFrame);
     };
     frameCallbackRef.current = video.requestVideoFrameCallback(onFrame);
