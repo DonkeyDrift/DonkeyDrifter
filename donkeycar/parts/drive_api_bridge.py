@@ -155,13 +155,18 @@ class DriveWebRtcVideoTrack:
 class DriveAiortcVideoTrack(VideoStreamTrack):
     """aiortc 使用的视频轨道，输出最新真实帧。"""
 
-    def __init__(self, frame_buffer: DriveVideoFrameBuffer, fps: int = 60):
+    def __init__(self, frame_buffer: DriveVideoFrameBuffer, fps: int = 60,
+                 clock: Callable[[], float] = time.time):
         super().__init__()
         self.frame_buffer = frame_buffer
         self.fps = fps
+        self.clock = clock
         self.last_frame_id = 0
         self.pts = 0
         self.time_base = Fraction(1, fps)
+        self.sent_timestamps = deque(maxlen=120)
+        self.sent_frames = 0
+        self.stale_frames = 0
 
     async def recv(self):
         if av is None:
@@ -172,11 +177,26 @@ class DriveAiortcVideoTrack(VideoStreamTrack):
             if latest is not None and latest.frame_id != self.last_frame_id:
                 self.last_frame_id = latest.frame_id
                 self.pts += 1
+                self.sent_frames += 1
+                self.sent_timestamps.append(self.clock())
                 frame = av.VideoFrame.from_ndarray(latest.frame, format="rgb24")
                 frame.pts = self.pts
                 frame.time_base = self.time_base
                 return frame
+            self.stale_frames += 1
             await asyncio.sleep(1.0 / self.fps)
+
+    def stats(self):
+        if len(self.sent_timestamps) < 2:
+            sent_fps = 0.0
+        else:
+            elapsed = self.sent_timestamps[-1] - self.sent_timestamps[0]
+            sent_fps = 0.0 if elapsed <= 0 else (len(self.sent_timestamps) - 1) / elapsed
+        return {
+            "sent_fps": sent_fps,
+            "sent_frames": self.sent_frames,
+            "stale_frames": self.stale_frames,
+        }
 
 
 class DriveApiBridge:
@@ -213,6 +233,7 @@ class DriveApiBridge:
         self.last_webrtc_stats = 0.0
         self.active_webrtc_session_id = None
         self.webrtc_peer = None
+        self.aiortc_track = None
         self.webrtc_track = DriveWebRtcVideoTrack(self.frame_buffer, fps=video_fps)
 
         if auto_start:
@@ -319,7 +340,8 @@ class DriveApiBridge:
             @peer.on("icecandidate")
             def on_icecandidate(candidate):
                 self._handle_local_ice_candidate(candidate)
-        peer.addTrack(DriveAiortcVideoTrack(self.frame_buffer, fps=self.video_fps))
+        self.aiortc_track = DriveAiortcVideoTrack(self.frame_buffer, fps=self.video_fps)
+        peer.addTrack(self.aiortc_track)
         await peer.setRemoteDescription(RTCSessionDescription(sdp=msg.get("sdp", ""), type="offer"))
         answer = await peer.createAnswer()
         await peer.setLocalDescription(answer)
@@ -383,7 +405,8 @@ class DriveApiBridge:
         if not self.active_webrtc_session_id:
             return
         source_stats = self.frame_buffer.stats()
-        track_stats = self.webrtc_track.stats()
+        track = self.aiortc_track or self.webrtc_track
+        track_stats = track.stats()
         self._send_json({
             "type": "webrtc_stats",
             "session_id": self.active_webrtc_session_id,
@@ -424,7 +447,8 @@ class DriveApiBridge:
             if now - self.last_webrtc_stats >= 1.0:
                 self.last_webrtc_stats = now
                 self._send_webrtc_stats()
-            if (RTCPeerConnection is None or av is None) and self.connected and now - self.last_frame > 0.05:
+            aiortc_sent_frames = getattr(self.aiortc_track, "sent_frames", 0)
+            if (RTCPeerConnection is None or av is None or aiortc_sent_frames == 0) and self.connected and now - self.last_frame > 0.05:
                 self.last_frame = now
                 try:
                     self._send_frame(img_arr, num_records, mode, recording)

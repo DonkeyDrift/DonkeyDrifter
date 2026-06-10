@@ -470,3 +470,51 @@ def test_drive_api_bridge_falls_back_to_mjpeg_when_webrtc_dependency_missing(mon
     bridge.run_threaded(img_arr=frame, num_records=3, mode="user", recording=False)
 
     assert sent_frames == [(frame, 3, "user", False)]
+
+
+def test_aiortc_video_track_reports_sent_stats(monkeypatch):
+    timestamps = iter([0.0, 1.0 / 60.0])
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.av", FakeAvModule)
+    buffer = DriveVideoFrameBuffer(width=320, height=240)
+    track = DriveAiortcVideoTrack(buffer, fps=60, clock=lambda: next(timestamps))
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+    buffer.update(frame)
+    asyncio.run(track.recv())
+    buffer.update(frame)
+    asyncio.run(track.recv())
+
+    stats = track.stats()
+    assert round(stats["sent_fps"]) == 60
+    assert stats["sent_frames"] == 2
+
+
+def test_drive_api_bridge_falls_back_to_mjpeg_until_aiortc_track_sends(monkeypatch):
+    sent_frames = []
+    bridge = DriveApiBridge(auto_start=False, video_transport="webrtc")
+    bridge.connected = True
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCPeerConnection", object)
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.av", FakeAvModule)
+    monkeypatch.setattr(bridge, "_send_frame", lambda *args, **kwargs: sent_frames.append(args))
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.time.time", lambda: 10.0)
+
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    bridge.run_threaded(img_arr=frame, num_records=3, mode="user", recording=False)
+
+    assert sent_frames == [(frame, 3, "user", False)]
+
+
+def test_drive_api_bridge_stops_mjpeg_fallback_after_aiortc_track_sends(monkeypatch):
+    sent_frames = []
+    bridge = DriveApiBridge(auto_start=False, video_transport="webrtc")
+    bridge.connected = True
+    bridge.aiortc_track = type("Track", (), {"sent_frames": 1})()
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCPeerConnection", object)
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.av", FakeAvModule)
+    monkeypatch.setattr(bridge, "_send_frame", lambda *args, **kwargs: sent_frames.append(args))
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.time.time", lambda: 10.0)
+
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    bridge.run_threaded(img_arr=frame, num_records=3, mode="user", recording=False)
+
+    assert sent_frames == []

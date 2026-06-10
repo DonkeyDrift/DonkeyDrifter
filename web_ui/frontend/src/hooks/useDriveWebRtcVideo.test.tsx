@@ -52,8 +52,9 @@ const HookProbe: React.FC<{
   signal?: WebRtcSignal | null;
   onState: (value: ReturnType<typeof useDriveWebRtcVideo>) => void;
   factory?: () => RTCPeerConnection;
-}> = ({ signal, onState, factory }) => {
-  const state = useDriveWebRtcVideo({ incomingSignal: signal, peerConnectionFactory: factory });
+  negotiationTimeoutMs?: number;
+}> = ({ signal, onState, factory, negotiationTimeoutMs }) => {
+  const state = useDriveWebRtcVideo({ incomingSignal: signal, peerConnectionFactory: factory, negotiationTimeoutMs });
   onState(state);
   return <video ref={state.videoRef} />;
 };
@@ -93,21 +94,17 @@ describe('useDriveWebRtcVideo', () => {
     });
   });
 
-  it('offer 发出后 3 秒未收到视频 track 时降级', async () => {
-    vi.useFakeTimers();
+  it('offer 发出后未收到视频 track 时降级', async () => {
     const pc = new FakePeerConnection();
     const factory = () => pc as unknown as RTCPeerConnection;
     const onState = vi.fn();
 
-    render(<HookProbe onState={onState} factory={factory} />);
+    render(<HookProbe onState={onState} factory={factory} negotiationTimeoutMs={10} />);
 
     await waitFor(() => expect(pc.localDescription?.sdp).toBe('offer-sdp'));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
+    await waitFor(() => {
+      expect(lastCallValue(onState).state).toBe('degraded');
     });
-
-    expect(lastCallValue(onState).state).toBe('degraded');
-    vi.useRealTimers();
   });
 
   it('处理 answer 和 ICE 信令', async () => {
