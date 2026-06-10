@@ -15,6 +15,7 @@ interface UseDriveWebRtcVideoOptions {
   peerConnectionFactory?: () => RTCPeerConnection;
   negotiationTimeoutMs?: number;
   retryIntervalMs?: number;
+  disabled?: boolean;
 }
 
 export interface DriveVideoMetrics {
@@ -50,7 +51,7 @@ export const calculateVideoMetrics = (timestamps: number[]): DriveVideoMetrics =
 };
 
 export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) => {
-  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = 3000, retryIntervalMs = 5000 } = options;
+  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = 3000, retryIntervalMs = 5000, disabled = false } = options;
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -111,6 +112,11 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   }, []);
 
   const start = useCallback(async () => {
+    if (disabled) {
+      setState('degraded');
+      setStats((current) => ({ ...current, degraded: true }));
+      return;
+    }
     if (typeof RTCPeerConnection === 'undefined' && !peerConnectionFactory) {
       setState('degraded');
       setStats((current) => ({ ...current, degraded: true }));
@@ -167,7 +173,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
       closePeer();
       scheduleRetry();
     }
-  }, [closePeer, createPeer, negotiationTimeoutMs, peerConnectionFactory, scheduleFrameStats, scheduleRetry]);
+  }, [closePeer, createPeer, disabled, negotiationTimeoutMs, peerConnectionFactory, scheduleFrameStats, scheduleRetry]);
 
   useEffect(() => {
     startRef.current = start;

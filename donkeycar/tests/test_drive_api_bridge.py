@@ -268,7 +268,7 @@ class FakePeerConnection:
 
     async def setLocalDescription(self, answer):
         self.answer = answer
-        self.localDescription = answer
+        self.localDescription = type("Description", (), {"sdp": "local-answer-sdp"})()
 
     async def addIceCandidate(self, candidate):
         self.candidates.append(candidate)

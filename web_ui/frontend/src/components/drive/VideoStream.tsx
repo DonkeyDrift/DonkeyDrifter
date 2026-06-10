@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { API_URL } from '../../services/api';
+import { API_URL, getDriveVideoTransport, type DriveVideoTransport } from '../../services/api';
 import { Wifi, WifiOff } from 'lucide-react';
 import { useDriveWebRtcVideo } from '../../hooks/useDriveWebRtcVideo';
 import type { WebRtcSignal } from '../../hooks/useDriveWebsocket';
@@ -7,19 +7,22 @@ import type { WebRtcSignal } from '../../hooks/useDriveWebsocket';
 interface VideoStreamProps {
   className?: string;
   incomingSignal?: WebRtcSignal | null;
+  transport?: DriveVideoTransport;
 }
 
-export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomingSignal = null }) => {
+export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomingSignal = null, transport }) => {
   const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
   const [retryCount, setRetryCount] = useState(0);
   const [mjpegFps, setMjpegFps] = useState(0);
   const [carOnline, setCarOnline] = useState<boolean | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal });
+  const selectedTransport = transport ?? getDriveVideoTransport();
+  const forceMjpeg = selectedTransport === 'mjpeg';
+  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg });
 
   const streamUrl = `${API_URL}/drive/video`;
-  const degraded = state === 'degraded' || stats.degraded;
+  const degraded = forceMjpeg || state === 'degraded' || stats.degraded;
   const browserFps = Math.round(metrics.browserFps || stats.browser_fps || 0);
   const p95 = Math.round(metrics.p95FrameIntervalMs || stats.browser_p95_frame_interval_ms || 0);
   const sourceFps = Math.round(stats.source_fps || 0);
@@ -73,6 +76,14 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   }, [degraded]);
 
   const statusBadge = (() => {
+    if (forceMjpeg) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">
+          <Wifi className="w-3 h-3" />
+          MJPEG
+        </span>
+      );
+    }
     if (!degraded) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
