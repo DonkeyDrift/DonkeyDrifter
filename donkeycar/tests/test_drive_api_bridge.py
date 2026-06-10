@@ -355,6 +355,11 @@ def test_drive_api_bridge_sends_webrtc_stats_when_session_active(monkeypatch):
     sent = []
     bridge = DriveApiBridge(auto_start=False)
     bridge.active_webrtc_session_id = "session-1"
+    bridge.webrtc_peer = type("Peer", (), {
+        "connectionState": "connected",
+        "iceConnectionState": "completed",
+        "iceGatheringState": "complete",
+    })()
     monkeypatch.setattr(bridge, "_send_json", sent.append)
     monkeypatch.setattr(bridge.frame_buffer, "stats", lambda: {"source_fps": 60.0})
     monkeypatch.setattr(bridge.webrtc_track, "stats", lambda: {"sent_fps": 59.0, "stale_frames": 2})
@@ -367,6 +372,9 @@ def test_drive_api_bridge_sends_webrtc_stats_when_session_active(monkeypatch):
         "source_fps": 60.0,
         "sent_fps": 59.0,
         "stale_frames": 2,
+        "peer_connection_state": "connected",
+        "ice_connection_state": "completed",
+        "ice_gathering_state": "complete",
     }]
 
 

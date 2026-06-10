@@ -413,6 +413,9 @@ class DriveApiBridge:
             "source_fps": source_stats.get("source_fps", 0.0),
             "sent_fps": track_stats.get("sent_fps", 0.0),
             "stale_frames": track_stats.get("stale_frames", 0),
+            "peer_connection_state": getattr(self.webrtc_peer, "connectionState", None),
+            "ice_connection_state": getattr(self.webrtc_peer, "iceConnectionState", None),
+            "ice_gathering_state": getattr(self.webrtc_peer, "iceGatheringState", None),
         })
 
     def _send_heartbeat(self):

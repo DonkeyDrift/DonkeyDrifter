@@ -53,6 +53,13 @@ class DriveState:
             "browser_p95_frame_interval_ms": 0.0,
             "disconnect_count": 0,
             "stale_frames": 0,
+            "peer_connection_state": None,
+            "ice_connection_state": None,
+            "ice_gathering_state": None,
+            "last_offer_at": None,
+            "last_answer_at": None,
+            "last_client_ice_at": None,
+            "last_car_ice_at": None,
             "degraded": False,
         }
 
@@ -103,7 +110,14 @@ class DriveState:
         session = self.webrtc_session
         if not session or data.get("session_id") != session.get("session_id"):
             return
-        for key in ("source_fps", "sent_fps", "stale_frames"):
+        for key in (
+            "source_fps",
+            "sent_fps",
+            "stale_frames",
+            "peer_connection_state",
+            "ice_connection_state",
+            "ice_gathering_state",
+        ):
             if key in data:
                 self.webrtc_stats[key] = data[key]
 
@@ -273,6 +287,7 @@ async def create_webrtc_session(request: WebRtcSessionRequest):
 async def send_webrtc_offer(request: WebRtcSessionDescription):
     """浏览器 offer 转发给车端。"""
     _require_webrtc_session(request.session_id)
+    drive_state.webrtc_stats["last_offer_at"] = time.time()
     ok = await drive_state.send_to_car({
         "type": "webrtc_signal",
         "signal_type": "offer",
@@ -289,6 +304,7 @@ async def send_webrtc_offer(request: WebRtcSessionDescription):
 async def send_webrtc_answer(request: WebRtcSessionDescription):
     """车端 answer 转发给浏览器。"""
     _require_webrtc_session(request.session_id)
+    drive_state.webrtc_stats["last_answer_at"] = time.time()
     await drive_state.broadcast_to_clients({
         "type": "webrtc_signal",
         "signal_type": "answer",
@@ -310,10 +326,12 @@ async def send_webrtc_ice(request: WebRtcIceRequest):
         "candidate": request.candidate,
     }
     if request.source == "client":
+        drive_state.webrtc_stats["last_client_ice_at"] = time.time()
         ok = await drive_state.send_to_car(payload)
         if not ok:
             raise HTTPException(status_code=500, detail="发送 ICE candidate 到车端失败")
     else:
+        drive_state.webrtc_stats["last_car_ice_at"] = time.time()
         await drive_state.broadcast_to_clients(payload)
     return {"success": True}
 
@@ -332,6 +350,13 @@ async def webrtc_stats():
         "browser_p95_frame_interval_ms": drive_state.webrtc_stats["browser_p95_frame_interval_ms"],
         "disconnect_count": drive_state.webrtc_stats["disconnect_count"],
         "stale_frames": drive_state.webrtc_stats["stale_frames"],
+        "peer_connection_state": drive_state.webrtc_stats["peer_connection_state"],
+        "ice_connection_state": drive_state.webrtc_stats["ice_connection_state"],
+        "ice_gathering_state": drive_state.webrtc_stats["ice_gathering_state"],
+        "last_offer_at": drive_state.webrtc_stats["last_offer_at"],
+        "last_answer_at": drive_state.webrtc_stats["last_answer_at"],
+        "last_client_ice_at": drive_state.webrtc_stats["last_client_ice_at"],
+        "last_car_ice_at": drive_state.webrtc_stats["last_car_ice_at"],
         "transport": "webrtc",
         "degraded": drive_state.webrtc_stats["degraded"],
     }

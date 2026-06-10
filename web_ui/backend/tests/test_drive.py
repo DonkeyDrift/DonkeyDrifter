@@ -218,6 +218,9 @@ def test_car_webrtc_stats_message_updates_backend_stats():
         "source_fps": 60.0,
         "sent_fps": 59.0,
         "stale_frames": 2,
+        "peer_connection_state": "connected",
+        "ice_connection_state": "completed",
+        "ice_gathering_state": "complete",
     })
 
     response = client.get("/api/drive/webrtc/stats")
@@ -225,6 +228,35 @@ def test_car_webrtc_stats_message_updates_backend_stats():
     assert data["source_fps"] == 60.0
     assert data["sent_fps"] == 59.0
     assert data["stale_frames"] == 2
+    assert data["peer_connection_state"] == "connected"
+    assert data["ice_connection_state"] == "completed"
+    assert data["ice_gathering_state"] == "complete"
+
+
+def test_webrtc_stats_exposes_signaling_timestamps():
+    client, drive = make_online_client()
+    async def ok_send_to_car(_payload):
+        return True
+
+    async def ok_broadcast(_payload):
+        return None
+
+    drive.drive_state.send_to_car = ok_send_to_car
+    drive.drive_state.broadcast_to_clients = ok_broadcast
+    session = client.post("/api/drive/webrtc/session", json={"client_id": "browser-1"}).json()
+
+    client.post("/api/drive/webrtc/offer", json={"session_id": session["session_id"], "sdp": "offer", "type": "offer"})
+    client.post("/api/drive/webrtc/answer", json={"session_id": session["session_id"], "sdp": "answer", "type": "answer"})
+    client.post("/api/drive/webrtc/ice", json={
+        "session_id": session["session_id"],
+        "source": "client",
+        "candidate": {"candidate": "candidate:1"},
+    })
+
+    data = client.get("/api/drive/webrtc/stats").json()
+    assert data["last_offer_at"] is not None
+    assert data["last_answer_at"] is not None
+    assert data["last_client_ice_at"] is not None
 
 
 def test_car_webrtc_stats_ignores_stale_session():
