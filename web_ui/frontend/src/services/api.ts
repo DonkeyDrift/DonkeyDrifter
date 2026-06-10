@@ -154,6 +154,9 @@ export interface DriveWebRtcStats {
   ice_gathering_state?: string | null;
   local_description_error?: string | null;
   local_description_elapsed_ms?: number | null;
+  answer_sent_elapsed_ms?: number | null;
+  local_candidates_sent?: number;
+  offer_to_answer_elapsed_ms?: number | null;
   inbound_fps?: number;
   frames_dropped?: number;
   jitter_ms?: number;

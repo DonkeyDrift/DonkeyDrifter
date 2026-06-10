@@ -426,7 +426,7 @@ def test_drive_api_bridge_creates_aiortc_peer_from_offer(monkeypatch):
     assert len(created) == 1
     assert len(created[0].tracks) == 1
     assert created[0].remote.sdp == "offer-sdp"
-    assert answers == [("session-1", "local-answer-sdp")]
+    assert answers == [("session-1", "answer-sdp")]
 
 
 def test_drive_api_bridge_passes_ice_servers_to_aiortc_peer(monkeypatch):
@@ -473,6 +473,7 @@ def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch,
             created.append(self)
 
         async def setLocalDescription(self, answer):
+            assert answers == [("session-x", "answer-sdp")]
             raise RuntimeError("setLocalDescription 失败")
 
     monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCPeerConnection", HangingSetLocal)
@@ -492,6 +493,49 @@ def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch,
     assert answers == [("session-x", "answer-sdp")]
     assert "RuntimeError" in caplog.text
     assert "setLocalDescription 失败" in bridge.webrtc_local_description_error
+    assert bridge.webrtc_answer_sent_elapsed_ms is not None
+
+
+def test_drive_api_bridge_posts_local_ice_candidates_from_sdp_once():
+    posted = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    bridge._post_webrtc_ice = lambda session_id, candidate: posted.append((session_id, candidate))
+    sdp = "\r\n".join([
+        "v=0",
+        "m=video 9 UDP/TLS/RTP/SAVPF 96",
+        "a=mid:0",
+        "a=candidate:1 1 udp 2130706431 192.168.1.2 5000 typ host",
+        "a=candidate:2 1 udp 1694498815 203.0.113.10 3478 typ relay raddr 0.0.0.0 rport 0",
+    ])
+
+    bridge._post_local_ice_candidates_from_sdp("session-1", sdp)
+    bridge._post_local_ice_candidates_from_sdp("session-1", sdp)
+
+    assert posted == [
+        ("session-1", {
+            "candidate": "candidate:1 1 udp 2130706431 192.168.1.2 5000 typ host",
+            "sdpMid": "0",
+            "sdpMLineIndex": 0,
+        }),
+        ("session-1", {
+            "candidate": "candidate:2 1 udp 1694498815 203.0.113.10 3478 typ relay raddr 0.0.0.0 rport 0",
+            "sdpMid": "0",
+            "sdpMLineIndex": 0,
+        }),
+    ]
+    assert bridge.local_candidates_sent == 2
+
+
+def test_drive_api_bridge_ignores_sdp_ice_for_stale_session():
+    posted = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    bridge._post_webrtc_ice = lambda session_id, candidate: posted.append((session_id, candidate))
+
+    bridge._post_local_ice_candidates_from_sdp("stale-session", "a=mid:0\na=candidate:1 1 udp 1 host 1 typ host")
+
+    assert posted == []
 
 
 def test_drive_api_bridge_reports_local_description_diagnostics(monkeypatch):
@@ -513,6 +557,27 @@ def test_drive_api_bridge_reports_local_description_diagnostics(monkeypatch):
 
     assert sent[0]["local_description_error"] == "TimeoutError: TimeoutError()"
     assert sent[0]["local_description_elapsed_ms"] == 2001.0
+
+
+def test_drive_api_bridge_reports_answer_and_candidate_diagnostics(monkeypatch):
+    sent = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    bridge.webrtc_peer = type("Peer", (), {
+        "connectionState": "connected",
+        "iceConnectionState": "completed",
+        "iceGatheringState": "complete",
+    })()
+    bridge.webrtc_answer_sent_elapsed_ms = 42.0
+    bridge.local_candidates_sent = 2
+    monkeypatch.setattr(bridge, "_send_json", sent.append)
+    monkeypatch.setattr(bridge.frame_buffer, "stats", lambda: {"source_fps": 58.0})
+    monkeypatch.setattr(bridge.webrtc_track, "stats", lambda: {"sent_fps": 58.0, "stale_frames": 3})
+
+    bridge._send_webrtc_stats()
+
+    assert sent[0]["answer_sent_elapsed_ms"] == 42.0
+    assert sent[0]["local_candidates_sent"] == 2
 
 
 def test_drive_api_bridge_adds_matching_ice_candidate(monkeypatch):
@@ -580,6 +645,8 @@ def test_drive_api_bridge_sends_webrtc_stats_when_session_active(monkeypatch):
         "ice_gathering_state": "complete",
         "local_description_error": None,
         "local_description_elapsed_ms": None,
+        "answer_sent_elapsed_ms": None,
+        "local_candidates_sent": 0,
     }]
 
 

@@ -62,6 +62,9 @@ class DriveState:
             "ice_gathering_state": None,
             "local_description_error": None,
             "local_description_elapsed_ms": None,
+            "answer_sent_elapsed_ms": None,
+            "local_candidates_sent": 0,
+            "offer_to_answer_elapsed_ms": None,
             "last_offer_at": None,
             "last_answer_at": None,
             "last_client_ice_at": None,
@@ -125,6 +128,8 @@ class DriveState:
             "ice_gathering_state",
             "local_description_error",
             "local_description_elapsed_ms",
+            "answer_sent_elapsed_ms",
+            "local_candidates_sent",
         ):
             if key in data:
                 self.webrtc_stats[key] = data[key]
@@ -304,6 +309,9 @@ async def create_webrtc_session(request: WebRtcSessionRequest):
         "ice_gathering_state": None,
         "local_description_error": None,
         "local_description_elapsed_ms": None,
+        "answer_sent_elapsed_ms": None,
+        "local_candidates_sent": 0,
+        "offer_to_answer_elapsed_ms": None,
         "last_offer_at": None,
         "last_answer_at": None,
         "last_client_ice_at": None,
@@ -335,6 +343,11 @@ async def send_webrtc_answer(request: WebRtcSessionDescription):
     """车端 answer 转发给浏览器。"""
     _require_webrtc_session(request.session_id)
     drive_state.webrtc_stats["last_answer_at"] = time.time()
+    last_offer_at = drive_state.webrtc_stats.get("last_offer_at")
+    if last_offer_at is not None:
+        drive_state.webrtc_stats["offer_to_answer_elapsed_ms"] = (
+            drive_state.webrtc_stats["last_answer_at"] - last_offer_at
+        ) * 1000.0
     await drive_state.broadcast_to_clients({
         "type": "webrtc_signal",
         "signal_type": "answer",
@@ -402,6 +415,9 @@ async def webrtc_stats():
         "ice_gathering_state": drive_state.webrtc_stats["ice_gathering_state"],
         "local_description_error": drive_state.webrtc_stats["local_description_error"],
         "local_description_elapsed_ms": drive_state.webrtc_stats["local_description_elapsed_ms"],
+        "answer_sent_elapsed_ms": drive_state.webrtc_stats["answer_sent_elapsed_ms"],
+        "local_candidates_sent": drive_state.webrtc_stats["local_candidates_sent"],
+        "offer_to_answer_elapsed_ms": drive_state.webrtc_stats["offer_to_answer_elapsed_ms"],
         "last_offer_at": drive_state.webrtc_stats["last_offer_at"],
         "last_answer_at": drive_state.webrtc_stats["last_answer_at"],
         "last_client_ice_at": drive_state.webrtc_stats["last_client_ice_at"],

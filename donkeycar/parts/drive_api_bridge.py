@@ -305,6 +305,9 @@ class DriveApiBridge:
         self.aiortc_track = None
         self.webrtc_local_description_error = None
         self.webrtc_local_description_elapsed_ms = None
+        self.webrtc_answer_sent_elapsed_ms = None
+        self.local_candidates_sent = 0
+        self.sent_local_ice_candidates = set()
         self.webrtc_track = DriveWebRtcVideoTrack(self.frame_buffer, fps=video_fps)
 
         if auto_start:
@@ -427,6 +430,9 @@ class DriveApiBridge:
         self.webrtc_peer = peer
         self.webrtc_local_description_error = None
         self.webrtc_local_description_elapsed_ms = None
+        self.webrtc_answer_sent_elapsed_ms = None
+        self.local_candidates_sent = 0
+        self.sent_local_ice_candidates = set()
         if hasattr(peer, "on"):
             @peer.on("icecandidate")
             def on_icecandidate(candidate):
@@ -435,17 +441,17 @@ class DriveApiBridge:
         peer.addTrack(self.aiortc_track)
         await peer.setRemoteDescription(RTCSessionDescription(sdp=msg.get("sdp", ""), type="offer"))
         answer = await peer.createAnswer()
-        answer_sdp = answer.sdp
         started_at = time.time()
+        self._post_webrtc_answer(msg["session_id"], answer.sdp)
+        self.webrtc_answer_sent_elapsed_ms = (time.time() - started_at) * 1000.0
         try:
             await asyncio.wait_for(peer.setLocalDescription(answer), timeout=self.webrtc_local_description_timeout)
             self.webrtc_local_description_elapsed_ms = (time.time() - started_at) * 1000.0
-            answer_sdp = getattr(peer.localDescription, "sdp", answer.sdp)
+            self._post_local_ice_candidates_from_sdp(msg["session_id"], getattr(peer.localDescription, "sdp", ""))
         except Exception as exc:
             self.webrtc_local_description_elapsed_ms = (time.time() - started_at) * 1000.0
             self.webrtc_local_description_error = f"{type(exc).__name__}: {exc!r}"
-            logger.warning(f"设置 WebRTC local description 失败，回退原始 answer: {self.webrtc_local_description_error}")
-        self._post_webrtc_answer(msg["session_id"], answer_sdp)
+            logger.warning(f"设置 WebRTC local description 失败，保留已回传 answer: {self.webrtc_local_description_error}")
 
     def _handle_webrtc_ice(self, msg: dict):
         if msg.get("session_id") != self.active_webrtc_session_id or self.webrtc_peer is None:
@@ -469,13 +475,58 @@ class DriveApiBridge:
             return RTCIceCandidate(**candidate)
         return candidate
 
+    def _candidate_key(self, candidate: dict) -> str:
+        return "|".join([
+            str(candidate.get("candidate", "")),
+            str(candidate.get("sdpMid", "")),
+            str(candidate.get("sdpMLineIndex", "")),
+        ])
+
+    def _post_local_ice_candidate_once(self, session_id: str, candidate: dict):
+        if session_id != self.active_webrtc_session_id:
+            return
+        key = self._candidate_key(candidate)
+        if key in self.sent_local_ice_candidates:
+            return
+        self.sent_local_ice_candidates.add(key)
+        self.local_candidates_sent += 1
+        self._post_webrtc_ice(session_id, candidate)
+
+    def _extract_ice_candidates_from_sdp(self, sdp: str):
+        candidates = []
+        sdp_mid = None
+        sdp_mline_index = -1
+        for raw_line in sdp.splitlines():
+            line = raw_line.strip()
+            if line.startswith("m="):
+                sdp_mline_index += 1
+                sdp_mid = None
+                continue
+            if line.startswith("a=mid:"):
+                sdp_mid = line.removeprefix("a=mid:")
+                continue
+            if not line.startswith("a=candidate:"):
+                continue
+            candidates.append({
+                "candidate": line.removeprefix("a="),
+                "sdpMid": sdp_mid,
+                "sdpMLineIndex": max(sdp_mline_index, 0),
+            })
+        return candidates
+
+    def _post_local_ice_candidates_from_sdp(self, session_id: str, sdp: str):
+        if session_id != self.active_webrtc_session_id:
+            return
+        for candidate in self._extract_ice_candidates_from_sdp(sdp):
+            self._post_local_ice_candidate_once(session_id, candidate)
+
     def _handle_local_ice_candidate(self, candidate):
         if not self.active_webrtc_session_id or candidate is None:
             return
         candidate_text = candidate.to_sdp() if hasattr(candidate, "to_sdp") else getattr(candidate, "candidate", None)
         if not candidate_text:
             return
-        self._post_webrtc_ice(self.active_webrtc_session_id, {
+        self._post_local_ice_candidate_once(self.active_webrtc_session_id, {
             "candidate": candidate_text,
             "sdpMid": getattr(candidate, "sdpMid", None),
             "sdpMLineIndex": getattr(candidate, "sdpMLineIndex", None),
@@ -518,6 +569,8 @@ class DriveApiBridge:
             "ice_gathering_state": getattr(self.webrtc_peer, "iceGatheringState", None),
             "local_description_error": self.webrtc_local_description_error,
             "local_description_elapsed_ms": self.webrtc_local_description_elapsed_ms,
+            "answer_sent_elapsed_ms": self.webrtc_answer_sent_elapsed_ms,
+            "local_candidates_sent": self.local_candidates_sent,
         })
 
     def _send_heartbeat(self):

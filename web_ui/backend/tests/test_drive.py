@@ -223,6 +223,8 @@ def test_car_webrtc_stats_message_updates_backend_stats():
         "ice_gathering_state": "complete",
         "local_description_error": None,
         "local_description_elapsed_ms": 18.5,
+        "answer_sent_elapsed_ms": 35.0,
+        "local_candidates_sent": 2,
     })
 
     response = client.get("/api/drive/webrtc/stats")
@@ -235,6 +237,8 @@ def test_car_webrtc_stats_message_updates_backend_stats():
     assert data["ice_gathering_state"] == "complete"
     assert data["local_description_error"] is None
     assert data["local_description_elapsed_ms"] == 18.5
+    assert data["answer_sent_elapsed_ms"] == 35.0
+    assert data["local_candidates_sent"] == 2
 
 
 def test_browser_webrtc_stats_update_backend_stats():
@@ -302,6 +306,7 @@ def test_webrtc_stats_exposes_signaling_timestamps():
     data = client.get("/api/drive/webrtc/stats").json()
     assert data["last_offer_at"] is not None
     assert data["last_answer_at"] is not None
+    assert data["offer_to_answer_elapsed_ms"] is not None
     assert data["last_client_ice_at"] is not None
 
 
@@ -332,6 +337,9 @@ def test_webrtc_session_resets_diagnostics():
         "ice_gathering_state": "complete",
         "local_description_error": "TimeoutError: TimeoutError()",
         "local_description_elapsed_ms": 2001.0,
+        "answer_sent_elapsed_ms": 42.0,
+        "local_candidates_sent": 2,
+        "offer_to_answer_elapsed_ms": 5000.0,
         "last_offer_at": 1.0,
         "last_answer_at": 2.0,
         "last_client_ice_at": 3.0,
@@ -349,6 +357,9 @@ def test_webrtc_session_resets_diagnostics():
     assert data["ice_gathering_state"] is None
     assert data["local_description_error"] is None
     assert data["local_description_elapsed_ms"] is None
+    assert data["answer_sent_elapsed_ms"] is None
+    assert data["local_candidates_sent"] == 0
+    assert data["offer_to_answer_elapsed_ms"] is None
     assert data["last_offer_at"] is None
     assert data["last_answer_at"] is None
     assert data["last_client_ice_at"] is None

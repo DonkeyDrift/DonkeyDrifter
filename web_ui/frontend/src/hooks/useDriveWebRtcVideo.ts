@@ -59,6 +59,9 @@ const EMPTY_STATS: DriveWebRtcStats = {
   ice_gathering_state: null,
   local_description_error: null,
   local_description_elapsed_ms: null,
+  answer_sent_elapsed_ms: null,
+  local_candidates_sent: 0,
+  offer_to_answer_elapsed_ms: null,
   inbound_fps: 0,
   frames_dropped: 0,
   jitter_ms: 0,
@@ -240,7 +243,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
 
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
-      await sendDriveWebRtcOffer(session.session_id, offer.sdp ?? '');
+      await sendDriveWebRtcOffer(session.session_id, peer.localDescription?.sdp ?? offer.sdp ?? '');
       negotiationTimerRef.current = window.setTimeout(() => {
         if (!trackReceivedRef.current) {
           setState('degraded');

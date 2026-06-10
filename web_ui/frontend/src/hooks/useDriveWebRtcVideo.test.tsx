@@ -114,9 +114,15 @@ describe('useDriveWebRtcVideo', () => {
     });
   });
 
-  it('创建 WebRTC session 并发送 offer', async () => {
+  it('创建 WebRTC session 并优先发送 localDescription 中的 offer', async () => {
     const api = await import('../services/api');
-    const pc = new FakePeerConnection();
+    class LocalDescriptionPeerConnection extends FakePeerConnection {
+      async setLocalDescription(description: RTCSessionDescriptionInit) {
+        await super.setLocalDescription(description);
+        this.localDescription = { type: 'offer', sdp: 'local-offer-sdp' };
+      }
+    }
+    const pc = new LocalDescriptionPeerConnection();
     const factory = () => pc as unknown as RTCPeerConnection;
     const onState = vi.fn();
 
@@ -124,8 +130,8 @@ describe('useDriveWebRtcVideo', () => {
 
     await waitFor(() => {
       expect(api.createDriveWebRtcSession).toHaveBeenCalled();
-      expect(api.sendDriveWebRtcOffer).toHaveBeenCalledWith('session-1', 'offer-sdp');
-      expect(pc.localDescription?.sdp).toBe('offer-sdp');
+      expect(api.sendDriveWebRtcOffer).toHaveBeenCalledWith('session-1', 'local-offer-sdp');
+      expect(pc.localDescription?.sdp).toBe('local-offer-sdp');
     });
   });
 
