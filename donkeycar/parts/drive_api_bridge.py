@@ -34,9 +34,14 @@ except Exception:  # pragma: no cover - 运行环境缺少 av 时只影响 WebRT
 
 try:
     from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+    try:
+        from aiortc import RTCIceCandidate
+    except ImportError:  # aiortc 部分版本不公开该类，回退为原始 dict
+        RTCIceCandidate = None
 except Exception:  # pragma: no cover - 运行环境缺少 aiortc 时只影响 WebRTC 媒体轨道
     RTCPeerConnection = None
     RTCSessionDescription = None
+    RTCIceCandidate = None
     class VideoStreamTrack:  # type: ignore[no-redef]
         kind = "video"
 
@@ -281,6 +286,8 @@ class DriveApiBridge:
         if msg.get("signal_type") == "offer" and msg.get("session_id"):
             self.active_webrtc_session_id = msg["session_id"]
             self._run_async(self._accept_webrtc_offer(msg))
+        if msg.get("signal_type") == "ice":
+            self._handle_webrtc_ice(msg)
 
     def _run_async(self, coro):
         if self.loop and self.loop.is_running():
@@ -306,6 +313,16 @@ class DriveApiBridge:
         answer = await peer.createAnswer()
         await peer.setLocalDescription(answer)
         self._post_webrtc_answer(msg["session_id"], peer.localDescription.sdp)
+
+    def _handle_webrtc_ice(self, msg: dict):
+        if msg.get("session_id") != self.active_webrtc_session_id or self.webrtc_peer is None:
+            return
+        candidate = msg.get("candidate")
+        if not candidate:
+            return
+        if RTCIceCandidate is not None:
+            candidate = RTCIceCandidate(**candidate)
+        self._run_async(self.webrtc_peer.addIceCandidate(candidate))
 
     def _post_json(self, path: str, payload: dict):
         url = f"{self.http_api_base}{path}"

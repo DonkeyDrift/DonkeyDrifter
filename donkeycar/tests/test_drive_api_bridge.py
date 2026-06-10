@@ -250,35 +250,50 @@ def test_aiortc_video_track_converts_latest_frame(monkeypatch):
     assert output.time_base is not None
 
 
+class FakePeerConnection:
+    def __init__(self):
+        self.tracks = []
+        self.remote = None
+        self.candidates = []
+        self.localDescription = type("Description", (), {"sdp": "answer-sdp"})()
+
+    def addTrack(self, track):
+        self.tracks.append(track)
+
+    async def setRemoteDescription(self, description):
+        self.remote = description
+
+    async def createAnswer(self):
+        return "answer"
+
+    async def setLocalDescription(self, answer):
+        self.answer = answer
+
+    async def addIceCandidate(self, candidate):
+        self.candidates.append(candidate)
+
+
+class FakeSessionDescription:
+    def __init__(self, sdp, type):
+        self.sdp = sdp
+        self.type = type
+
+
+class FakeIceCandidate:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+
 def test_drive_api_bridge_creates_aiortc_peer_from_offer(monkeypatch):
     created = []
     answers = []
 
-    class FakePeerConnection:
+    class RecordingPeerConnection(FakePeerConnection):
         def __init__(self):
-            self.tracks = []
-            self.remote = None
-            self.localDescription = type("Description", (), {"sdp": "answer-sdp"})()
+            super().__init__()
             created.append(self)
 
-        def addTrack(self, track):
-            self.tracks.append(track)
-
-        async def setRemoteDescription(self, description):
-            self.remote = description
-
-        async def createAnswer(self):
-            return "answer"
-
-        async def setLocalDescription(self, answer):
-            self.answer = answer
-
-    class FakeSessionDescription:
-        def __init__(self, sdp, type):
-            self.sdp = sdp
-            self.type = type
-
-    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCPeerConnection", FakePeerConnection)
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCPeerConnection", RecordingPeerConnection)
     monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCSessionDescription", FakeSessionDescription)
 
     bridge = DriveApiBridge(auto_start=False)
@@ -297,3 +312,40 @@ def test_drive_api_bridge_creates_aiortc_peer_from_offer(monkeypatch):
     assert len(created[0].tracks) == 1
     assert created[0].remote.sdp == "offer-sdp"
     assert answers == [("session-1", "answer-sdp")]
+
+
+def test_drive_api_bridge_adds_matching_ice_candidate(monkeypatch):
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCIceCandidate", FakeIceCandidate)
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    bridge.webrtc_peer = FakePeerConnection()
+
+    bridge._handle_webrtc_signal({
+        "type": "webrtc_signal",
+        "signal_type": "ice",
+        "session_id": "session-1",
+        "candidate": {"candidate": "candidate:1", "sdpMid": "0", "sdpMLineIndex": 0},
+    })
+
+    assert len(bridge.webrtc_peer.candidates) == 1
+    assert bridge.webrtc_peer.candidates[0].kwargs == {
+        "candidate": "candidate:1",
+        "sdpMid": "0",
+        "sdpMLineIndex": 0,
+    }
+
+
+def test_drive_api_bridge_ignores_ice_for_stale_session(monkeypatch):
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCIceCandidate", FakeIceCandidate)
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    bridge.webrtc_peer = FakePeerConnection()
+
+    bridge._handle_webrtc_signal({
+        "type": "webrtc_signal",
+        "signal_type": "ice",
+        "session_id": "stale-session",
+        "candidate": {"candidate": "candidate:1"},
+    })
+
+    assert bridge.webrtc_peer.candidates == []
