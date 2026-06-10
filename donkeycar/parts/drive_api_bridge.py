@@ -335,8 +335,24 @@ class DriveApiBridge:
 
     def _run_loop(self):
         self.loop = asyncio.new_event_loop()
+        self.loop.set_exception_handler(self._handle_loop_exception)
         asyncio.set_event_loop(self.loop)
         self.loop.run_until_complete(self._connect_loop())
+
+    def _handle_loop_exception(self, loop, context):
+        message = str(context.get("message", ""))
+        exception = context.get("exception")
+        exception_text = repr(exception) if exception is not None else ""
+        if any(token in f"{message} {exception_text}" for token in (
+            "Transaction.__retry",
+            "RTCIceTransport is closed",
+            "NoneType",
+            "sendto",
+            "call_exception_handler",
+        )):
+            logger.debug(f"忽略已关闭 WebRTC ICE 传输的延迟回调: {message} {exception_text}")
+            return
+        loop.default_exception_handler(context)
 
     async def _connect_loop(self):
         if websockets is None:
@@ -413,17 +429,25 @@ class DriveApiBridge:
             return None
         return RTCConfiguration(iceServers=ice_servers)
 
+    async def _close_webrtc_peer(self, peer):
+        close = getattr(peer, "close", None)
+        if not close:
+            return
+        try:
+            result = close()
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception as exc:
+            logger.debug(f"关闭旧 WebRTC PeerConnection 时忽略异常: {type(exc).__name__}: {exc!r}")
+
     async def _accept_webrtc_offer(self, msg: dict):
         if RTCPeerConnection is None or RTCSessionDescription is None:
             logger.warning("缺少 aiortc 依赖，无法建立 WebRTC PeerConnection")
             return
 
         if self.webrtc_peer is not None:
-            close = getattr(self.webrtc_peer, "close", None)
-            if close:
-                result = close()
-                if asyncio.iscoroutine(result):
-                    await result
+            await self._close_webrtc_peer(self.webrtc_peer)
+            self.webrtc_peer = None
 
         configuration = self._build_webrtc_configuration()
         peer = RTCPeerConnection(configuration=configuration) if configuration is not None else RTCPeerConnection()
@@ -643,6 +667,12 @@ class DriveApiBridge:
     def shutdown(self):
         self.running = False
         self.webrtc_track.stop()
+        if self.loop and self.loop.is_running() and self.webrtc_peer is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(self._close_webrtc_peer(self.webrtc_peer), self.loop)
+            except Exception:
+                pass
+            self.webrtc_peer = None
         if self.loop and self.ws:
             try:
                 asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop)

@@ -134,6 +134,9 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   const trackReceivedRef = useRef(false);
   const negotiationTimerRef = useRef<number | null>(null);
   const retryTimerRef = useRef<number | null>(null);
+  const mountedRef = useRef(false);
+  const attemptIdRef = useRef(0);
+  const startInFlightRef = useRef(false);
 
   const startRef = useRef<() => void>(() => undefined);
 
@@ -198,12 +201,20 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   }, []);
 
   const start = useCallback(async () => {
+    if (startInFlightRef.current) {
+      return;
+    }
+    const attemptId = ++attemptIdRef.current;
+    startInFlightRef.current = true;
+    const isCurrentAttempt = () => mountedRef.current && attemptId === attemptIdRef.current;
     if (disabled) {
+      startInFlightRef.current = false;
       setState('degraded');
       setStats((current) => ({ ...current, degraded: true }));
       return;
     }
     if (typeof RTCPeerConnection === 'undefined' && !peerConnectionFactory) {
+      startInFlightRef.current = false;
       setState('degraded');
       setStats((current) => ({ ...current, degraded: true }));
       return;
@@ -217,17 +228,28 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
     trackReceivedRef.current = false;
     try {
       const session = await createDriveWebRtcSession(clientIdRef.current);
+      if (!isCurrentAttempt()) {
+        startInFlightRef.current = false;
+        return;
+      }
       sessionIdRef.current = session.session_id;
       const peer = createPeer();
+      if (!isCurrentAttempt()) {
+        peer.close();
+        startInFlightRef.current = false;
+        return;
+      }
       peerRef.current = peer;
 
       peer.addTransceiver?.('video', { direction: 'recvonly' });
       peer.onicecandidate = (event) => {
+        if (!isCurrentAttempt()) return;
         if (event.candidate && sessionIdRef.current) {
           sendDriveWebRtcIce(sessionIdRef.current, event.candidate.toJSON()).catch(() => undefined);
         }
       };
       peer.ontrack = (event) => {
+        if (!isCurrentAttempt()) return;
         const receiver = event.receiver as RTCRtpReceiver & { playoutDelayHint?: number };
         if ('playoutDelayHint' in receiver) {
           receiver.playoutDelayHint = 0;
@@ -245,8 +267,22 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
       };
 
       const offer = await peer.createOffer();
+      if (!isCurrentAttempt()) {
+        peer.close();
+        startInFlightRef.current = false;
+        return;
+      }
       await peer.setLocalDescription(offer);
+      if (!isCurrentAttempt()) {
+        peer.close();
+        startInFlightRef.current = false;
+        return;
+      }
       await sendDriveWebRtcOffer(session.session_id, peer.localDescription?.sdp ?? offer.sdp ?? '');
+      if (!isCurrentAttempt()) {
+        startInFlightRef.current = false;
+        return;
+      }
       negotiationTimerRef.current = window.setTimeout(() => {
         if (!trackReceivedRef.current) {
           setState('degraded');
@@ -256,12 +292,18 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
         }
       }, negotiationTimeoutMs);
       setStats((current) => ({ ...current, active: true, session_id: session.session_id, webrtc_available: true }));
+      startInFlightRef.current = false;
     } catch (exc) {
+      if (!isCurrentAttempt()) {
+        startInFlightRef.current = false;
+        return;
+      }
       setError(exc instanceof Error ? exc.message : 'WebRTC 视频连接失败');
       setState('degraded');
       setStats((current) => ({ ...current, degraded: true }));
       closePeer();
       scheduleRetry();
+      startInFlightRef.current = false;
     }
   }, [closePeer, createPeer, disabled, negotiationTimeoutMs, peerConnectionFactory, scheduleFrameStats, scheduleRetry]);
 
@@ -270,8 +312,12 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   }, [start]);
 
   useEffect(() => {
+    mountedRef.current = true;
     start();
     return () => {
+      mountedRef.current = false;
+      attemptIdRef.current += 1;
+      startInFlightRef.current = false;
       if (retryTimerRef.current !== null) {
         window.clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
