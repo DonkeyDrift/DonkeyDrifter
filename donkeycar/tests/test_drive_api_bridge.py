@@ -312,7 +312,7 @@ def test_drive_api_bridge_creates_aiortc_peer_from_offer(monkeypatch):
     assert len(created) == 1
     assert len(created[0].tracks) == 1
     assert created[0].remote.sdp == "offer-sdp"
-    assert answers == [("session-1", "answer-sdp")]
+    assert answers == [("session-1", "local-answer-sdp")]
 
 
 def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch):
