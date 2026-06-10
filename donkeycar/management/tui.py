@@ -14,6 +14,7 @@ import shutil
 import getpass
 import tarfile
 import re
+import socket
 from donkeycar.management.data_migrator import DataMigrator
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable, Tuple
@@ -1177,9 +1178,11 @@ class DriveCommand(DonkeyCommand):
 
         current_params = {}
         car_path = Path.cwd()
-        web_cmd = self.get_command_line(current_params)
+        backend_port = self.choose_available_backend_port()
+        web_cmd = self.get_command_line(current_params, backend_port=backend_port)
         car_cmd = self.get_car_command_line()
-        cmd_str = self.get_preview_command(web_cmd, car_cmd)
+        drive_api_server_url = self.get_drive_api_server_url(backend_port=backend_port)
+        cmd_str = self.get_preview_command(web_cmd, car_cmd, drive_api_server_url)
 
         console.print("[dim]将启动 DonkeyDrifter Web UI 的 Drive 标签页，并连接当前车辆项目。[/dim]")
         console.print("\n[bold yellow]命令预览:[/bold yellow]")
@@ -1221,7 +1224,7 @@ class DriveCommand(DonkeyCommand):
             processes.append(web_process)
 
             car_env = os.environ.copy()
-            car_env["DRIVE_API_SERVER_URL"] = self.get_drive_api_server_url()
+            car_env["DRIVE_API_SERVER_URL"] = drive_api_server_url
             car_process = subprocess.Popen(
                 car_cmd,
                 cwd=car_path,
@@ -1241,30 +1244,44 @@ class DriveCommand(DonkeyCommand):
 
         Prompt.ask("\n按回车键返回菜单...")
 
-    def get_command_line(self, params):
+    def get_command_line(self, params, backend_port=None):
         web_ui_path = _get_bundled_web_ui_path()
         cmd = ["donkey", "web"]
         if web_ui_path is not None:
             cmd.extend(["--path", str(web_ui_path)])
+        if backend_port is not None:
+            cmd.extend(["--backend-port", str(backend_port)])
         cmd.extend(["--open", "--route", "/drive"])
         return cmd
 
     def get_car_command_line(self):
         return [sys.executable, "manage.py", "drive"]
 
-    def get_drive_api_server_url(self):
+    def choose_available_backend_port(self, preferred_port=8000):
+        port = preferred_port
+        while port < preferred_port + 100:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    sock.bind(("0.0.0.0", port))
+                    return port
+                except OSError:
+                    port += 1
+        return preferred_port
+
+    def get_drive_api_server_url(self, backend_port=8000):
         server_url = os.environ.get("DRIVE_API_SERVER_URL")
         if server_url:
             return server_url
 
         host = os.environ.get("DRIVE_API_PUBLIC_HOST")
         if host:
-            return f"ws://{host}:8000/api/drive/ws"
+            return f"ws://{host}:{backend_port}/api/drive/ws"
 
-        return "ws://localhost:8000/api/drive/ws"
+        return f"ws://localhost:{backend_port}/api/drive/ws"
 
-    def get_preview_command(self, web_cmd, car_cmd):
-        car_prefix = f"DRIVE_API_SERVER_URL={self.get_drive_api_server_url()}"
+    def get_preview_command(self, web_cmd, car_cmd, drive_api_server_url=None):
+        car_prefix = f"DRIVE_API_SERVER_URL={drive_api_server_url or self.get_drive_api_server_url()}"
         return "\n\n".join([
             "Web Console:\n" + " ".join(web_cmd),
             "车辆进程:\n" + " ".join([car_prefix] + car_cmd),

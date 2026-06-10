@@ -428,6 +428,7 @@ def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch)
 
 def test_drive_api_bridge_adds_matching_ice_candidate(monkeypatch):
     monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCIceCandidate", FakeIceCandidate)
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.candidate_from_sdp", None)
     bridge = DriveApiBridge(auto_start=False)
     bridge.active_webrtc_session_id = "session-1"
     bridge.webrtc_peer = FakePeerConnection()
@@ -449,6 +450,7 @@ def test_drive_api_bridge_adds_matching_ice_candidate(monkeypatch):
 
 def test_drive_api_bridge_ignores_ice_for_stale_session(monkeypatch):
     monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCIceCandidate", FakeIceCandidate)
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.candidate_from_sdp", None)
     bridge = DriveApiBridge(auto_start=False)
     bridge.active_webrtc_session_id = "session-1"
     bridge.webrtc_peer = FakePeerConnection()

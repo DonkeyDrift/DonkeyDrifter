@@ -60,6 +60,7 @@ def test_drive_command_starts_web_console_and_car_process(monkeypatch, tmp_path)
     monkeypatch.setattr(tui.console, "clear", lambda: None)
     monkeypatch.setattr(tui.console, "print", lambda *args, **kwargs: None)
     monkeypatch.setattr(tui.Prompt, "ask", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr(tui.DriveCommand, "choose_available_backend_port", lambda self: 8000)
 
     def fake_popen(cmd_list, **kwargs):
         popen_calls.append((cmd_list, kwargs))
@@ -81,6 +82,35 @@ def test_drive_command_starts_web_console_and_car_process(monkeypatch, tmp_path)
     assert car_kwargs["cwd"] == tmp_path
     assert car_kwargs["env"]["DRIVE_API_SERVER_URL"].endswith(":8000/api/drive/ws")
     assert all("DRIVE_API_SERVER_URL=" not in str(cmd) for cmd, _ in popen_calls)
+
+
+def test_drive_command_sets_car_url_to_chosen_backend_port(monkeypatch, tmp_path):
+    popen_calls = []
+    prompts = iter(["y", ""])
+
+    (tmp_path / "manage.py").write_text("", encoding="utf-8")
+    (tmp_path / "myconfig.py").write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(tui.console, "clear", lambda: None)
+    monkeypatch.setattr(tui.console, "print", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tui.Prompt, "ask", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr(tui.DriveCommand, "choose_available_backend_port", lambda self: 8001)
+
+    def fake_popen(cmd_list, **kwargs):
+        popen_calls.append((cmd_list, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr(tui.subprocess, "Popen", fake_popen)
+
+    tui.DriveCommand().execute()
+
+    web_cmd, _ = popen_calls[0]
+    _, car_kwargs = popen_calls[1]
+
+    assert "--backend-port" in web_cmd
+    assert web_cmd[web_cmd.index("--backend-port") + 1] == "8001"
+    assert car_kwargs["env"]["DRIVE_API_SERVER_URL"] == "ws://localhost:8001/api/drive/ws"
 
 
 def test_drive_command_uses_full_server_url_environment_override(monkeypatch):
