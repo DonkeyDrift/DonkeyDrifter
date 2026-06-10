@@ -1253,6 +1253,14 @@ class DriveCommand(DonkeyCommand):
         return [sys.executable, "manage.py", "drive"]
 
     def get_drive_api_server_url(self):
+        server_url = os.environ.get("DRIVE_API_SERVER_URL")
+        if server_url:
+            return server_url
+
+        host = os.environ.get("DRIVE_API_PUBLIC_HOST")
+        if host:
+            return f"ws://{host}:8000/api/drive/ws"
+
         return "ws://localhost:8000/api/drive/ws"
 
     def get_preview_command(self, web_cmd, car_cmd):

@@ -13,6 +13,7 @@ export type DriveVideoState = 'idle' | 'connecting' | 'connected' | 'unstable' |
 interface UseDriveWebRtcVideoOptions {
   incomingSignal?: WebRtcSignal | null;
   peerConnectionFactory?: () => RTCPeerConnection;
+  negotiationTimeoutMs?: number;
 }
 
 export interface DriveVideoMetrics {
@@ -48,12 +49,14 @@ export const calculateVideoMetrics = (timestamps: number[]): DriveVideoMetrics =
 };
 
 export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) => {
-  const { incomingSignal, peerConnectionFactory } = options;
+  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = 3000 } = options;
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const frameTimestampsRef = useRef<number[]>([]);
   const frameCallbackRef = useRef<number | null>(null);
+  const trackReceivedRef = useRef(false);
+  const negotiationTimerRef = useRef<number | null>(null);
 
   const [state, setState] = useState<DriveVideoState>('idle');
   const [stats, setStats] = useState<DriveWebRtcStats>(EMPTY_STATS);
@@ -68,6 +71,10 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   }, [peerConnectionFactory]);
 
   const closePeer = useCallback(() => {
+    if (negotiationTimerRef.current !== null) {
+      window.clearTimeout(negotiationTimerRef.current);
+      negotiationTimerRef.current = null;
+    }
     if (frameCallbackRef.current !== null && videoRef.current?.cancelVideoFrameCallback) {
       videoRef.current.cancelVideoFrameCallback(frameCallbackRef.current);
       frameCallbackRef.current = null;
@@ -97,6 +104,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
     }
 
     setState('connecting');
+    trackReceivedRef.current = false;
     try {
       const session = await createDriveWebRtcSession();
       sessionIdRef.current = session.session_id;
@@ -110,6 +118,11 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
         }
       };
       peer.ontrack = (event) => {
+        trackReceivedRef.current = true;
+        if (negotiationTimerRef.current !== null) {
+          window.clearTimeout(negotiationTimerRef.current);
+          negotiationTimerRef.current = null;
+        }
         if (videoRef.current) {
           videoRef.current.srcObject = event.streams[0] ?? new MediaStream([event.track]);
           scheduleFrameStats();
@@ -120,6 +133,13 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       await sendDriveWebRtcOffer(session.session_id, offer.sdp ?? '');
+      negotiationTimerRef.current = window.setTimeout(() => {
+        if (!trackReceivedRef.current) {
+          setState('degraded');
+          setStats((current) => ({ ...current, degraded: true }));
+          closePeer();
+        }
+      }, negotiationTimeoutMs);
       setStats((current) => ({ ...current, active: true, session_id: session.session_id, webrtc_available: true }));
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : 'WebRTC 视频连接失败');
@@ -127,7 +147,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
       setStats((current) => ({ ...current, degraded: true }));
       closePeer();
     }
-  }, [closePeer, createPeer, peerConnectionFactory, scheduleFrameStats]);
+  }, [closePeer, createPeer, negotiationTimeoutMs, peerConnectionFactory, scheduleFrameStats]);
 
   useEffect(() => {
     start();

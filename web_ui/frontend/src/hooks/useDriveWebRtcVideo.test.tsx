@@ -61,6 +61,7 @@ const HookProbe: React.FC<{
 const lastCallValue = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls.at(-1)?.[0];
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -90,6 +91,23 @@ describe('useDriveWebRtcVideo', () => {
       expect(api.sendDriveWebRtcOffer).toHaveBeenCalledWith('session-1', 'offer-sdp');
       expect(pc.localDescription?.sdp).toBe('offer-sdp');
     });
+  });
+
+  it('offer 发出后 3 秒未收到视频 track 时降级', async () => {
+    vi.useFakeTimers();
+    const pc = new FakePeerConnection();
+    const factory = () => pc as unknown as RTCPeerConnection;
+    const onState = vi.fn();
+
+    render(<HookProbe onState={onState} factory={factory} />);
+
+    await waitFor(() => expect(pc.localDescription?.sdp).toBe('offer-sdp'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(lastCallValue(onState).state).toBe('degraded');
+    vi.useRealTimers();
   });
 
   it('处理 answer 和 ICE 信令', async () => {

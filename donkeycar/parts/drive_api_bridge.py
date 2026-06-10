@@ -209,6 +209,7 @@ class DriveApiBridge:
         self.running = False
         self.last_frame = 0.0
         self.thread = None
+        self.last_heartbeat = 0.0
         self.last_webrtc_stats = 0.0
         self.active_webrtc_session_id = None
         self.webrtc_peer = None
@@ -391,6 +392,9 @@ class DriveApiBridge:
             "stale_frames": track_stats.get("stale_frames", 0),
         })
 
+    def _send_heartbeat(self):
+        self._send_json({"type": "heartbeat"})
+
     def _send_frame(self, img_arr, num_records=0, mode=None, recording=None):
         if cv2 is None:
             return
@@ -414,9 +418,18 @@ class DriveApiBridge:
         if img_arr is not None and self.video_transport == "webrtc":
             self.frame_buffer.update(img_arr)
             now = time.time()
+            if self.connected and now - self.last_heartbeat >= 3.0:
+                self.last_heartbeat = now
+                self._send_heartbeat()
             if now - self.last_webrtc_stats >= 1.0:
                 self.last_webrtc_stats = now
                 self._send_webrtc_stats()
+            if (RTCPeerConnection is None or av is None) and self.connected and now - self.last_frame > 0.05:
+                self.last_frame = now
+                try:
+                    self._send_frame(img_arr, num_records, mode, recording)
+                except Exception as e:
+                    logger.debug(f"发送降级帧失败: {e}")
         else:
             now = time.time()
             if self.connected and img_arr is not None and now - self.last_frame > 0.05:

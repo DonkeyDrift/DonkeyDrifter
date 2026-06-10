@@ -431,3 +431,42 @@ def test_drive_api_bridge_parses_remote_ice_candidate(monkeypatch):
 
     assert parsed == ["candidate:remote"]
     assert candidate == {"parsed": "candidate:remote", "sdpMid": "0", "sdpMLineIndex": 0}
+
+
+def test_drive_api_bridge_sends_heartbeat_without_active_session(monkeypatch):
+    sent = []
+    bridge = DriveApiBridge(auto_start=False)
+    monkeypatch.setattr(bridge, "_send_json", sent.append)
+
+    bridge._send_heartbeat()
+
+    assert sent == [{"type": "heartbeat"}]
+
+
+def test_drive_api_bridge_webrtc_mode_sends_periodic_heartbeat_without_session(monkeypatch):
+    sent = []
+    timestamps = iter([10.0, 10.0, 13.1, 13.1])
+    bridge = DriveApiBridge(auto_start=False, video_transport="webrtc")
+    bridge.connected = True
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.time.time", lambda: next(timestamps))
+    monkeypatch.setattr(bridge, "_send_json", sent.append)
+
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    bridge.run_threaded(img_arr=frame)
+    bridge.run_threaded(img_arr=frame)
+
+    assert {"type": "heartbeat"} in sent
+
+
+def test_drive_api_bridge_falls_back_to_mjpeg_when_webrtc_dependency_missing(monkeypatch):
+    sent_frames = []
+    bridge = DriveApiBridge(auto_start=False, video_transport="webrtc")
+    bridge.connected = True
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCPeerConnection", None)
+    monkeypatch.setattr(bridge, "_send_frame", lambda *args, **kwargs: sent_frames.append(args))
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.time.time", lambda: 10.0)
+
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    bridge.run_threaded(img_arr=frame, num_records=3, mode="user", recording=False)
+
+    assert sent_frames == [(frame, 3, "user", False)]

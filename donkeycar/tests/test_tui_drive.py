@@ -79,8 +79,35 @@ def test_drive_command_starts_web_console_and_car_process(monkeypatch, tmp_path)
 
     assert car_cmd == [sys.executable, "manage.py", "drive"]
     assert car_kwargs["cwd"] == tmp_path
-    assert car_kwargs["env"]["DRIVE_API_SERVER_URL"] == "ws://localhost:8000/api/drive/ws"
+    assert car_kwargs["env"]["DRIVE_API_SERVER_URL"].endswith(":8000/api/drive/ws")
     assert all("DRIVE_API_SERVER_URL=" not in str(cmd) for cmd, _ in popen_calls)
+
+
+def test_drive_command_uses_full_server_url_environment_override(monkeypatch):
+    monkeypatch.setenv("DRIVE_API_SERVER_URL", "ws://192.168.3.96:8000/api/drive/ws")
+
+    assert tui.DriveCommand().get_drive_api_server_url() == "ws://192.168.3.96:8000/api/drive/ws"
+
+
+def test_drive_command_uses_public_host_environment_override(monkeypatch):
+    monkeypatch.delenv("DRIVE_API_SERVER_URL", raising=False)
+    monkeypatch.setenv("DRIVE_API_PUBLIC_HOST", "192.168.3.96")
+
+    assert tui.DriveCommand().get_drive_api_server_url() == "ws://192.168.3.96:8000/api/drive/ws"
+
+
+def test_drive_command_does_not_use_sim_host_as_backend_host(monkeypatch):
+    monkeypatch.delenv("DRIVE_API_SERVER_URL", raising=False)
+    monkeypatch.delenv("DRIVE_API_PUBLIC_HOST", raising=False)
+
+    assert tui.DriveCommand().get_drive_api_server_url() == "ws://localhost:8000/api/drive/ws"
+
+
+def test_drive_command_defaults_to_localhost(monkeypatch):
+    monkeypatch.delenv("DRIVE_API_SERVER_URL", raising=False)
+    monkeypatch.delenv("DRIVE_API_PUBLIC_HOST", raising=False)
+
+    assert tui.DriveCommand().get_drive_api_server_url() == "ws://localhost:8000/api/drive/ws"
 
 
 def test_drive_command_inherits_stdio_without_requiring_fileno(monkeypatch, tmp_path):
