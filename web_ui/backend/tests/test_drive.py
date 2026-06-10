@@ -33,7 +33,24 @@ def test_drive_stats_reports_recent_fps():
     response = client.get("/api/drive/stats")
 
     assert response.status_code == 200
-    assert response.json() == {"online": True, "fps": 4}
+    data = response.json()
+    assert data["online"] is True
+    assert data["fps"] == 4
+    assert data["car_ws_connected"] is False
+    assert data["last_seen_age_sec"] is not None
+
+
+def test_drive_stats_reports_offline_diagnostics():
+    client, _ = make_client()
+
+    response = client.get("/api/drive/stats")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["online"] is False
+    assert data["fps"] == 0
+    assert data["car_ws_connected"] is False
+    assert data["last_seen_age_sec"] is None
 
 
 def test_webrtc_session_requires_online_car():

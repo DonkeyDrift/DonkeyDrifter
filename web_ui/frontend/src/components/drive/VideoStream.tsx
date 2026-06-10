@@ -13,6 +13,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
   const [retryCount, setRetryCount] = useState(0);
   const [mjpegFps, setMjpegFps] = useState(0);
+  const [carOnline, setCarOnline] = useState<boolean | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal });
@@ -54,6 +55,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
         const data = await response.json();
         if (mounted) {
           setMjpegFps(Number(data.fps) || 0);
+          setCarOnline(Boolean(data.online));
         }
       } catch {
         if (mounted) {
@@ -152,7 +154,9 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
       {degraded && status !== 'connected' && (
         <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 pointer-events-none">
           <div className="text-center text-zinc-500 text-sm">
-            {status === 'loading' ? '正在连接摄像头...' : '摄像头未连接'}
+            {carOnline === false
+              ? '车端离线：等待 DriveApiBridge 连接到 /api/drive/ws?role=car'
+              : status === 'loading' ? '正在连接摄像头...' : '摄像头未连接'}
           </div>
         </div>
       )}

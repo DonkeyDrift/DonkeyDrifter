@@ -38,10 +38,15 @@ try:
         from aiortc import RTCIceCandidate
     except ImportError:  # aiortc 部分版本不公开该类，回退为原始 dict
         RTCIceCandidate = None
+    try:
+        from aiortc.sdp import candidate_from_sdp
+    except ImportError:
+        candidate_from_sdp = None
 except Exception:  # pragma: no cover - 运行环境缺少 aiortc 时只影响 WebRTC 媒体轨道
     RTCPeerConnection = None
     RTCSessionDescription = None
     RTCIceCandidate = None
+    candidate_from_sdp = None
     class VideoStreamTrack:  # type: ignore[no-redef]
         kind = "video"
 
@@ -309,6 +314,10 @@ class DriveApiBridge:
 
         peer = RTCPeerConnection()
         self.webrtc_peer = peer
+        if hasattr(peer, "on"):
+            @peer.on("icecandidate")
+            def on_icecandidate(candidate):
+                self._handle_local_ice_candidate(candidate)
         peer.addTrack(DriveAiortcVideoTrack(self.frame_buffer, fps=self.video_fps))
         await peer.setRemoteDescription(RTCSessionDescription(sdp=msg.get("sdp", ""), type="offer"))
         answer = await peer.createAnswer()
@@ -321,9 +330,33 @@ class DriveApiBridge:
         candidate = msg.get("candidate")
         if not candidate:
             return
+        self._run_async(self.webrtc_peer.addIceCandidate(self._build_remote_ice_candidate(candidate)))
+
+    def _build_remote_ice_candidate(self, candidate: dict):
+        if candidate_from_sdp is not None and candidate.get("candidate"):
+            parsed = candidate_from_sdp(candidate["candidate"])
+            if isinstance(parsed, dict):
+                parsed["sdpMid"] = candidate.get("sdpMid")
+                parsed["sdpMLineIndex"] = candidate.get("sdpMLineIndex")
+            else:
+                setattr(parsed, "sdpMid", candidate.get("sdpMid"))
+                setattr(parsed, "sdpMLineIndex", candidate.get("sdpMLineIndex"))
+            return parsed
         if RTCIceCandidate is not None:
-            candidate = RTCIceCandidate(**candidate)
-        self._run_async(self.webrtc_peer.addIceCandidate(candidate))
+            return RTCIceCandidate(**candidate)
+        return candidate
+
+    def _handle_local_ice_candidate(self, candidate):
+        if not self.active_webrtc_session_id or candidate is None:
+            return
+        candidate_text = candidate.to_sdp() if hasattr(candidate, "to_sdp") else getattr(candidate, "candidate", None)
+        if not candidate_text:
+            return
+        self._post_webrtc_ice(self.active_webrtc_session_id, {
+            "candidate": candidate_text,
+            "sdpMid": getattr(candidate, "sdpMid", None),
+            "sdpMLineIndex": getattr(candidate, "sdpMLineIndex", None),
+        })
 
     def _post_json(self, path: str, payload: dict):
         url = f"{self.http_api_base}{path}"

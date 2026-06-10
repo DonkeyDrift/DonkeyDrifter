@@ -509,7 +509,15 @@ async def _frame_generator():
 @router.get("/stats")
 async def drive_stats():
     """返回驾驶视频流统计信息。"""
-    return {"online": drive_state.car_online(), "fps": drive_state.video_fps()}
+    last_seen_age = None
+    if drive_state.car_last_seen is not None:
+        last_seen_age = (datetime.now() - drive_state.car_last_seen).total_seconds()
+    return {
+        "online": drive_state.car_online(),
+        "fps": drive_state.video_fps(),
+        "car_ws_connected": drive_state.car_ws is not None,
+        "last_seen_age_sec": last_seen_age,
+    }
 
 
 @router.get("/video")

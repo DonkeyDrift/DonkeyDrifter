@@ -378,3 +378,56 @@ def test_drive_api_bridge_does_not_send_webrtc_stats_without_session(monkeypatch
     bridge._send_webrtc_stats()
 
     assert sent == []
+
+
+class FakeLocalCandidate:
+    sdpMid = "0"
+    sdpMLineIndex = 0
+
+    def to_sdp(self):
+        return "candidate:local"
+
+
+def test_drive_api_bridge_posts_local_ice_candidate():
+    posted = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    bridge._post_webrtc_ice = lambda session_id, candidate: posted.append((session_id, candidate))
+
+    bridge._handle_local_ice_candidate(FakeLocalCandidate())
+
+    assert posted == [("session-1", {
+        "candidate": "candidate:local",
+        "sdpMid": "0",
+        "sdpMLineIndex": 0,
+    })]
+
+
+def test_drive_api_bridge_ignores_local_ice_without_session():
+    posted = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge._post_webrtc_ice = lambda session_id, candidate: posted.append((session_id, candidate))
+
+    bridge._handle_local_ice_candidate(FakeLocalCandidate())
+
+    assert posted == []
+
+
+def test_drive_api_bridge_parses_remote_ice_candidate(monkeypatch):
+    parsed = []
+
+    def fake_candidate_from_sdp(value):
+        parsed.append(value)
+        return {"parsed": value}
+
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.candidate_from_sdp", fake_candidate_from_sdp)
+    bridge = DriveApiBridge(auto_start=False)
+
+    candidate = bridge._build_remote_ice_candidate({
+        "candidate": "candidate:remote",
+        "sdpMid": "0",
+        "sdpMLineIndex": 0,
+    })
+
+    assert parsed == ["candidate:remote"]
+    assert candidate == {"parsed": "candidate:remote", "sdpMid": "0", "sdpMLineIndex": 0}
