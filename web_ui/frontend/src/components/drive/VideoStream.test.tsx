@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { VideoStream } from './VideoStream';
+import { DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS, VideoStream } from './VideoStream';
 import { useDriveWebRtcVideo } from '../../hooks/useDriveWebRtcVideo';
 
 vi.mock('../../hooks/useDriveWebRtcVideo', () => ({
@@ -11,27 +11,51 @@ vi.mock('../../hooks/useDriveWebRtcVideo', () => ({
 
 const mockWebRtc = vi.mocked(useDriveWebRtcVideo);
 
+const connectedState = () => ({
+  videoRef: { current: null },
+  state: 'connected' as const,
+  stats: {
+    active: true,
+    session_id: 'session-1',
+    webrtc_available: true,
+    source_fps: 60,
+    sent_fps: 59,
+    browser_fps: 58,
+    browser_p95_frame_interval_ms: 24,
+    disconnect_count: 0,
+    transport: 'webrtc' as const,
+    degraded: false,
+  },
+  metrics: { browserFps: 58, p95FrameIntervalMs: 24 },
+  error: null,
+  sessionId: 'session-1',
+  reconnect: vi.fn(),
+});
+
+const degradedState = () => ({
+  videoRef: { current: null },
+  state: 'degraded' as const,
+  stats: {
+    active: true,
+    session_id: 'session-1',
+    webrtc_available: true,
+    source_fps: 0,
+    sent_fps: 0,
+    browser_fps: 0,
+    browser_p95_frame_interval_ms: 0,
+    disconnect_count: 0,
+    transport: 'webrtc' as const,
+    degraded: true,
+  },
+  metrics: { browserFps: 0, p95FrameIntervalMs: 0 },
+  error: null,
+  sessionId: 'session-1',
+  reconnect: vi.fn(),
+});
+
 beforeEach(() => {
-  mockWebRtc.mockReturnValue({
-    videoRef: { current: null },
-    state: 'connected',
-    stats: {
-      active: true,
-      session_id: 'session-1',
-      webrtc_available: true,
-      source_fps: 60,
-      sent_fps: 59,
-      browser_fps: 58,
-      browser_p95_frame_interval_ms: 24,
-      disconnect_count: 0,
-      transport: 'webrtc',
-      degraded: false,
-    },
-    metrics: { browserFps: 58, p95FrameIntervalMs: 24 },
-    error: null,
-    sessionId: 'session-1',
-    reconnect: vi.fn(),
-  });
+  vi.useRealTimers();
+  mockWebRtc.mockReturnValue(connectedState());
 });
 
 describe('VideoStream', () => {
@@ -44,6 +68,60 @@ describe('VideoStream', () => {
     expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
   });
 
+  it('WebRTC 降级后在 fallback 延迟前仍保持 video', () => {
+    vi.useFakeTimers();
+    mockWebRtc.mockReturnValue(degradedState());
+
+    render(<VideoStream />);
+
+    expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
+    expect(screen.queryByAltText('Camera feed')).not.toBeInTheDocument();
+    expect(screen.queryByText('非 60FPS 验收路径')).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS - 1);
+    });
+
+    expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
+    expect(screen.queryByAltText('Camera feed')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('WebRTC 超过 fallback 延迟后才显示 MJPEG', () => {
+    vi.useFakeTimers();
+    mockWebRtc.mockReturnValue(degradedState());
+
+    render(<VideoStream />);
+
+    act(() => {
+      vi.advanceTimersByTime(DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS);
+    });
+
+    expect(screen.getByAltText('Camera feed')).toBeInTheDocument();
+    expect(screen.queryByLabelText('WebRTC camera feed')).not.toBeInTheDocument();
+    expect(screen.getByText('非 60FPS 验收路径')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('fallback 后 WebRTC 重试成功会切回 video', () => {
+    vi.useFakeTimers();
+    mockWebRtc.mockReturnValue(degradedState());
+    const { rerender } = render(<VideoStream />);
+
+    act(() => {
+      vi.advanceTimersByTime(DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS);
+    });
+    expect(screen.getByAltText('Camera feed')).toBeInTheDocument();
+
+    mockWebRtc.mockReturnValue(connectedState());
+    rerender(<VideoStream />);
+
+    expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
+    expect(screen.queryByAltText('Camera feed')).not.toBeInTheDocument();
+    expect(screen.queryByText('非 60FPS 验收路径')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it('mjpeg 模式直接显示 MJPEG 降级且不渲染 WebRTC video', () => {
     render(<VideoStream transport="mjpeg" />);
 
@@ -53,7 +131,8 @@ describe('VideoStream', () => {
     expect(screen.getByAltText('Camera feed')).toBeInTheDocument();
   });
 
-  it('车端离线时显示 DriveApiBridge 连接诊断', async () => {
+  it('车端离线且超过 fallback 延迟后显示 DriveApiBridge 连接诊断', async () => {
+    vi.useFakeTimers();
     mockWebRtc.mockReturnValue({
       videoRef: { current: null },
       state: 'degraded',
@@ -79,6 +158,10 @@ describe('VideoStream', () => {
     })));
 
     render(<VideoStream />);
+    await act(async () => {
+      vi.advanceTimersByTime(DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS);
+    });
+    vi.useRealTimers();
 
     await waitFor(() => {
       expect(screen.getByText('车端离线：等待 DriveApiBridge 连接到 /api/drive/ws?role=car')).toBeInTheDocument();

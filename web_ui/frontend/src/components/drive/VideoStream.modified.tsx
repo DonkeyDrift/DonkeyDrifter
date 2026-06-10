@@ -1,37 +1,90 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import { API_URL, getDriveVideoTransport, type DriveVideoTransport } from '../../services/api';
 import { Wifi, WifiOff } from 'lucide-react';
 import { useDriveWebRtcVideo } from '../../hooks/useDriveWebRtcVideo';
 import type { WebRtcSignal } from '../../hooks/useDriveWebsocket';
 
-export const DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS = 15000;
-
 interface VideoStreamProps {
   className?: string;
   incomingSignal?: WebRtcSignal | null;
   transport?: DriveVideoTransport;
+  // Add fallback timeout prop to customize how long to wait for WebRTC before falling back
+  webrtcFallbackTimeoutMs?: number;
 }
 
-export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomingSignal = null, transport }) => {
+export const VideoStream: React.FC<VideoStreamProps> = ({ 
+  className = '', 
+  incomingSignal = null, 
+  transport,
+  webrtcFallbackTimeoutMs = 12000 // Default to same as negotiation timeout
+}) => {
   const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
   const [retryCount, setRetryCount] = useState(0);
   const [mjpegFps, setMjpegFps] = useState(0);
   const [carOnline, setCarOnline] = useState<boolean | null>(null);
-  const [mjpegFallbackAllowed, setMjpegFallbackAllowed] = useState(false);
+  const [useMjpegFallback, setUseMjpegFallback] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const webRtcStartTimeRef = useRef<number | null>(null);
+  const fallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
   const selectedTransport = transport ?? getDriveVideoTransport();
   const forceMjpeg = selectedTransport === 'mjpeg';
-  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg });
+  
+  // Disable WebRTC if we've explicitly fallen back
+  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ 
+    incomingSignal, 
+    disabled: forceMjpeg || useMjpegFallback 
+  });
 
   const streamUrl = `${API_URL}/drive/video`;
-  const webRtcConnected = state === 'connected' && !stats.degraded;
-  const degraded = forceMjpeg || mjpegFallbackAllowed;
+  const webRtcDegraded = state === 'degraded' || stats.degraded;
   const browserFps = Math.round(metrics.browserFps || stats.browser_fps || 0);
   const p95 = Math.round(metrics.p95FrameIntervalMs || stats.browser_p95_frame_interval_ms || 0);
   const sourceFps = Math.round(stats.source_fps || 0);
   const sentFps = Math.round(stats.sent_fps || 0);
+
+  // Track when we start WebRTC connection attempt
+  useEffect(() => {
+    if (!forceMjpeg && !useMjpegFallback) {
+      webRtcStartTimeRef.current = Date.now();
+      
+      // Set up fallback timeout - only if we're not already connected or degraded
+      if (state === 'connecting') {
+        if (fallbackTimeoutRef.current) {
+          clearTimeout(fallbackTimeoutRef.current);
+        }
+        
+        fallbackTimeoutRef.current = setTimeout(() => {
+          // Only fall back if we're still in connecting state and haven't received track yet
+          if (state === 'connecting' && webRtcStartTimeRef.current) {
+            const elapsed = Date.now() - webRtcStartTimeRef.current;
+            if (elapsed >= webrtcFallbackTimeoutMs - 100) { // Account for timer drift
+              setUseMjpegFallback(true);
+            }
+          }
+        }, webrtcFallbackTimeoutMs);
+      }
+    }
+    
+    return () => {
+      if (fallbackTimeoutRef.current) {
+        clearTimeout(fallbackTimeoutRef.current);
+        fallbackTimeoutRef.current = null;
+      }
+    };
+  }, [forceMjpeg, useMjpegFallback, state, webrtcFallbackTimeoutMs]);
+
+  // Clear fallback timeout when WebRTC connects successfully
+  useEffect(() => {
+    if (state === 'connected' && fallbackTimeoutRef.current) {
+      clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
+  }, [state]);
+
+  // Update overall degraded state - only use fallback if explicitly enabled or forced
+  const degraded = forceMjpeg || useMjpegFallback || webRtcDegraded;
 
   const resetRetry = () => {
     if (retryTimerRef.current) {
@@ -40,17 +93,12 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
     }
   };
 
-  const resetFallbackTimer = () => {
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
-    }
-  };
-
   const scheduleRetry = () => {
     resetRetry();
     retryTimerRef.current = setTimeout(() => {
       setRetryCount((c) => c + 1);
+      // When retrying, reset the fallback flag
+      setUseMjpegFallback(false);
     }, 2000);
   };
 
@@ -58,27 +106,6 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
     setStatus('loading');
     return () => resetRetry();
   }, [retryCount]);
-
-  useEffect(() => {
-    if (forceMjpeg) {
-      resetFallbackTimer();
-      return;
-    }
-    if (webRtcConnected) {
-      resetFallbackTimer();
-      setMjpegFallbackAllowed(false);
-      return;
-    }
-    if (!fallbackTimerRef.current) {
-      fallbackTimerRef.current = setTimeout(() => {
-        fallbackTimerRef.current = null;
-        setMjpegFallbackAllowed(true);
-      }, DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS);
-    }
-    return () => undefined;
-  }, [forceMjpeg, webRtcConnected]);
-
-  useEffect(() => resetFallbackTimer, []);
 
   useEffect(() => {
     if (!degraded) {
@@ -117,19 +144,19 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
         </span>
       );
     }
-    if (!degraded && webRtcConnected) {
+    if (useMjpegFallback) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
+        <span className="inline-flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">
           <Wifi className="w-3 h-3" />
-          WebRTC
+          MJPEG 降级（WebRTC 连接超时）
         </span>
       );
     }
     if (!degraded) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
-          <Wifi className="w-3 h-3 animate-pulse" />
-          Connecting...
+        <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
+          <Wifi className="w-3 h-3" />
+          WebRTC
         </span>
       );
     }
@@ -163,7 +190,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
     <div className={`relative bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden ${className}`}>
       <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
         {statusBadge}
-        {degraded && (
+        {(degraded || useMjpegFallback) && (
           <span className="rounded bg-amber-400/10 px-2 py-0.5 text-xs text-amber-300">
             非 60FPS 验收路径
           </span>
@@ -209,6 +236,13 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
             {carOnline === false
               ? '车端离线：等待 DriveApiBridge 连接到 /api/drive/ws?role=car'
               : status === 'loading' ? '正在连接摄像头...' : '摄像头未连接'}
+          </div>
+        </div>
+      )}
+      {useMjpegFallback && state === 'connecting' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 pointer-events-none">
+          <div className="text-center text-zinc-500 text-sm">
+            WebRTC 连接超时，正在使用 MJPEG 模式
           </div>
         </div>
       )}
