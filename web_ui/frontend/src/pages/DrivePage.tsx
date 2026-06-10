@@ -11,13 +11,15 @@ import { ProgrammableButtons } from '../components/drive/ProgrammableButtons';
 import { ParameterPanel } from '../components/drive/ParameterPanel';
 import { InputSourceSelector, InputSource } from '../components/drive/InputSourceSelector';
 import { useDriveStore } from '../store/useDriveStore';
+import { createDriveClientId } from '../services/api';
 import { useGamepadDrive } from '../hooks/useGamepadDrive';
 import { useGyroDrive } from '../hooks/useGyroDrive';
 import { Circle, CirclePlay, Wifi, WifiOff } from 'lucide-react';
 
 export const DrivePage: React.FC = () => {
   const [webRtcSignal, setWebRtcSignal] = useState<WebRtcSignal | null>(null);
-  const { connected, carState, send } = useDriveWebsocket({ onWebRtcSignal: setWebRtcSignal });
+  const clientIdRef = useRef(createDriveClientId());
+  const { connected, carState, send } = useDriveWebsocket({ onWebRtcSignal: setWebRtcSignal, clientId: clientIdRef.current });
 
   // 输入合并：摇杆 + 键盘，后发生效
   const joystickRef = useRef({ angle: 0, throttle: 0 });
@@ -218,7 +220,7 @@ export const DrivePage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* 摄像头回传区 */}
         <div className="lg:col-span-2">
-          <VideoStream className="min-h-[360px]" incomingSignal={webRtcSignal} />
+          <VideoStream className="min-h-[360px]" incomingSignal={webRtcSignal} clientId={clientIdRef.current} />
         </div>
 
         {/* 控制区 */}

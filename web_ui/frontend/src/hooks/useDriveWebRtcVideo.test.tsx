@@ -5,6 +5,7 @@ import { getDriveWebRtcIceServers, useDriveWebRtcVideo } from './useDriveWebRtcV
 import type { WebRtcSignal } from './useDriveWebsocket';
 
 vi.mock('../services/api', () => ({
+  createDriveClientId: vi.fn(() => 'client-1'),
   createDriveWebRtcSession: vi.fn(async () => ({ session_id: 'session-1' })),
   sendDriveWebRtcOffer: vi.fn(async () => ({ success: true })),
   sendDriveWebRtcIce: vi.fn(async () => ({ success: true })),

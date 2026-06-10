@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getDriveCarWebSocketUrl } from '../services/api';
+import { createDriveClientId, getDriveCarWebSocketUrl } from '../services/api';
 
 export interface CarState {
   online: boolean;
@@ -21,13 +21,15 @@ interface UseDriveWebsocketOptions {
   autoReconnect?: boolean;
   reconnectInterval?: number;
   onWebRtcSignal?: (signal: WebRtcSignal) => void;
+  clientId?: string;
 }
 
 export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
-  const { autoReconnect = true, reconnectInterval = 3000, onWebRtcSignal } = options;
+  const { autoReconnect = true, reconnectInterval = 3000, onWebRtcSignal, clientId } = options;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clientIdRef = useRef(clientId ?? createDriveClientId());
 
   const [connected, setConnected] = useState(false);
   const [carState, setCarState] = useState<CarState>({
@@ -37,7 +39,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
     numRecords: 0,
   });
 
-  const wsUrl = `${getDriveCarWebSocketUrl()}?role=client`;
+  const wsUrl = `${getDriveCarWebSocketUrl(clientIdRef.current)}&role=client`;
 
   const clearTimers = () => {
     if (reconnectTimerRef.current) {

@@ -56,6 +56,8 @@ describe('useDriveWebsocket', () => {
       });
     });
 
+    expect(ws.url).toContain('client_id=');
+    expect(ws.url).toContain('role=client');
     expect(onSignal).toHaveBeenCalledWith({
       type: 'webrtc_signal',
       signal_type: 'answer',

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  createDriveClientId,
   createDriveWebRtcSession,
   getDriveWebRtcStats,
   sendDriveWebRtcBrowserStats,
@@ -19,6 +20,7 @@ interface UseDriveWebRtcVideoOptions {
   negotiationTimeoutMs?: number;
   retryIntervalMs?: number;
   disabled?: boolean;
+  clientId?: string;
 }
 
 export interface DriveVideoMetrics {
@@ -121,10 +123,11 @@ const collectBrowserInboundStats = async (peer: RTCPeerConnection | null): Promi
 };
 
 export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) => {
-  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = DRIVE_WEBRTC_NEGOTIATION_TIMEOUT_MS, retryIntervalMs = 5000, disabled = false } = options;
+  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = DRIVE_WEBRTC_NEGOTIATION_TIMEOUT_MS, retryIntervalMs = 5000, disabled = false, clientId } = options;
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const clientIdRef = useRef(clientId ?? createDriveClientId());
   const frameTimestampsRef = useRef<number[]>([]);
   const frameCallbackRef = useRef<number | null>(null);
   const lastBrowserStatsSentAtRef = useRef(0);
@@ -213,7 +216,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
     setState('connecting');
     trackReceivedRef.current = false;
     try {
-      const session = await createDriveWebRtcSession();
+      const session = await createDriveWebRtcSession(clientIdRef.current);
       sessionIdRef.current = session.session_id;
       const peer = createPeer();
       peerRef.current = peer;

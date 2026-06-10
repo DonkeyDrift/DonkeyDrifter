@@ -11,6 +11,21 @@ export const getDriveVideoTransport = (): DriveVideoTransport => {
   return value === 'webrtc' || value === 'mjpeg' ? value : 'auto';
 };
 
+export const createDriveClientId = (): string => {
+  const key = 'donkeydrifter_drive_client_id';
+  try {
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) {
+      return existing;
+    }
+    const created = crypto.randomUUID();
+    window.sessionStorage.setItem(key, created);
+    return created;
+  } catch {
+    return crypto.randomUUID();
+  }
+};
+
 export const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -18,16 +33,17 @@ export const api = axios.create({
   },
 });
 
-export const getDriveCarWebSocketUrl = () => {
+export const getDriveCarWebSocketUrl = (clientId?: string) => {
   const apiBase = API_URL.replace(/\/$/, '');
+  const query = clientId ? `?client_id=${encodeURIComponent(clientId)}` : '';
   if (apiBase.startsWith('http://') || apiBase.startsWith('https://')) {
-    return `${apiBase.replace(/^http/, 'ws')}/drive/ws`;
+    return `${apiBase.replace(/^http/, 'ws')}/drive/ws${query}`;
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.hostname;
   const backendPort = window.location.port === '5188' ? '8000' : window.location.port;
   const port = backendPort ? `:${backendPort}` : '';
-  return `${protocol}//${host}${port}${apiBase}/drive/ws`;
+  return `${protocol}//${host}${port}${apiBase}/drive/ws${query}`;
 };
 
 export const getApiErrorMessage = (error: unknown, fallback = '未知错误') => {
@@ -165,8 +181,8 @@ export interface DriveWebRtcStats {
   degraded: boolean;
 }
 
-export const createDriveWebRtcSession = async () => {
-  const response = await api.post('/drive/webrtc/session', { client_id: crypto.randomUUID() });
+export const createDriveWebRtcSession = async (clientId: string = crypto.randomUUID()) => {
+  const response = await api.post('/drive/webrtc/session', { client_id: clientId });
   return response.data as { success: boolean; session_id: string; single_client: boolean };
 };
 

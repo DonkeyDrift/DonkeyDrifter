@@ -74,19 +74,31 @@ class DriveState:
 
         # 连接管理
         self.car_ws: Optional[WebSocket] = None
-        self.client_ws: List[WebSocket] = []
+        self.client_ws: Dict[str, WebSocket] = {}
 
     async def broadcast_to_clients(self, data: dict):
-        """向所有已连接的客户端广播消息"""
+        """向所有已连接的客户端广播消息。"""
         payload = json.dumps(data)
-        dead: List[WebSocket] = []
-        for ws in self.client_ws:
+        dead: List[str] = []
+        for client_id, ws in list(self.client_ws.items()):
             try:
                 await ws.send_text(payload)
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.client_ws.remove(ws)
+                dead.append(client_id)
+        for client_id in dead:
+            self.client_ws.pop(client_id, None)
+
+    async def send_to_client(self, client_id: str, data: dict):
+        """向指定浏览器客户端发送信令。"""
+        ws = self.client_ws.get(client_id)
+        if ws is None:
+            return False
+        try:
+            await ws.send_text(json.dumps(data))
+            return True
+        except Exception:
+            self.client_ws.pop(client_id, None)
+            return False
 
     async def send_to_car(self, data: dict):
         """向车端发送控制指令"""
@@ -341,14 +353,14 @@ async def send_webrtc_offer(request: WebRtcSessionDescription):
 @router.post("/webrtc/answer")
 async def send_webrtc_answer(request: WebRtcSessionDescription):
     """车端 answer 转发给浏览器。"""
-    _require_webrtc_session(request.session_id)
+    session = _require_webrtc_session(request.session_id)
     drive_state.webrtc_stats["last_answer_at"] = time.time()
     last_offer_at = drive_state.webrtc_stats.get("last_offer_at")
     if last_offer_at is not None:
         drive_state.webrtc_stats["offer_to_answer_elapsed_ms"] = (
             drive_state.webrtc_stats["last_answer_at"] - last_offer_at
         ) * 1000.0
-    await drive_state.broadcast_to_clients({
+    await drive_state.send_to_client(session["client_id"], {
         "type": "webrtc_signal",
         "signal_type": "answer",
         "session_id": request.session_id,
@@ -361,7 +373,7 @@ async def send_webrtc_answer(request: WebRtcSessionDescription):
 @router.post("/webrtc/ice")
 async def send_webrtc_ice(request: WebRtcIceRequest):
     """按来源转发 ICE candidate。"""
-    _require_webrtc_session(request.session_id)
+    session = _require_webrtc_session(request.session_id)
     payload = {
         "type": "webrtc_signal",
         "signal_type": "ice",
@@ -375,7 +387,7 @@ async def send_webrtc_ice(request: WebRtcIceRequest):
             raise HTTPException(status_code=500, detail="发送 ICE candidate 到车端失败")
     else:
         drive_state.webrtc_stats["last_car_ice_at"] = time.time()
-        await drive_state.broadcast_to_clients(payload)
+        await drive_state.send_to_client(session["client_id"], payload)
     return {"success": True}
 
 
@@ -431,7 +443,11 @@ async def webrtc_stats():
 # WebSocket 主通道
 # ------------------------------------------------------------------
 @router.websocket("/ws")
-async def drive_ws(websocket: WebSocket, role: str = Query("client", description="连接角色: car 或 client")):
+async def drive_ws(
+    websocket: WebSocket,
+    role: str = Query("client", description="连接角色: car 或 client"),
+    client_id: Optional[str] = Query(None, description="浏览器客户端标识"),
+):
     await websocket.accept()
 
     if role == "car":
@@ -506,7 +522,14 @@ async def drive_ws(websocket: WebSocket, role: str = Query("client", description
 
     else:
         # 客户端连接（浏览器）
-        drive_state.client_ws.append(websocket)
+        client_id = client_id or str(uuid.uuid4())
+        old_ws = drive_state.client_ws.get(client_id)
+        if old_ws is not None and old_ws is not websocket:
+            try:
+                await old_ws.close()
+            except Exception:
+                pass
+        drive_state.client_ws[client_id] = websocket
         logger.info(f"新客户端连接，当前在线: {len(drive_state.client_ws)}")
 
         # 推送初始状态
@@ -561,8 +584,8 @@ async def drive_ws(websocket: WebSocket, role: str = Query("client", description
                         "num_records": drive_state.num_records,
                     })
         except WebSocketDisconnect:
-            if websocket in drive_state.client_ws:
-                drive_state.client_ws.remove(websocket)
+            if drive_state.client_ws.get(client_id) is websocket:
+                drive_state.client_ws.pop(client_id, None)
             logger.info(f"客户端断开，当前在线: {len(drive_state.client_ws)}")
 
 

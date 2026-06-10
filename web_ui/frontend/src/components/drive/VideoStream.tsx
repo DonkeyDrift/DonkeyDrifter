@@ -10,9 +10,10 @@ interface VideoStreamProps {
   className?: string;
   incomingSignal?: WebRtcSignal | null;
   transport?: DriveVideoTransport;
+  clientId?: string;
 }
 
-export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomingSignal = null, transport }) => {
+export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomingSignal = null, transport, clientId }) => {
   const [status, setStatus] = useState<'loading' | 'connected' | 'error'>('loading');
   const [retryCount, setRetryCount] = useState(0);
   const [mjpegFps, setMjpegFps] = useState(0);
@@ -23,7 +24,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedTransport = transport ?? getDriveVideoTransport();
   const forceMjpeg = selectedTransport === 'mjpeg';
-  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg });
+  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg, clientId });
 
   const streamUrl = `${API_URL}/drive/video`;
   const webRtcConnected = state === 'connected' && !stats.degraded;

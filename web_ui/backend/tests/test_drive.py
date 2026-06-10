@@ -109,14 +109,15 @@ def test_webrtc_offer_routes_signal_to_car(monkeypatch):
     }]
 
 
-def test_webrtc_answer_routes_signal_to_clients(monkeypatch):
+def test_webrtc_answer_routes_signal_to_session_client(monkeypatch):
     client, drive = make_online_client()
-    broadcasted = []
+    sent_to_client = []
 
-    async def fake_broadcast(payload):
-        broadcasted.append(payload)
+    async def fake_send_to_client(client_id, payload):
+        sent_to_client.append((client_id, payload))
+        return True
 
-    monkeypatch.setattr(drive.drive_state, "broadcast_to_clients", fake_broadcast)
+    monkeypatch.setattr(drive.drive_state, "send_to_client", fake_send_to_client)
     session = client.post("/api/drive/webrtc/session", json={"client_id": "browser-1"}).json()
 
     response = client.post("/api/drive/webrtc/answer", json={
@@ -127,29 +128,30 @@ def test_webrtc_answer_routes_signal_to_clients(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"success": True}
-    assert broadcasted == [{
+    assert sent_to_client == [("browser-1", {
         "type": "webrtc_signal",
         "signal_type": "answer",
         "session_id": session["session_id"],
         "sdp": "answer-sdp",
         "description_type": "answer",
-    }]
+    })]
 
 
 def test_webrtc_ice_routes_by_source(monkeypatch):
     client, drive = make_online_client()
     sent_to_car = []
-    broadcasted = []
+    sent_to_client = []
 
     async def fake_send_to_car(payload):
         sent_to_car.append(payload)
         return True
 
-    async def fake_broadcast(payload):
-        broadcasted.append(payload)
+    async def fake_send_to_client(client_id, payload):
+        sent_to_client.append((client_id, payload))
+        return True
 
     monkeypatch.setattr(drive.drive_state, "send_to_car", fake_send_to_car)
-    monkeypatch.setattr(drive.drive_state, "broadcast_to_clients", fake_broadcast)
+    monkeypatch.setattr(drive.drive_state, "send_to_client", fake_send_to_client)
     session = client.post("/api/drive/webrtc/session", json={"client_id": "browser-1"}).json()
     candidate = {"candidate": "candidate:1", "sdpMid": "0", "sdpMLineIndex": 0}
 
@@ -172,12 +174,12 @@ def test_webrtc_ice_routes_by_source(monkeypatch):
         "session_id": session["session_id"],
         "candidate": candidate,
     }]
-    assert broadcasted == [{
+    assert sent_to_client == [("browser-1", {
         "type": "webrtc_signal",
         "signal_type": "ice",
         "session_id": session["session_id"],
         "candidate": candidate,
-    }]
+    })]
 
 
 def test_webrtc_stats_reports_session_and_video_metrics():
