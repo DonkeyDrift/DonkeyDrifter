@@ -189,3 +189,39 @@ def test_webrtc_stats_reports_session_and_video_metrics():
     assert data["disconnect_count"] == 1
     assert data["transport"] == "webrtc"
     assert data["degraded"] is False
+
+
+def test_car_webrtc_stats_message_updates_backend_stats():
+    client, drive = make_online_client()
+    session = client.post("/api/drive/webrtc/session", json={"client_id": "browser-1"}).json()
+
+    drive.drive_state.apply_car_webrtc_stats({
+        "type": "webrtc_stats",
+        "session_id": session["session_id"],
+        "source_fps": 60.0,
+        "sent_fps": 59.0,
+        "stale_frames": 2,
+    })
+
+    response = client.get("/api/drive/webrtc/stats")
+    data = response.json()
+    assert data["source_fps"] == 60.0
+    assert data["sent_fps"] == 59.0
+    assert data["stale_frames"] == 2
+
+
+def test_car_webrtc_stats_ignores_stale_session():
+    client, drive = make_online_client()
+    client.post("/api/drive/webrtc/session", json={"client_id": "browser-1"})
+
+    drive.drive_state.apply_car_webrtc_stats({
+        "type": "webrtc_stats",
+        "session_id": "stale-session",
+        "source_fps": 1.0,
+        "sent_fps": 1.0,
+    })
+
+    response = client.get("/api/drive/webrtc/stats")
+    data = response.json()
+    assert data["source_fps"] == 0.0
+    assert data["sent_fps"] == 0.0

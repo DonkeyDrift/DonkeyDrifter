@@ -52,6 +52,7 @@ class DriveState:
             "browser_fps": 0.0,
             "browser_p95_frame_interval_ms": 0.0,
             "disconnect_count": 0,
+            "stale_frames": 0,
             "degraded": False,
         }
 
@@ -96,6 +97,15 @@ class DriveState:
         if elapsed <= 0:
             return 0
         return round((len(self.frame_timestamps) - 1) / elapsed)
+
+    def apply_car_webrtc_stats(self, data: dict):
+        """应用车端上报的 WebRTC 视频统计。"""
+        session = self.webrtc_session
+        if not session or data.get("session_id") != session.get("session_id"):
+            return
+        for key in ("source_fps", "sent_fps", "stale_frames"):
+            if key in data:
+                self.webrtc_stats[key] = data[key]
 
 
 drive_state = DriveState()
@@ -321,6 +331,7 @@ async def webrtc_stats():
         "browser_fps": drive_state.webrtc_stats["browser_fps"],
         "browser_p95_frame_interval_ms": drive_state.webrtc_stats["browser_p95_frame_interval_ms"],
         "disconnect_count": drive_state.webrtc_stats["disconnect_count"],
+        "stale_frames": drive_state.webrtc_stats["stale_frames"],
         "transport": "webrtc",
         "degraded": drive_state.webrtc_stats["degraded"],
     }
@@ -361,6 +372,11 @@ async def drive_ws(websocket: WebSocket, role: str = Query("client", description
 
                 # 处理车端心跳
                 if msg.get("type") == "heartbeat":
+                    continue
+
+                # 处理车端 WebRTC 视频统计
+                if msg.get("type") == "webrtc_stats":
+                    drive_state.apply_car_webrtc_stats(msg)
                     continue
 
                 # 处理车端发来的图像帧 (base64)

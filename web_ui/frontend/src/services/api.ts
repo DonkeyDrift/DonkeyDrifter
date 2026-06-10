@@ -141,6 +141,7 @@ export interface DriveWebRtcStats {
   browser_fps: number;
   browser_p95_frame_interval_ms: number;
   disconnect_count: number;
+  stale_frames?: number;
   transport: 'webrtc' | 'mjpeg';
   degraded: boolean;
 }

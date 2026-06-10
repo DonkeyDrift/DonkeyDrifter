@@ -204,6 +204,7 @@ class DriveApiBridge:
         self.running = False
         self.last_frame = 0.0
         self.thread = None
+        self.last_webrtc_stats = 0.0
         self.active_webrtc_session_id = None
         self.webrtc_peer = None
         self.webrtc_track = DriveWebRtcVideoTrack(self.frame_buffer, fps=video_fps)
@@ -344,6 +345,19 @@ class DriveApiBridge:
             "candidate": candidate,
         })
 
+    def _send_webrtc_stats(self):
+        if not self.active_webrtc_session_id:
+            return
+        source_stats = self.frame_buffer.stats()
+        track_stats = self.webrtc_track.stats()
+        self._send_json({
+            "type": "webrtc_stats",
+            "session_id": self.active_webrtc_session_id,
+            "source_fps": source_stats.get("source_fps", 0.0),
+            "sent_fps": track_stats.get("sent_fps", 0.0),
+            "stale_frames": track_stats.get("stale_frames", 0),
+        })
+
     def _send_frame(self, img_arr, num_records=0, mode=None, recording=None):
         if cv2 is None:
             return
@@ -366,6 +380,10 @@ class DriveApiBridge:
     def run_threaded(self, img_arr=None, num_records=0, mode=None, recording=None):
         if img_arr is not None and self.video_transport == "webrtc":
             self.frame_buffer.update(img_arr)
+            now = time.time()
+            if now - self.last_webrtc_stats >= 1.0:
+                self.last_webrtc_stats = now
+                self._send_webrtc_stats()
         else:
             now = time.time()
             if self.connected and img_arr is not None and now - self.last_frame > 0.05:

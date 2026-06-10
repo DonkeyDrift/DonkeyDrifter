@@ -349,3 +349,32 @@ def test_drive_api_bridge_ignores_ice_for_stale_session(monkeypatch):
     })
 
     assert bridge.webrtc_peer.candidates == []
+
+
+def test_drive_api_bridge_sends_webrtc_stats_when_session_active(monkeypatch):
+    sent = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    monkeypatch.setattr(bridge, "_send_json", sent.append)
+    monkeypatch.setattr(bridge.frame_buffer, "stats", lambda: {"source_fps": 60.0})
+    monkeypatch.setattr(bridge.webrtc_track, "stats", lambda: {"sent_fps": 59.0, "stale_frames": 2})
+
+    bridge._send_webrtc_stats()
+
+    assert sent == [{
+        "type": "webrtc_stats",
+        "session_id": "session-1",
+        "source_fps": 60.0,
+        "sent_fps": 59.0,
+        "stale_frames": 2,
+    }]
+
+
+def test_drive_api_bridge_does_not_send_webrtc_stats_without_session(monkeypatch):
+    sent = []
+    bridge = DriveApiBridge(auto_start=False)
+    monkeypatch.setattr(bridge, "_send_json", sent.append)
+
+    bridge._send_webrtc_stats()
+
+    assert sent == []
