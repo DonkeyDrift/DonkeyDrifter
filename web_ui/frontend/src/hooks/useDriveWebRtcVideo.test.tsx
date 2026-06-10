@@ -109,20 +109,15 @@ describe('useDriveWebRtcVideo', () => {
   });
 
   it('降级后会自动重试 WebRTC session', async () => {
-    vi.useFakeTimers();
     const api = await import('../services/api');
     const pc = new FakePeerConnection();
     const factory = () => pc as unknown as RTCPeerConnection;
     const onState = vi.fn();
 
-    render(<HookProbe onState={onState} factory={factory} negotiationTimeoutMs={10} retryIntervalMs={50} />);
-    await vi.advanceTimersByTimeAsync(10);
+    render(<HookProbe onState={onState} factory={factory} negotiationTimeoutMs={10} retryIntervalMs={20} />);
+
     await waitFor(() => expect(lastCallValue(onState).state).toBe('degraded'));
-
-    await vi.advanceTimersByTimeAsync(50);
-
     await waitFor(() => expect(api.createDriveWebRtcSession).toHaveBeenCalledTimes(2));
-    vi.useRealTimers();
   });
 
   it('处理 answer 和 ICE 信令', async () => {

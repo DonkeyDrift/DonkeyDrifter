@@ -264,10 +264,11 @@ class FakePeerConnection:
         self.remote = description
 
     async def createAnswer(self):
-        return "answer"
+        return type("Answer", (), {"sdp": "answer-sdp"})()
 
     async def setLocalDescription(self, answer):
         self.answer = answer
+        self.localDescription = answer
 
     async def addIceCandidate(self, candidate):
         self.candidates.append(candidate)
@@ -312,6 +313,36 @@ def test_drive_api_bridge_creates_aiortc_peer_from_offer(monkeypatch):
     assert len(created[0].tracks) == 1
     assert created[0].remote.sdp == "offer-sdp"
     assert answers == [("session-1", "answer-sdp")]
+
+
+def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch):
+    """setLocalDescription 阻塞或失败时 answer 也必须先回传"""
+    created = []
+    answers = []
+
+    class HangingSetLocal(FakePeerConnection):
+        def __init__(self):
+            super().__init__()
+            created.append(self)
+
+        async def setLocalDescription(self, answer):
+            raise RuntimeError("setLocalDescription 失败")
+
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCPeerConnection", HangingSetLocal)
+    monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCSessionDescription", FakeSessionDescription)
+
+    bridge = DriveApiBridge(auto_start=False)
+    monkeypatch.setattr(bridge, "_post_webrtc_answer", lambda session_id, sdp: answers.append((session_id, sdp)))
+
+    bridge._handle_webrtc_signal({
+        "type": "webrtc_signal",
+        "signal_type": "offer",
+        "session_id": "session-x",
+        "sdp": "offer-sdp",
+        "description_type": "offer",
+    })
+
+    assert answers == [("session-x", "answer-sdp")]
 
 
 def test_drive_api_bridge_adds_matching_ice_candidate(monkeypatch):

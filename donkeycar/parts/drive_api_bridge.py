@@ -344,8 +344,11 @@ class DriveApiBridge:
         peer.addTrack(self.aiortc_track)
         await peer.setRemoteDescription(RTCSessionDescription(sdp=msg.get("sdp", ""), type="offer"))
         answer = await peer.createAnswer()
-        await peer.setLocalDescription(answer)
-        self._post_webrtc_answer(msg["session_id"], peer.localDescription.sdp)
+        self._post_webrtc_answer(msg["session_id"], answer.sdp)
+        try:
+            await peer.setLocalDescription(answer)
+        except Exception as exc:
+            logger.warning(f"设置 WebRTC local description 失败: {exc}")
 
     def _handle_webrtc_ice(self, msg: dict):
         if msg.get("session_id") != self.active_webrtc_session_id or self.webrtc_peer is None:

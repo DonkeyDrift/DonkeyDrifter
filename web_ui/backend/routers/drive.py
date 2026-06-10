@@ -275,9 +275,19 @@ async def create_webrtc_session(request: WebRtcSessionRequest):
         "created_at": time.time(),
     }
     drive_state.webrtc_stats.update({
+        "source_fps": 0.0,
+        "sent_fps": 0.0,
         "browser_fps": 0.0,
         "browser_p95_frame_interval_ms": 0.0,
         "disconnect_count": 0,
+        "stale_frames": 0,
+        "peer_connection_state": None,
+        "ice_connection_state": None,
+        "ice_gathering_state": None,
+        "last_offer_at": None,
+        "last_answer_at": None,
+        "last_client_ice_at": None,
+        "last_car_ice_at": None,
         "degraded": False,
     })
     return {"success": True, "session_id": session_id, "single_client": True}
