@@ -711,7 +711,14 @@ def add_user_controller(V, cfg, use_joystick, input_image='ui/image_array'):
     #
     server_url = os.environ.get("DRIVE_API_SERVER_URL") or getattr(cfg, "DRIVE_API_SERVER_URL", None)
     if server_url:
-        ctr = DriveApiBridge(server_url=server_url)
+        ctr = DriveApiBridge(
+            server_url=server_url,
+            video_transport=getattr(cfg, "DRIVE_VIDEO_TRANSPORT", "webrtc"),
+            video_width=getattr(cfg, "DRIVE_VIDEO_WIDTH", 320),
+            video_height=getattr(cfg, "DRIVE_VIDEO_HEIGHT", 240),
+            video_fps=getattr(cfg, "DRIVE_VIDEO_FPS", 60),
+            webrtc_enabled=getattr(cfg, "DRIVE_WEBRTC_ENABLED", True),
+        )
     else:
         ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
     V.add(ctr,

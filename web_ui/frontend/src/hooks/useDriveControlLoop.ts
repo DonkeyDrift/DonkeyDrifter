@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export interface DriveControlPayload {
+export interface DriveControlPayload extends Record<string, unknown> {
   angle: number;
   throttle: number;
   drive_mode: string;

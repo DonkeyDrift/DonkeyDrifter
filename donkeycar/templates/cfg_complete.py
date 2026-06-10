@@ -26,6 +26,15 @@ MODELS_PATH = os.path.join(CAR_PATH, 'models')
 DRIVE_LOOP_HZ = 20      # the vehicle loop will pause if faster than this speed.
 MAX_LOOPS = None        # the vehicle loop can abort after this many iterations, when given a positive integer.
 
+#DRIVE WEB UI VIDEO
+DRIVE_VIDEO_TRANSPORT = "webrtc"
+DRIVE_VIDEO_WIDTH = 320
+DRIVE_VIDEO_HEIGHT = 240
+DRIVE_VIDEO_FPS = 60
+DRIVE_WEBRTC_ENABLED = True
+DRIVE_WEBRTC_SINGLE_CLIENT = True
+DRIVE_WEBRTC_RECONNECT_TIMEOUT_SEC = 3.0
+
 #CAMERA
 CAMERA_TYPE = "PICAM"   # (PICAM|WEBCAM|CVCAM|CSIC|V4L|D435|OAKD|MOCK|IMAGE_LIST)
 IMAGE_W = 160

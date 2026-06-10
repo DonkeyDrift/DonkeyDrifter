@@ -38,6 +38,13 @@ CAMERA_INDEX = 0         # 摄像头索引（默认：0）
 # 智驾相关配置
 DRIVE_LOOP_HZ = 60      # 系统运行的循环频率（Hz）
 AI_THROTTLE_MULT = 1.1  # 自动驾驶时，油门的缩放因子（默认：1.1）
+DRIVE_VIDEO_TRANSPORT = "webrtc"  # 视频传输模式 ("webrtc" / "mjpeg")
+DRIVE_VIDEO_WIDTH = 320          # 视频流宽度
+DRIVE_VIDEO_HEIGHT = 240         # 视频流高度
+DRIVE_VIDEO_FPS = 60             # 视频流目标帧率
+DRIVE_WEBRTC_ENABLED = True      # 是否启用 WebRTC
+DRIVE_WEBRTC_SINGLE_CLIENT = True  # 是否只允许单个客户端
+DRIVE_WEBRTC_RECONNECT_TIMEOUT_SEC = 3.0  # WebRTC 连接超时恢复时间（秒）
 
 #--------------------------For DonkeySim 驴车模拟器相关配置
 # DonkeySim 驴车模拟器相关配置
