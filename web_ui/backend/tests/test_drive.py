@@ -221,6 +221,8 @@ def test_car_webrtc_stats_message_updates_backend_stats():
         "peer_connection_state": "connected",
         "ice_connection_state": "completed",
         "ice_gathering_state": "complete",
+        "local_description_error": None,
+        "local_description_elapsed_ms": 18.5,
     })
 
     response = client.get("/api/drive/webrtc/stats")
@@ -231,6 +233,8 @@ def test_car_webrtc_stats_message_updates_backend_stats():
     assert data["peer_connection_state"] == "connected"
     assert data["ice_connection_state"] == "completed"
     assert data["ice_gathering_state"] == "complete"
+    assert data["local_description_error"] is None
+    assert data["local_description_elapsed_ms"] == 18.5
 
 
 def test_webrtc_stats_exposes_signaling_timestamps():
@@ -284,6 +288,8 @@ def test_webrtc_session_resets_diagnostics():
         "peer_connection_state": "connected",
         "ice_connection_state": "completed",
         "ice_gathering_state": "complete",
+        "local_description_error": "TimeoutError: TimeoutError()",
+        "local_description_elapsed_ms": 2001.0,
         "last_offer_at": 1.0,
         "last_answer_at": 2.0,
         "last_client_ice_at": 3.0,
@@ -299,6 +305,8 @@ def test_webrtc_session_resets_diagnostics():
     assert data["peer_connection_state"] is None
     assert data["ice_connection_state"] is None
     assert data["ice_gathering_state"] is None
+    assert data["local_description_error"] is None
+    assert data["local_description_elapsed_ms"] is None
     assert data["last_offer_at"] is None
     assert data["last_answer_at"] is None
     assert data["last_client_ice_at"] is None

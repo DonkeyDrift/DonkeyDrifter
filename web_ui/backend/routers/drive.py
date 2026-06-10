@@ -56,6 +56,8 @@ class DriveState:
             "peer_connection_state": None,
             "ice_connection_state": None,
             "ice_gathering_state": None,
+            "local_description_error": None,
+            "local_description_elapsed_ms": None,
             "last_offer_at": None,
             "last_answer_at": None,
             "last_client_ice_at": None,
@@ -117,6 +119,8 @@ class DriveState:
             "peer_connection_state",
             "ice_connection_state",
             "ice_gathering_state",
+            "local_description_error",
+            "local_description_elapsed_ms",
         ):
             if key in data:
                 self.webrtc_stats[key] = data[key]
@@ -284,6 +288,8 @@ async def create_webrtc_session(request: WebRtcSessionRequest):
         "peer_connection_state": None,
         "ice_connection_state": None,
         "ice_gathering_state": None,
+        "local_description_error": None,
+        "local_description_elapsed_ms": None,
         "last_offer_at": None,
         "last_answer_at": None,
         "last_client_ice_at": None,
@@ -363,6 +369,8 @@ async def webrtc_stats():
         "peer_connection_state": drive_state.webrtc_stats["peer_connection_state"],
         "ice_connection_state": drive_state.webrtc_stats["ice_connection_state"],
         "ice_gathering_state": drive_state.webrtc_stats["ice_gathering_state"],
+        "local_description_error": drive_state.webrtc_stats["local_description_error"],
+        "local_description_elapsed_ms": drive_state.webrtc_stats["local_description_elapsed_ms"],
         "last_offer_at": drive_state.webrtc_stats["last_offer_at"],
         "last_answer_at": drive_state.webrtc_stats["last_answer_at"],
         "last_client_ice_at": drive_state.webrtc_stats["last_client_ice_at"],

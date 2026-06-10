@@ -226,13 +226,14 @@ class DriveApiBridge:
                  auto_start: bool = True, video_transport: str = "webrtc",
                  video_width: int = 320, video_height: int = 240,
                  video_fps: int = 60, webrtc_enabled: bool = True,
-                 webrtc_ice_servers=None):
+                 webrtc_ice_servers=None, webrtc_local_description_timeout: float = 8.0):
         self.server_url = self._with_role(server_url, role)
         self.http_api_base = self._http_api_base(server_url)
         self.reconnect_interval = reconnect_interval
         self.video_transport = video_transport
         self.video_fps = video_fps
         self.webrtc_enabled = webrtc_enabled
+        self.webrtc_local_description_timeout = webrtc_local_description_timeout
         self.webrtc_ice_servers = parse_webrtc_ice_servers(os.environ.get("DRIVE_WEBRTC_ICE_SERVERS") or webrtc_ice_servers)
         self.frame_buffer = DriveVideoFrameBuffer(width=video_width, height=video_height)
 
@@ -255,6 +256,8 @@ class DriveApiBridge:
         self.active_webrtc_session_id = None
         self.webrtc_peer = None
         self.aiortc_track = None
+        self.webrtc_local_description_error = None
+        self.webrtc_local_description_elapsed_ms = None
         self.webrtc_track = DriveWebRtcVideoTrack(self.frame_buffer, fps=video_fps)
 
         if auto_start:
@@ -375,6 +378,8 @@ class DriveApiBridge:
         configuration = self._build_webrtc_configuration()
         peer = RTCPeerConnection(configuration=configuration) if configuration is not None else RTCPeerConnection()
         self.webrtc_peer = peer
+        self.webrtc_local_description_error = None
+        self.webrtc_local_description_elapsed_ms = None
         if hasattr(peer, "on"):
             @peer.on("icecandidate")
             def on_icecandidate(candidate):
@@ -384,11 +389,15 @@ class DriveApiBridge:
         await peer.setRemoteDescription(RTCSessionDescription(sdp=msg.get("sdp", ""), type="offer"))
         answer = await peer.createAnswer()
         answer_sdp = answer.sdp
+        started_at = time.time()
         try:
-            await asyncio.wait_for(peer.setLocalDescription(answer), timeout=2.0)
+            await asyncio.wait_for(peer.setLocalDescription(answer), timeout=self.webrtc_local_description_timeout)
+            self.webrtc_local_description_elapsed_ms = (time.time() - started_at) * 1000.0
             answer_sdp = getattr(peer.localDescription, "sdp", answer.sdp)
         except Exception as exc:
-            logger.warning(f"设置 WebRTC local description 失败，回退原始 answer: {exc}")
+            self.webrtc_local_description_elapsed_ms = (time.time() - started_at) * 1000.0
+            self.webrtc_local_description_error = f"{type(exc).__name__}: {exc!r}"
+            logger.warning(f"设置 WebRTC local description 失败，回退原始 answer: {self.webrtc_local_description_error}")
         self._post_webrtc_answer(msg["session_id"], answer_sdp)
 
     def _handle_webrtc_ice(self, msg: dict):
@@ -460,6 +469,8 @@ class DriveApiBridge:
             "peer_connection_state": getattr(self.webrtc_peer, "connectionState", None),
             "ice_connection_state": getattr(self.webrtc_peer, "iceConnectionState", None),
             "ice_gathering_state": getattr(self.webrtc_peer, "iceGatheringState", None),
+            "local_description_error": self.webrtc_local_description_error,
+            "local_description_elapsed_ms": self.webrtc_local_description_elapsed_ms,
         })
 
     def _send_heartbeat(self):

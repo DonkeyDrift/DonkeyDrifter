@@ -149,6 +149,11 @@ export interface DriveWebRtcStats {
   browser_p95_frame_interval_ms: number;
   disconnect_count: number;
   stale_frames?: number;
+  peer_connection_state?: string | null;
+  ice_connection_state?: string | null;
+  ice_gathering_state?: string | null;
+  local_description_error?: string | null;
+  local_description_elapsed_ms?: number | null;
   transport: 'webrtc' | 'mjpeg';
   degraded: boolean;
 }

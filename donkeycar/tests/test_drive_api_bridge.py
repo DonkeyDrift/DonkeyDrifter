@@ -396,8 +396,8 @@ def test_drive_api_bridge_passes_ice_servers_to_aiortc_peer(monkeypatch):
     }
 
 
-def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch):
-    """setLocalDescription 阻塞或失败时 answer 也必须先回传"""
+def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch, caplog):
+    """setLocalDescription 阻塞或失败时 answer 也必须先回传。"""
     created = []
     answers = []
 
@@ -424,6 +424,29 @@ def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch)
     })
 
     assert answers == [("session-x", "answer-sdp")]
+    assert "RuntimeError" in caplog.text
+    assert "setLocalDescription 失败" in bridge.webrtc_local_description_error
+
+
+def test_drive_api_bridge_reports_local_description_diagnostics(monkeypatch):
+    sent = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.active_webrtc_session_id = "session-1"
+    bridge.webrtc_peer = type("Peer", (), {
+        "connectionState": "new",
+        "iceConnectionState": "new",
+        "iceGatheringState": "gathering",
+    })()
+    bridge.webrtc_local_description_error = "TimeoutError: TimeoutError()"
+    bridge.webrtc_local_description_elapsed_ms = 2001.0
+    monkeypatch.setattr(bridge, "_send_json", sent.append)
+    monkeypatch.setattr(bridge.frame_buffer, "stats", lambda: {"source_fps": 58.0})
+    monkeypatch.setattr(bridge.webrtc_track, "stats", lambda: {"sent_fps": 0.0, "stale_frames": 3})
+
+    bridge._send_webrtc_stats()
+
+    assert sent[0]["local_description_error"] == "TimeoutError: TimeoutError()"
+    assert sent[0]["local_description_elapsed_ms"] == 2001.0
 
 
 def test_drive_api_bridge_adds_matching_ice_candidate(monkeypatch):
@@ -489,6 +512,8 @@ def test_drive_api_bridge_sends_webrtc_stats_when_session_active(monkeypatch):
         "peer_connection_state": "connected",
         "ice_connection_state": "completed",
         "ice_gathering_state": "complete",
+        "local_description_error": None,
+        "local_description_elapsed_ms": None,
     }]
 
 

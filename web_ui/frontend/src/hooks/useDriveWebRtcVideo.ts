@@ -10,6 +10,8 @@ import type { WebRtcSignal } from './useDriveWebsocket';
 
 export type DriveVideoState = 'idle' | 'connecting' | 'connected' | 'unstable' | 'reconnecting' | 'degraded' | 'error';
 
+export const DRIVE_WEBRTC_NEGOTIATION_TIMEOUT_MS = 12000;
+
 interface UseDriveWebRtcVideoOptions {
   incomingSignal?: WebRtcSignal | null;
   peerConnectionFactory?: () => RTCPeerConnection;
@@ -50,6 +52,12 @@ const EMPTY_STATS: DriveWebRtcStats = {
   browser_fps: 0,
   browser_p95_frame_interval_ms: 0,
   disconnect_count: 0,
+  stale_frames: 0,
+  peer_connection_state: null,
+  ice_connection_state: null,
+  ice_gathering_state: null,
+  local_description_error: null,
+  local_description_elapsed_ms: null,
   transport: 'webrtc',
   degraded: false,
 };
@@ -69,7 +77,7 @@ export const calculateVideoMetrics = (timestamps: number[]): DriveVideoMetrics =
 };
 
 export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) => {
-  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = 3000, retryIntervalMs = 5000, disabled = false } = options;
+  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = DRIVE_WEBRTC_NEGOTIATION_TIMEOUT_MS, retryIntervalMs = 5000, disabled = false } = options;
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
