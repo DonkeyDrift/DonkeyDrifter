@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -15,6 +15,8 @@ import {
   getConnectorDriveStatus,
   getApiErrorMessage,
   getDriveCarWebSocketUrl,
+  getConnectorLocalIps,
+  discoverConnectorCars,
   loadTub,
   type ConnectorConfig as ConnectorConfigType,
 } from '../services/api';
@@ -74,6 +76,10 @@ export const CarConnectorPage: React.FC = () => {
   const [drivePid, setDrivePid] = useState<number | null>(null);
   const [selectedFormats, setSelectedFormats] = useState<Set<FormatOption>>(new Set(['tflite']));
 
+  // 扫描车辆发现
+  const [discovering, setDiscovering] = useState(false);
+  const [foundCars, setFoundCars] = useState<{ ip: string; port: number; latency_ms: number; reachable: boolean }[]>([]);
+
   // 加载配置
   useEffect(() => {
     getConnectorConfig()
@@ -95,6 +101,27 @@ export const CarConnectorPage: React.FC = () => {
   useEffect(() => {
     refreshDriveStatus();
   }, [refreshDriveStatus]);
+
+  // 自动修正 bridgeServerUrl：如果当前是 localhost/127.0.0.1，尝试替换为本机局域网 IP
+  useEffect(() => {
+    const currentUrl = bridgeServerUrl;
+    if (!currentUrl.includes('localhost') && !currentUrl.includes('127.0.0.1')) {
+      return;
+    }
+    getConnectorLocalIps()
+      .then((data) => {
+        if (data.ips && data.ips.length > 0) {
+          const bestIp = data.ips[0].ip;
+          const corrected = currentUrl
+            .replace('localhost', bestIp)
+            .replace('127.0.0.1', bestIp);
+          setBridgeServerUrl(corrected);
+          setStatusMessage(`已自动将回连地址修正为局域网 IP: ${bestIp}`);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const {
     jobStatus,
@@ -130,6 +157,25 @@ export const CarConnectorPage: React.FC = () => {
       setStatusMessage(getApiErrorMessage(error, '连接检查失败'));
     } finally {
       setChecking(false);
+    }
+  }, []);
+
+  // 扫描局域网发现车辆
+  const handleDiscoverCars = useCallback(async () => {
+    setDiscovering(true);
+    setFoundCars([]);
+    try {
+      const result = await discoverConnectorCars();
+      if (result.found && result.found.length > 0) {
+        setFoundCars(result.found);
+        setStatusMessage(`发现 ${result.found.length} 个开放 SSH 端口的主机（扫描了 ${result.scanned} 个地址）`);
+      } else {
+        setStatusMessage(result.message);
+      }
+    } catch (error) {
+      setStatusMessage(getApiErrorMessage(error, '扫描局域网失败'));
+    } finally {
+      setDiscovering(false);
     }
   }, []);
 
@@ -230,11 +276,47 @@ export const CarConnectorPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1">主机地址</label>
-                  <Input
-                    value={config.host}
-                    onChange={(e) => setConfig({ ...config, host: e.target.value })}
-                    placeholder="donkeycar.local"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      className="flex-1"
+                      value={config.host}
+                      onChange={(e) => setConfig({ ...config, host: e.target.value })}
+                      placeholder="donkeycar.local"
+                    />
+                    <Button
+                      onClick={handleDiscoverCars}
+                      disabled={discovering}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      {discovering ? '扫描中…' : '扫描局域网'}
+                    </Button>
+                  </div>
+                  {foundCars.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-zinc-400">发现以下主机（按延迟排序）：</p>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {foundCars.map((car) => (
+                          <button
+                            key={car.ip}
+                            onClick={() => {
+                              setConfig((prev) => ({ ...prev, host: car.ip }));
+                              setFoundCars([]);
+                              setStatusMessage(`已选择车端 IP：${car.ip}`);
+                            }}
+                            className={`w-full flex items-center justify-between rounded-md border px-2 py-1.5 text-left transition-colors ${
+                              config.host === car.ip
+                                ? 'border-cyan-500/50 bg-cyan-950/30'
+                                : 'border-zinc-800 bg-zinc-800/50 hover:bg-zinc-800'
+                            }`}
+                          >
+                            <span className="text-sm text-zinc-100 font-mono">{car.ip}</span>
+                            <span className="text-xs text-zinc-400">{car.latency_ms}ms</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1">用户名</label>

@@ -384,7 +384,17 @@ class DriveApiBridge:
                         self.connected = False
                         self.ws = None
             except Exception as e:
-                logger.warning(f"连接失败，{self.reconnect_interval}s 后重连: {e}")
+                server_url = getattr(self, "server_url", "")
+                if "localhost" in server_url or "127.0.0.1" in server_url:
+                    logger.warning(
+                        f"连接失败，{self.reconnect_interval}s 后重连: {e}"
+                        "（提示：server_url 包含 localhost/127.0.0.1，"
+                        "若车端与后端不在同一机器，请通过 DRIVE_API_SERVER_URL "
+                        "环境变量或配置项指定后端真实的局域网 IP，"
+                        "例如 ws://192.168.1.10:8000/api/drive/ws）"
+                    )
+                else:
+                    logger.warning(f"连接失败，{self.reconnect_interval}s 后重连: {e}")
                 await asyncio.sleep(self.reconnect_interval)
 
     def _handle_message(self, msg: dict):

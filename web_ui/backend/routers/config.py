@@ -6,10 +6,7 @@ import logging
 import tkinter as tk
 from tkinter import filedialog
 from starlette.concurrency import run_in_threadpool
-import asyncio
-import socket
-import subprocess
-import re
+from network_utils import discover_hosts
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -222,197 +219,13 @@ async def save_training_config(request: TrainingConfigSaveRequest):
 # ---------------------------------------------------------------------------
 
 SIMULATOR_DEFAULT_PORT = 9091
-DISCOVER_TIMEOUT = 0.4          # seconds per host
-DISCOVER_MAX_CONCURRENT = 64    # concurrent connection attempts
-
-
-async def _check_host_port(host: str, port: int, timeout: float = DISCOVER_TIMEOUT):
-    """Try to open a TCP connection to host:port and return latency info."""
-    try:
-        loop = asyncio.get_event_loop()
-        start = loop.time()
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=timeout
-        )
-        writer.close()
-        await writer.wait_closed()
-        latency = (loop.time() - start) * 1000
-        return {"ip": host, "port": port, "latency_ms": round(latency, 1), "reachable": True}
-    except Exception:
-        return None
-
-
-def _get_default_gateway():
-    """Return the default gateway IP (WSL2 host or router)."""
-    try:
-        result = subprocess.run(
-            ['ip', 'route', 'show'], capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', result.stdout)
-            if match:
-                return match.group(1)
-    except Exception:
-        pass
-    return None
-
-
-def _get_local_subnet():
-    """Return the LAN subnet prefix of the primary interface, if any."""
-    # 1. Try psutil for any RFC1918 local subnet
-    try:
-        import psutil
-        addrs = psutil.net_if_addrs()
-        for iface, addr_list in addrs.items():
-            for addr in addr_list:
-                if addr.family == socket.AF_INET:
-                    ip = addr.address
-                    # Prefer 192.168.x.x, also accept 10.x.x.x or 172.16-31.x.x
-                    if ip.startswith("192.168.") or ip.startswith("10."):
-                        parts = ip.split('.')
-                        return f"{parts[0]}.{parts[1]}.{parts[2]}"
-                    if ip.startswith("172."):
-                        second = int(ip.split('.')[1])
-                        if 16 <= second <= 31:
-                            parts = ip.split('.')
-                            return f"{parts[0]}.{parts[1]}.{parts[2]}"
-    except Exception:
-        pass
-
-    # 2. Fallback: parse 'ip route' for RFC1918 source addresses
-    try:
-        result = subprocess.run(
-            ['ip', 'route', 'show'], capture_output=True, text=True
-        )
-        for line in result.stdout.splitlines():
-            match = re.search(r'src\s+(\d+\.\d+\.\d+\.\d+)', line)
-            if match:
-                ip = match.group(1)
-                if ip.startswith("192.168.") or ip.startswith("10."):
-                    parts = ip.split('.')
-                    return f"{parts[0]}.{parts[1]}.{parts[2]}"
-                if ip.startswith("172."):
-                    second = int(ip.split('.')[1])
-                    if 16 <= second <= 31:
-                        parts = ip.split('.')
-                        return f"{parts[0]}.{parts[1]}.{parts[2]}"
-    except Exception:
-        pass
-
-    # 3. WSL fallback: use ipconfig.exe to find Windows LAN subnet
-    try:
-        result = subprocess.run(['ipconfig.exe'], capture_output=True)
-        if result.returncode == 0:
-            output = result.stdout
-            try:
-                text = output.decode('gbk')
-            except Exception:
-                text = output.decode('utf-8', errors='ignore')
-            for line in text.splitlines():
-                if "IPv4" in line or "IP Address" in line:
-                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
-                    if match:
-                        ip = match.group(1)
-                        if ip.startswith("192.168.") or ip.startswith("10."):
-                            parts = ip.split('.')
-                            return f"{parts[0]}.{parts[1]}.{parts[2]}"
-                        if ip.startswith("172."):
-                            second = int(ip.split('.')[1])
-                            if 16 <= second <= 31:
-                                parts = ip.split('.')
-                                return f"{parts[0]}.{parts[1]}.{parts[2]}"
-    except Exception:
-        pass
-
-    return None
-
-
-def _get_wsl_host_ip():
-    """Get the WSL2 Windows host IP from /etc/resolv.conf (nameserver)."""
-    try:
-        with open('/etc/resolv.conf', 'r') as f:
-            content = f.read()
-            match = re.search(r'nameserver\s+(\d+\.\d+\.\d+\.\d+)', content)
-            if match:
-                return match.group(1)
-    except Exception:
-        pass
-    return None
-
-
-async def _discover_simulator_hosts(port: int = SIMULATOR_DEFAULT_PORT):
-    """Scan common addresses and the local /24 subnet for open simulator ports."""
-    candidates = []
-
-    # 1. Always check localhost first
-    candidates.append("127.0.0.1")
-
-    # 2. Check default gateway and its /24 subnet
-    gw = _get_default_gateway()
-    if gw and gw not in candidates:
-        candidates.append(gw)
-        # Also scan the gateway's /24 subnet (e.g. 172.21.48.x in WSL2)
-        gw_parts = gw.split('.')
-        if len(gw_parts) == 4:
-            gw_subnet = f"{gw_parts[0]}.{gw_parts[1]}.{gw_parts[2]}"
-            for i in range(1, 255):
-                ip = f"{gw_subnet}.{i}"
-                if ip not in candidates:
-                    candidates.append(ip)
-
-    # 3. WSL2 /etc/resolv.conf nameserver (another way to reach Windows host)
-    wsl_host = _get_wsl_host_ip()
-    if wsl_host and wsl_host not in candidates:
-        candidates.append(wsl_host)
-
-    # 4. If we have a LAN subnet, scan it
-    subnet = _get_local_subnet()
-    if subnet:
-        for i in range(1, 255):
-            ip = f"{subnet}.{i}"
-            if ip not in candidates:
-                candidates.append(ip)
-
-    # 5. Fallback: scan common home router subnets when no LAN subnet found
-    #    (e.g. WSL where ipconfig.exe is unavailable)
-    if not subnet:
-        common_subnets = ["192.168.0", "192.168.1", "192.168.3", "192.168.31", "192.168.50"]
-        for cs in common_subnets:
-            for i in range(1, 255):
-                ip = f"{cs}.{i}"
-                if ip not in candidates:
-                    candidates.append(ip)
-            if len(candidates) >= 500:
-                break
-
-    # 6. Cap total candidates to avoid excessive scanning
-    if len(candidates) > 500:
-        candidates = candidates[:500]
-
-    semaphore = asyncio.Semaphore(DISCOVER_MAX_CONCURRENT)
-
-    async def _probe(host):
-        async with semaphore:
-            return await _check_host_port(host, port)
-
-    tasks = [_probe(host) for host in candidates]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    found = []
-    for r in results:
-        if isinstance(r, dict) and r.get("reachable"):
-            found.append(r)
-
-    # Sort by latency (fastest first)
-    found.sort(key=lambda x: x["latency_ms"])
-    return found, len(candidates)
 
 
 @router.post("/discover_simulator")
 async def discover_simulator(request: SimulatorDiscoverRequest):
     """Scan the local network for DonkeySim instances listening on port 9091."""
     try:
-        found, scanned = await _discover_simulator_hosts()
+        found, scanned = await discover_hosts(port=SIMULATOR_DEFAULT_PORT)
         message = ""
         if not found:
             message = f"扫描了 {scanned} 个地址，未在局域网中发现 DonkeySim。请确认模拟器已启动（donkey sim --path <sim.exe>），并确保它监听所有网络接口（0.0.0.0:9091）。"
