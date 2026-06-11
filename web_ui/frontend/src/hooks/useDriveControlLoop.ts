@@ -4,7 +4,7 @@ export interface DriveControlPayload extends Record<string, unknown> {
   angle: number;
   throttle: number;
   drive_mode: string;
-  recording: boolean;
+  recording?: boolean;
 }
 
 interface UseDriveControlLoopOptions {

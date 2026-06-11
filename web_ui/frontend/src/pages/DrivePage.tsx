@@ -33,6 +33,8 @@ export const DrivePage: React.FC = () => {
   const [recording, setRecording] = useState(false);
   const [recordStartTime, setRecordStartTime] = useState<number | null>(null);
   const [recordDuration, setRecordDuration] = useState(0);
+  const [recordingLock, setRecordingLock] = useState(false);
+  const recordingLockRef = useRef(false);
   const [currentModel] = useState<string>('未加载');
   const [inputSource, setInputSource] = useState<InputSource>('joystick');
   const [videoLatencyMs, setVideoLatencyMs] = useState(0);
@@ -98,8 +100,8 @@ export const DrivePage: React.FC = () => {
         t = gyroRef.current.throttle;
         break;
     }
-    return { angle: a, throttle: t, drive_mode: mode, recording };
-  }, [mode, recording]);
+    return { angle: a, throttle: t, drive_mode: mode };
+  }, [mode]);
 
   // 控制循环：60Hz 持续发送完整控制状态，避免视频链路影响控制输出。
   useDriveControlLoop({
@@ -157,6 +159,14 @@ export const DrivePage: React.FC = () => {
   }, [handleModeChange, mode]);
 
   const toggleRecording = useCallback(() => {
+    if (recordingLockRef.current) return;
+    recordingLockRef.current = true;
+    setRecordingLock(true);
+    window.setTimeout(() => {
+      recordingLockRef.current = false;
+      setRecordingLock(false);
+    }, 800);
+
     const next = !recording;
     setRecording(next);
     send({ recording: next });
@@ -197,13 +207,13 @@ export const DrivePage: React.FC = () => {
           <DriveModeSelector value={mode} onChange={handleModeChange} disabled={!carState.online} />
           <button
             onClick={toggleRecording}
-            disabled={!carState.online}
+            disabled={!carState.online || recordingLock}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
               ${recording
                 ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                 : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700'
               }
-              ${!carState.online ? 'opacity-50 cursor-not-allowed' : ''}
+              ${!carState.online || recordingLock ? 'opacity-50 cursor-not-allowed' : ''}
             `}
           >
             {recording ? (
@@ -211,7 +221,7 @@ export const DrivePage: React.FC = () => {
             ) : (
               <Circle className="w-3.5 h-3.5" />
             )}
-            {recording ? `录制中 ${formatDuration(recordDuration)}` : '开始录制'}
+            {recording ? `录制中 ${formatDuration(recordDuration)}` : '录制'}
           </button>
           <span className="text-xs text-zinc-500">
             {connected ? 'WebSocket 已连接' : 'WebSocket 连接中...'}

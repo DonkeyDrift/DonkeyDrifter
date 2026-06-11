@@ -10,7 +10,7 @@ const Probe: React.FC<{
   useDriveControlLoop({
     connected,
     send,
-    getControl: () => ({ angle: 0, throttle: 0, drive_mode: 'user', recording: false }),
+    getControl: () => ({ angle: 0, throttle: 0, drive_mode: 'user' }),
   });
   return null;
 };
@@ -25,7 +25,7 @@ describe('useDriveControlLoop', () => {
 
     expect(send.mock.calls.length).toBeGreaterThanOrEqual(58);
     expect(send.mock.calls.length).toBeLessThanOrEqual(62);
-    expect(send).toHaveBeenLastCalledWith({ angle: 0, throttle: 0, drive_mode: 'user', recording: false });
+    expect(send).toHaveBeenLastCalledWith({ angle: 0, throttle: 0, drive_mode: 'user' });
     vi.useRealTimers();
   });
 

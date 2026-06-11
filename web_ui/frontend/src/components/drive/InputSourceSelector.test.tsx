@@ -59,14 +59,27 @@ describe('InputSourceSelector', () => {
     expect(indicator).toBeInTheDocument();
   });
 
+  it('鼠标悬浮在抽屉选项上时保持展开', () => {
+    render(<InputSourceSelector value="joystick" onChange={vi.fn()} />);
+
+    const container = screen.getByTestId('input-source-selector');
+    fireEvent.mouseEnter(container);
+
+    const keyboardButton = screen.getByRole('button', { name: '键盘' });
+    fireEvent.mouseEnter(keyboardButton);
+
+    expect(keyboardButton).toBeInTheDocument();
+    expect(screen.getByText('手柄')).toBeInTheDocument();
+  });
+
   it('鼠标移出后收起抽屉', async () => {
     render(<InputSourceSelector value="joystick" onChange={vi.fn()} />);
 
-    const trigger = screen.getByText('摇杆');
-    fireEvent.mouseEnter(trigger);
+    const container = screen.getByTestId('input-source-selector');
+    fireEvent.mouseEnter(container);
     expect(screen.getByText('键盘')).toBeInTheDocument();
 
-    fireEvent.mouseLeave(trigger);
+    fireEvent.mouseLeave(container);
 
     await waitFor(() => {
       expect(screen.queryByText('键盘')).not.toBeInTheDocument();

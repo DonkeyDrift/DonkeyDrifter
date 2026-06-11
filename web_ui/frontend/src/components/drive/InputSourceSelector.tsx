@@ -55,6 +55,7 @@ export const InputSourceSelector: React.FC<InputSourceSelectorProps> = ({
   return (
     <div
       ref={containerRef}
+      data-testid="input-source-selector"
       className={`relative inline-block ${className}`}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
@@ -74,36 +75,38 @@ export const InputSourceSelector: React.FC<InputSourceSelectorProps> = ({
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-900 shadow-[0_8px_24px_rgba(0,0,0,0.25)] overflow-hidden z-50">
-          {others.map((src) => {
-            const disabled = isDisabled(src.value);
-            return (
-              <button
-                key={src.value}
-                onClick={() => handleSelect(src.value)}
-                disabled={disabled}
-                className={`w-full px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors text-left
-                  ${disabled
-                    ? 'text-zinc-600 cursor-not-allowed'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+        <div className="absolute top-full left-0 w-full pt-1 z-50">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 shadow-[0_8px_24px_rgba(0,0,0,0.25)] overflow-hidden">
+            {others.map((src) => {
+              const disabled = isDisabled(src.value);
+              return (
+                <button
+                  key={src.value}
+                  onClick={() => handleSelect(src.value)}
+                  disabled={disabled}
+                  className={`w-full px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors text-left
+                    ${disabled
+                      ? 'text-zinc-600 cursor-not-allowed'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }
+                  `}
+                  title={
+                    src.value === 'gamepad'
+                      ? gamepadConnected ? '已连接手柄' : '未检测到手柄'
+                      : src.value === 'gyro'
+                        ? gyroAvailable ? '设备支持陀螺仪' : '设备不支持陀螺仪'
+                        : src.label
                   }
-                `}
-                title={
-                  src.value === 'gamepad'
-                    ? gamepadConnected ? '已连接手柄' : '未检测到手柄'
-                    : src.value === 'gyro'
-                      ? gyroAvailable ? '设备支持陀螺仪' : '设备不支持陀螺仪'
-                      : src.label
-                }
-              >
-                {src.icon}
-                <span>{src.label}</span>
-                {src.value === 'gamepad' && gamepadConnected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                )}
-              </button>
-            );
-          })}
+                >
+                  {src.icon}
+                  <span>{src.label}</span>
+                  {src.value === 'gamepad' && gamepadConnected && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
