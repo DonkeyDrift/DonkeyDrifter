@@ -1285,7 +1285,7 @@ class DriveCommand(DonkeyCommand):
     def get_car_command_line(self):
         return [sys.executable, "manage.py", "drive"]
 
-    def choose_available_backend_port(self, preferred_port=8000):
+    def choose_available_backend_port(self, preferred_port=8100):
         port = preferred_port
         while port < preferred_port + 100:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -1297,7 +1297,7 @@ class DriveCommand(DonkeyCommand):
                     port += 1
         return preferred_port
 
-    def get_drive_api_server_url(self, backend_port=8000):
+    def get_drive_api_server_url(self, backend_port=8100):
         server_url = os.environ.get("DRIVE_API_SERVER_URL")
         if server_url:
             return server_url
