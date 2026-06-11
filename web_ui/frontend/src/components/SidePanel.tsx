@@ -20,7 +20,36 @@ export const SidePanel: React.FC = () => {
 
   return (
     <>
-      {/* Shared Drawer Container — width only changes when opening/closing, not when switching tabs */}
+      {/* Floating Trigger Buttons — follow drawer together */}
+      <div className={`fixed top-16 z-50 flex flex-col gap-1 transition-all duration-300 ease-in-out ${anyOpen ? 'left-96' : 'left-0'}`}>
+        {/* Loaders Button */}
+        <button
+          onClick={toggleLoaders}
+          className={`bg-zinc-900 border border-zinc-800 p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center group ${
+            isLoadersOpen ? 'text-cyan-400 border-cyan-800/60' : 'text-zinc-400 hover:text-white'
+          } ${anyOpen ? 'border-l' : 'border-l-0'}`}
+        >
+          <FolderOpen className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isLoadersOpen ? 'text-cyan-400' : 'text-zinc-400 group-hover:text-white'}`} />
+          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2'}`}>
+            Loaders
+          </span>
+        </button>
+
+        {/* Connectors Button */}
+        <button
+          onClick={toggleConnectors}
+          className={`bg-zinc-900 border border-zinc-800 p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center group ${
+            isConnectorsOpen ? 'text-cyan-400 border-cyan-800/60' : 'text-zinc-400 hover:text-white'
+          } ${anyOpen ? 'border-l' : 'border-l-0'}`}
+        >
+          <Plug className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isConnectorsOpen ? 'text-cyan-400' : 'text-zinc-400 group-hover:text-white'}`} />
+          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2'}`}>
+            Connectors
+          </span>
+        </button>
+      </div>
+
+      {/* Loaders Drawer */}
       <div
         className={`fixed left-0 top-16 h-[calc(100vh-4rem)] z-40 transition-all duration-300 ease-in-out ${
           anyOpen ? 'w-96' : 'w-0'
