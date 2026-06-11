@@ -59,7 +59,36 @@ GYM_CONF = {
     } 
 
 def get_wsl_host_ip():
-    # 尝试 1: 使用 ip route 获取默认网关 (WSL2 中 Windows 主机 IP 就是默认网关)
+    # 尝试 1: 使用 ipconfig.exe 优先获取 Windows 真实局域网 IP (192.168.x.x)
+    try:
+        result = subprocess.run(['ipconfig.exe'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            output = result.stdout
+            try:
+                text = output.decode('gbk')
+            except:
+                text = output.decode('utf-8', errors='ignore')
+
+            ips = []
+            for line in text.splitlines():
+                if "IPv4" in line or "IP Address" in line:
+                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                    if match:
+                        ips.append(match.group(1))
+
+            # 优先返回 192.168.x.x 局域网地址
+            for ip in ips:
+                if ip.startswith("192.168."):
+                    return ip
+
+            # 其次返回其他非回环、非 WSL 虚拟网段地址
+            for ip in ips:
+                if not ip.startswith("127.") and not ip.startswith("172.") and not ip.startswith("10.255."):
+                    return ip
+    except Exception:
+        pass
+
+    # 尝试 2: 使用 ip route 获取默认网关 (WSL2 中 Windows 主机虚拟网卡 IP)
     try:
         result = subprocess.run(['ip', 'route', 'show'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
@@ -69,37 +98,9 @@ def get_wsl_host_ip():
     except Exception:
         pass
 
-    # 尝试 2: 使用 ipconfig.exe (能获取 Windows 局域网 IP)
-    try:
-        result = subprocess.run(['ipconfig.exe'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode == 0:
-            output = result.stdout
-            try:
-                text = output.decode('gbk')
-            except:
-                text = output.decode('utf-8', errors='ignore')
-            
-            ips = []
-            for line in text.splitlines():
-                if "IPv4" in line or "IP Address" in line:
-                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
-                    if match:
-                        ips.append(match.group(1))
-            
-            for ip in ips:
-                if ip.startswith("192.168."):
-                    return ip
-            
-            for ip in ips:
-                if not ip.startswith("127.") and not ip.startswith("172.") and not ip.startswith("10.255."):
-                    return ip
-    except Exception:
-        pass
-    
     return "127.0.0.1"
 
-# SIM_HOST = get_wsl_host_ip()
-SIM_HOST = "192.168.3.96"
+SIM_HOST = get_wsl_host_ip()
 #SIM_HOST = "127.0.0.1"  # 模拟器主机IP地址（默认：127.0.0.1-代表本机，若不在同一系统，则需指定模拟器主机IP地址）
 WEB_CONTROL_PORT = 8887  # 控制网页的端口号（默认：8887）
 USE_JOYSTICK_AS_DEFAULT = False  # 是否将摇杆作为默认输入设备（默认：否）

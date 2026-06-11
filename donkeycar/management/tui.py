@@ -356,6 +356,21 @@ def _archive_member_stats(tar: tarfile.TarFile) -> Tuple[int, int]:
             total_size += member.size
     return total_files, total_size
 
+
+def _restore_terminal():
+    """强制恢复终端回显和规范模式，防止子进程或信号中断导致终端状态丢失。"""
+    if sys.platform == "win32":
+        return
+    try:
+        import termios
+        fd = sys.stdin.fileno()
+        attr = termios.tcgetattr(fd)
+        attr[3] |= termios.ECHO | termios.ICANON
+        termios.tcsetattr(fd, termios.TCSAFLUSH, attr)
+    except Exception:
+        pass
+
+
 # -----------------------------------------------------------------------------
 # 命令定义基类
 # -----------------------------------------------------------------------------
@@ -387,97 +402,102 @@ class DonkeyCommand:
         pass
 
     def execute(self):
-        console.clear()
-        console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
-        
-        # 检查是否需要有效的 mycar 目录
-        if self.requires_mycar_folder and not is_valid_mycar_folder():
-            console.print(Panel(
-                "[bold red]错误：当前目录不是有效的 mycar 项目文件夹！[/bold red]\n\n"
-                "缺少关键文件：manage.py 或 myconfig.py\n"
-                "请先执行 [bold yellow]createcar[/bold yellow] 命令创建新的车辆项目。",
-                title="环境检查失败",
-                border_style="red"
-            ))
-            Prompt.ask("按回车键返回菜单...")
-            return
-
-        last_params = self.history_mgr.get_last_params(self.name)
-        current_params = {}
-
-        # 1. 收集参数
-        for opt in self.options:
-            default_val = last_params.get(opt.name, opt.default)
-            prompt_text = f"{opt.prompt_text}"
-            if opt.help_text:
-                console.print(f"[dim]{opt.help_text}[/dim]")
+        try:
+            console.clear()
+            console.print(Panel(f"[bold orange1]{self.description}[/bold orange1]", title=f"配置 {self.name}"))
             
-            while True:
-                val = Prompt.ask(prompt_text, default=str(default_val) if default_val is not None else None)
-                if not val and opt.required and default_val is None:
-                    console.print("[red]此项为必填项[/red]")
-                    continue
-                
-                if opt.validator and val:
-                    if not opt.validator(val):
-                        console.print(f"[red]输入无效，请重新输入[/red]")
+            # 检查是否需要有效的 mycar 目录
+            if self.requires_mycar_folder and not is_valid_mycar_folder():
+                console.print(Panel(
+                    "[bold red]错误：当前目录不是有效的 mycar 项目文件夹！[/bold red]\n\n"
+                    "缺少关键文件：manage.py 或 myconfig.py\n"
+                    "请先执行 [bold yellow]createcar[/bold yellow] 命令创建新的车辆项目。",
+                    title="环境检查失败",
+                    border_style="red"
+                ))
+                Prompt.ask("按回车键返回菜单...")
+                return
+
+            last_params = self.history_mgr.get_last_params(self.name)
+            current_params = {}
+
+            # 1. 收集参数
+            for opt in self.options:
+                default_val = last_params.get(opt.name, opt.default)
+                prompt_text = f"{opt.prompt_text}"
+                if opt.help_text:
+                    console.print(f"[dim]{opt.help_text}[/dim]")
+            
+                while True:
+                    val = Prompt.ask(prompt_text, default=str(default_val) if default_val is not None else None)
+                    if not val and opt.required and default_val is None:
+                        console.print("[red]此项为必填项[/red]")
                         continue
                 
-                current_params[opt.name] = val
-                break
+                    if opt.validator and val:
+                        if not opt.validator(val):
+                            console.print(f"[red]输入无效，请重新输入[/red]")
+                            continue
+                
+                    current_params[opt.name] = val
+                    break
 
-        # 2. 生成预览
-        cmd_list = self.get_command_line(current_params)
-        cmd_str = " ".join(cmd_list)
+            # 2. 生成预览
+            cmd_list = self.get_command_line(current_params)
+            cmd_str = " ".join(cmd_list)
         
-        console.print("\n[bold yellow]命令预览:[/bold yellow]")
-        console.print(Panel(f"[green]{cmd_str}[/green]", title="Shell Command"))
+            console.print("\n[bold yellow]命令预览:[/bold yellow]")
+            console.print(Panel(f"[green]{cmd_str}[/green]", title="Shell Command"))
 
-        # 3. 确认执行
-        console.print("([green]y[/green]:执行 [red]n[/red]:取消 [orange1]c[/orange1]:复制命令)")
-        action = Prompt.ask(
-            "请选择操作", 
-            choices=["y", "n", "c", "copy"], 
-            default="y",
-            show_choices=False
-        )
+            # 3. 确认执行
+            console.print("([green]y[/green]:执行 [red]n[/red]:取消 [orange1]c[/orange1]:复制命令)")
+            action = Prompt.ask(
+                "请选择操作", 
+                choices=["y", "n", "c", "copy"], 
+                default="y",
+                show_choices=False
+            )
 
-        if action == "copy":
-            import pyperclip
+            if action == "copy":
+                import pyperclip
+                try:
+                    pyperclip.copy(cmd_str)
+                    console.print("[green]✓ 命令已复制到剪贴板[/green]")
+                except ImportError:
+                    console.print("[red]✗ 未安装 pyperclip，无法复制。请手动复制上方命令。[/red]")
+                Prompt.ask("按回车键返回...")
+                return
+
+            if action != "y":
+                console.print("[yellow]操作已取消[/yellow]")
+                time.sleep(1)
+                return
+
+            # 4. 执行并记录
+            self.history_mgr.update_last_params(self.name, current_params)
+            self.history_mgr.add_command_log(cmd_str)
+        
+            console.print(f"\n[bold cyan]>> [{datetime.now().strftime('%H:%M:%S')}] 开始执行...[/bold cyan]")
             try:
-                pyperclip.copy(cmd_str)
-                console.print("[green]✓ 命令已复制到剪贴板[/green]")
-            except ImportError:
-                console.print("[red]✗ 未安装 pyperclip，无法复制。请手动复制上方命令。[/red]")
-            Prompt.ask("按回车键返回...")
-            return
-
-        if action != "y":
-            console.print("[yellow]操作已取消[/yellow]")
-            time.sleep(1)
-            return
-
-        # 4. 执行并记录
-        self.history_mgr.update_last_params(self.name, current_params)
-        self.history_mgr.add_command_log(cmd_str)
-        
-        console.print(f"\n[bold cyan]>> [{datetime.now().strftime('%H:%M:%S')}] 开始执行...[/bold cyan]")
-        try:
-            # 让子进程继承真实终端 stdio，避免 Rich/TUI 的包装流缺少 fileno。
-            process = subprocess.Popen(cmd_list)
-            process.wait()
+                # 让子进程继承真实终端 stdio，避免 Rich/TUI 的包装流缺少 fileno。
+                process = subprocess.Popen(cmd_list)
+                process.wait()
             
-            if process.returncode == 0:
-                console.print(f"\n[bold green]✓ 执行成功 (Exit Code: 0)[/bold green]")
-                self.on_success(current_params)
-            else:
-                console.print(f"\n[bold red]✗ 执行失败 (Exit Code: {process.returncode})[/bold red]")
-                console.print(f"[dim]请检查上方错误日志[/dim]")
+                if process.returncode == 0:
+                    console.print(f"\n[bold green]✓ 执行成功 (Exit Code: 0)[/bold green]")
+                    self.on_success(current_params)
+                else:
+                    console.print(f"\n[bold red]✗ 执行失败 (Exit Code: {process.returncode})[/bold red]")
+                    console.print(f"[dim]请检查上方错误日志[/dim]")
 
-        except Exception as e:
-            console.print(f"\n[bold red]✗ 发生异常: {e}[/bold red]")
+            except KeyboardInterrupt:
+                console.print("\n[yellow]操作已被用户中断[/yellow]")
+            except Exception as e:
+                console.print(f"\n[bold red]✗ 发生异常: {e}[/bold red]")
         
-        Prompt.ask("\n按回车键返回菜单...")
+            Prompt.ask("\n按回车键返回菜单...")
+        finally:
+            _restore_terminal()
 
 # -----------------------------------------------------------------------------
 # 具体命令实现
@@ -1220,7 +1240,12 @@ class DriveCommand(DonkeyCommand):
         processes = []
         try:
             creation_flags = self.get_creation_flags()
-            web_process = subprocess.Popen(web_cmd, creationflags=creation_flags)
+            # 将子进程的 stdin 重定向，避免它们干扰父进程终端（如修改回显、cbreak 等）
+            web_process = subprocess.Popen(
+                web_cmd,
+                stdin=subprocess.DEVNULL,
+                creationflags=creation_flags
+            )
             processes.append(web_process)
 
             car_env = os.environ.copy()
@@ -1229,6 +1254,7 @@ class DriveCommand(DonkeyCommand):
                 car_cmd,
                 cwd=car_path,
                 env=car_env,
+                stdin=subprocess.DEVNULL,
                 creationflags=creation_flags
             )
             processes.append(car_process)
@@ -1241,6 +1267,8 @@ class DriveCommand(DonkeyCommand):
         except Exception as e:
             console.print(f"\n[bold red]✗ 发生异常: {e}[/bold red]")
             self.stop_processes(processes)
+        finally:
+            _restore_terminal()
 
         Prompt.ask("\n按回车键返回菜单...")
 
@@ -1320,21 +1348,23 @@ class DriveCommand(DonkeyCommand):
 
         def is_esc_pressed_unix():
             try:
-                if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-                    return sys.stdin.read(1) == '\x1b'
+                fd = sys.stdin.fileno()
+                if select.select([fd], [], [], 0) == ([fd], [], []):
+                    # 在 cbreak 模式下必须使用 os.read，避免 Python stdin 缓冲层干扰
+                    return os.read(fd, 1) == b'\x1b'
             except Exception:
                 pass
             return False
 
         old_settings = None
-        if sys.platform != "win32":
+        if sys.platform != "win32" and sys.stdin.isatty():
             try:
                 import termios
                 import tty
                 old_settings = termios.tcgetattr(sys.stdin)
                 tty.setcbreak(sys.stdin.fileno())
             except Exception:
-                pass
+                old_settings = None
 
         car_exit_reported = False
         try:
@@ -1351,9 +1381,20 @@ class DriveCommand(DonkeyCommand):
 
                 time.sleep(0.1)
         finally:
-            if old_settings:
-                import termios
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+            if old_settings is not None:
+                try:
+                    import termios
+                    import signal
+                    # 临时屏蔽 SIGINT，防止 tcsetattr 被信号中断导致终端无法恢复
+                    prev_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+                    try:
+                        termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
+                    finally:
+                        signal.signal(signal.SIGINT, prev_handler)
+                except Exception:
+                    pass
+            # 兜底：显式恢复 ECHO 和 ICANON，避免旧设置恢复失败时终端仍处于无回显状态
+            _restore_terminal()
 
 class DonkeyUICommand(DonkeyCommand):
     def __init__(self):
@@ -1390,6 +1431,7 @@ class MenuSystem:
 
     def show_main_menu(self):
         while True:
+            _restore_terminal()
             console.clear()
             self._print_header()
             
@@ -1474,6 +1516,7 @@ def main():
         app = MenuSystem()
         app.show_main_menu()
     except KeyboardInterrupt:
+        _restore_terminal()
         console.print("\n[yellow]程序已中断[/yellow]")
         sys.exit(0)
 

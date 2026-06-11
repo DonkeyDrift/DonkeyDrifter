@@ -6,6 +6,10 @@ import logging
 import tkinter as tk
 from tkinter import filedialog
 from starlette.concurrency import run_in_threadpool
+import asyncio
+import socket
+import subprocess
+import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -22,12 +26,27 @@ TRAINING_CONFIG_KEYS = [
     'PRUNE_VAL_LOSS_DEGRADATION_LIMIT',
 ]
 
+SIMULATOR_CONFIG_KEYS = [
+    'SIM_HOST',
+    'DONKEY_GYM',
+    'DONKEY_SIM_PATH',
+    'DONKEY_GYM_ENV_NAME',
+    'SIM_ARTIFICIAL_LATENCY',
+]
+
 class ConfigLoadRequest(BaseModel):
     path: str
 
 class TrainingConfigSaveRequest(BaseModel):
     path: str
     enabled: bool
+    config: dict
+
+class SimulatorDiscoverRequest(BaseModel):
+    car_path: str | None = None
+
+class SimulatorSaveRequest(BaseModel):
+    path: str
     config: dict
 
 def _open_directory_dialog():
@@ -196,3 +215,167 @@ async def save_training_config(request: TrainingConfigSaveRequest):
             f.write('\n')
 
     return {"status": True, "message": f"Training config saved to {myconfig_path}"}
+
+
+# ---------------------------------------------------------------------------
+# Simulator discovery helpers
+# ---------------------------------------------------------------------------
+
+SIMULATOR_DEFAULT_PORT = 9091
+DISCOVER_TIMEOUT = 0.4          # seconds per host
+DISCOVER_MAX_CONCURRENT = 64    # concurrent connection attempts
+
+
+async def _check_host_port(host: str, port: int, timeout: float = DISCOVER_TIMEOUT):
+    """Try to open a TCP connection to host:port and return latency info."""
+    try:
+        loop = asyncio.get_event_loop()
+        start = loop.time()
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=timeout
+        )
+        writer.close()
+        await writer.wait_closed()
+        latency = (loop.time() - start) * 1000
+        return {"ip": host, "port": port, "latency_ms": round(latency, 1), "reachable": True}
+    except Exception:
+        return None
+
+
+def _get_default_gateway():
+    """Return the default gateway IP (WSL2 host or router)."""
+    try:
+        result = subprocess.run(
+            ['ip', 'route', 'show'], capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', result.stdout)
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def _get_local_subnet():
+    """Return the 192.168.x prefix of the primary LAN interface, if any."""
+    try:
+        import psutil
+        addrs = psutil.net_if_addrs()
+        for iface, addr_list in addrs.items():
+            for addr in addr_list:
+                if addr.family == socket.AF_INET and addr.address.startswith("192.168."):
+                    parts = addr.address.split('.')
+                    return f"{parts[0]}.{parts[1]}.{parts[2]}"
+    except Exception:
+        pass
+
+    # Fallback: parse 'ip route' for a 192.168.x.x source address
+    try:
+        result = subprocess.run(
+            ['ip', 'route', 'show'], capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            match = re.search(r'src\s+(\d+\.\d+\.\d+\.\d+)', line)
+            if match:
+                ip = match.group(1)
+                if ip.startswith("192.168."):
+                    parts = ip.split('.')
+                    return f"{parts[0]}.{parts[1]}.{parts[2]}"
+    except Exception:
+        pass
+
+    return None
+
+
+async def _discover_simulator_hosts(port: int = SIMULATOR_DEFAULT_PORT):
+    """Scan common addresses and the local /24 subnet for open simulator ports."""
+    candidates = []
+
+    # 1. Always check localhost first
+    candidates.append("127.0.0.1")
+
+    # 2. Check default gateway (WSL2 host IP)
+    gw = _get_default_gateway()
+    if gw and gw not in candidates:
+        candidates.append(gw)
+
+    # 3. If we have a 192.168.x subnet, scan it (exclude .0 and .255)
+    subnet = _get_local_subnet()
+    if subnet:
+        for i in range(1, 255):
+            ip = f"{subnet}.{i}"
+            if ip not in candidates:
+                candidates.append(ip)
+
+    # 4. Cap total candidates to avoid excessive scanning
+    if len(candidates) > 300:
+        candidates = candidates[:300]
+
+    semaphore = asyncio.Semaphore(DISCOVER_MAX_CONCURRENT)
+
+    async def _probe(host):
+        async with semaphore:
+            return await _check_host_port(host, port)
+
+    tasks = [_probe(host) for host in candidates]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    found = []
+    for r in results:
+        if isinstance(r, dict) and r.get("reachable"):
+            found.append(r)
+
+    # Sort by latency (fastest first)
+    found.sort(key=lambda x: x["latency_ms"])
+    return found
+
+
+@router.post("/discover_simulator")
+async def discover_simulator(request: SimulatorDiscoverRequest):
+    """Scan the local network for DonkeySim instances listening on port 9091."""
+    try:
+        found = await _discover_simulator_hosts()
+        return {"status": True, "found": found, "count": len(found)}
+    except Exception as e:
+        logger.error(f"Simulator discovery failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/save_simulator")
+async def save_simulator_config(request: SimulatorSaveRequest):
+    """Save simulator-related config keys in myconfig.py."""
+    path = request.path
+    myconfig_path = os.path.join(path, 'myconfig.py')
+
+    lines = []
+    if os.path.exists(myconfig_path):
+        with open(myconfig_path, 'r') as f:
+            lines = f.read().splitlines()
+
+    for key in SIMULATOR_CONFIG_KEYS:
+        if key not in request.config:
+            continue
+        val = request.config[key]
+        if isinstance(val, str):
+            val_str = f'"{val}"'
+        else:
+            val_str = str(val)
+
+        new_line = f'{key} = {val_str}'
+        found = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith(key) and '=' in stripped:
+                lines[i] = new_line
+                found = True
+                break
+        if not found:
+            lines.append(new_line)
+
+    with open(myconfig_path, 'w') as f:
+        f.write('\n'.join(lines))
+        if lines and not lines[-1].endswith('\n'):
+            f.write('\n')
+
+    return {"status": True, "message": f"Simulator config saved to {myconfig_path}"}
