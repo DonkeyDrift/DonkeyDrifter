@@ -1,7 +1,7 @@
-<!-- From: /home/dkc/projects/DonkeyDrifter/AGENTS.md -->
+<!-- AGENTS.md for DonkeyDrifter -->
 # DonkeyDrifter 智能体指南
 
-本文件为 AI 编程智能体提供在 DonkeyDrifter 仓库中高效工作所需的必要上下文。该项目是一个源自 Donkeycar 的独立 Python 自动驾驶/漂移机器人平台。以下所有事实均取自工作树中的实际文件（当前分支 `v1.6.0-UX`，版本 `0.1.1`）。
+本文件为 AI 编程智能体提供在 DonkeyDrifter 仓库中高效工作所需的必要上下文。该项目是一个源自 Donkeycar 的独立 Python 自动驾驶/漂移机器人平台。以下所有事实均取自工作树中的实际文件（当前版本 `0.1.1`，分支 `v1.6.0-UX`）。
 
 ## 项目概览
 
@@ -21,7 +21,8 @@ DonkeyDrifter 不隶属于 Donkeycar 维护者，也不受其赞助或认可。
 ## 仓库布局
 
 ```text
-donkeydrifter/       # 公共别名包，将导入转发到 donkeycar/
+donkeydrifter/       # 公共别名包，通过 sys.meta_path 将导入转发到 donkeycar/
+  __init__.py        # 导入别名层，暴露 donkeycar 的所有公开符号
 donkeycar/           # 当前实现包 + 遗留兼容性命名空间
   __init__.py        # 强制要求 Python >=3.11，暴露 Vehicle、Memory、load_config
   _version.py        # __version__ = '0.1.1'
@@ -29,9 +30,9 @@ donkeycar/           # 当前实现包 + 遗留兼容性命名空间
   memory.py          # 部件间通信的键/值总线
   config.py          # 配置加载器
   parts/             # 59+ 硬件/算法部件（摄像头、控制器、keras、pytorch、tub_v2、IMU、GPS、drive_api_bridge 等）
-  pipeline/          # 训练流水线、数据增强、序列处理、数据库
+  pipeline/          # 训练流水线、数据增强、序列处理、数据库、类型定义
   management/        # CLI 工具和 UI（base.py、tui.py、train_local.py、train_online.py、ui/、tub_web/）
-  templates/         # `donkey createcar` 使用的车辆应用模板（basic、complete、cv_control、path_follow、simulator、arduino_drive 等）
+  templates/         # `donkey createcar` 使用的车辆应用模板和默认配置（basic、complete、cv_control、path_follow、simulator、arduino_drive 等）
   tests/             # 核心单元/集成测试（40+ 测试文件）
   utilities/         # 辅助工具和 TrackSpeedPlanner
   contrib/、gym/     # 社区和模拟器集成
@@ -39,13 +40,32 @@ web_ui/              # 统一的 FastAPI 后端 + React/Vite 前端
   backend/main.py    # FastAPI 应用，挂载 /api/{config,tub,trainer,drive,arena,connector}
   backend/routers/   # FastAPI 路由模块（config.py、tub.py、trainer.py、drive.py、arena.py、connector.py）
   backend/tests/     # FastAPI 契约测试（test_arena.py、test_branding.py、test_config.py、test_connector.py、test_drive.py）
+  backend/requirements.txt  # 后端运行时依赖清单
+  frontend/package.json     # 前端 npm 依赖与脚本
   frontend/src/      # React/TypeScript/Vite SPA（pages/、components/、services/、store/、hooks/）
 parts/               # 额外的顶层部件目录（保留旧版 drive_api_bridge.py，但模板实际导入的是 donkeycar/parts/drive_api_bridge.py）
 tests/               # 根级迁移/集成测试（6 个文件）
 scripts/             # 独立工具（convert、freeze、profile、migrate_model_names、multi_train 等）
 arduino/             # mono_encoder 和 quadrature_encoder 草图
-docs/                # 架构、计划、指南、验证、超能力规范
+docs/                # 架构、计划、指南、验证、工作流规范
 ```
+
+## 关键配置文件
+
+| 文件 | 用途 |
+|---|---|
+| `setup.cfg` | setuptools 元数据：包名 `donkeydrifter`、版本、作者、依赖、`extras_require`（pc/mac/pi/nano/dev/torch/fastapi-backend）、入口脚本 `donkey`、包数据通配符（`*.html`、`*.ini`、`*.txt`、`*.kv`） |
+| `pyproject.toml` | 构建系统声明：`requires = ["setuptools", "wheel"]`，`build-backend = "setuptools.build_meta"` |
+| `Makefile` | 提供 `tests`（pytest）、`package`（python -m build）、`installweb`（donkey installweb）三个目标 |
+| `.coveragerc` | 覆盖率配置：`branch = True`，并忽略 `donkeycar/tests/*` |
+| `donkeycar/tests/pytest.ini` | pytest 配置：忽略 `DeprecationWarning` 和 `FutureWarning`，启用 `log_cli = True` 且级别为 `INFO`，设置 `reruns = 3` |
+| `.github/linters/.python-black` | Black 配置：`line-length = 80`、`target-version = ['py37']`、`skip-string-normalization = true`（供 GitHub Super-Linter 使用） |
+| `web_ui/frontend/package.json` | 前端 npm 包定义：React 18、TypeScript ~5.8、Vite 6、Tailwind CSS 3、Zustand、Chart.js、axios、react-router-dom 7、lucide-react、clsx、tailwind-merge；测试使用 vitest + jsdom + @testing-library/react + Playwright |
+| `web_ui/frontend/tsconfig.json` | TypeScript 配置：`module: ESNext`、`moduleResolution: bundler`、`jsx: react-jsx`、`strict: false`，路径别名 `@/* -> ./src/*` |
+| `web_ui/frontend/tailwind.config.js` | Tailwind 配置：`darkMode: "class"`，内容路径 `./index.html` 和 `./src/**/*` |
+| `web_ui/frontend/eslint.config.js` | ESLint 配置：`typescript-eslint` recommended + `react-hooks` recommended + `react-refresh/only-export-components` warn |
+| `web_ui/backend/requirements.txt` | 后端独立运行时依赖：`fastapi`、`uvicorn`、`python-multipart`、`pandas`、`numpy`、`pillow`、`websockets`、`aiortc`、`av` |
+| `Dockerfile` | **已过时**。基于 `python:3.6`，引用不存在的 `setup.py` 和 `[tf]` extra，面向 Jupyter 而非 FastAPI/React Web UI。不要直接使用，除非明确更新。 |
 
 ## 技术栈
 
@@ -137,17 +157,49 @@ make tests   # 运行 pytest
 
 注册于 `donkeycar/management/base.py`：
 
-- `createcar` – 从模板生成车辆目录。
+- `createcar` – 从模板生成车辆目录（复制 `manage.py`、`config.py`、`myconfig.py`、`train.py`、`calibrate.py` 等）。
 - `update` – 刷新当前目录中的车辆文件。
 - `findcar` – 在本地网络上发现车辆 IP。
 - `calibrate` – PWM/舵机校准。
-- `train` – 训练入口点。
+- `train` – 训练入口点，支持 `--framework tensorflow|pytorch`。
 - `tubplot`、`tubhist`、`makemovie`、`cnnactivations` – 数据可视化。
-- `models` – 模型数据库。
+- `models` – 模型数据库（PilotDatabase）。
 - `ui`、`tui` – GUI/TUI；裸 `donkey` 默认为 TUI。
-- `web` – 启动统一的 FastAPI + React Web UI。
+- `web` – 启动统一的 FastAPI + React Web UI（前后端子进程）。
 - `installweb` – 安装 Web UI 后端/前端依赖。
 - `createjs` – 摇杆创建器。
+
+## 代码组织与运行时架构
+
+### Vehicle / Memory / Part 架构
+
+- `Vehicle`（`donkeycar/vehicle.py`）是主循环容器。
+- 部件通过 `Vehicle.add(part, inputs=[], outputs=[], threaded=False, run_condition=None)` 注册。
+- 每个循环节拍从 `Memory` 读取命名的 `inputs`，调用 `part.run()`（或对于 `threaded=True` 在后台线程中调用 `part.update()`），并将命名的 `outputs` 写回。
+- `Memory`（`donkeycar/memory.py`）是一个简单的键/值总线。部件通过字符串键通信，而非直接引用。
+- 部件使用鸭子类型：实现 `run()`；线程部件还实现 `update()`；清理放在 `shutdown()` 中。避免多个部件并发写入相同的 Memory 键。
+
+### Python 包与 CLI
+
+- `setup.cfg` 定义包名、依赖、extras 和 `donkey` console script。
+- `donkeycar/management/base.py` 承载 `createcar`、`web`、`installweb` 等 CLI 子命令入口。
+- 车辆应用由 `donkey createcar` 从 `donkeycar/templates/` 复制 `manage.py`、`config.py`、`myconfig.py`、`train.py`、`calibrate.py` 等文件生成。
+- 配置通过 `dk.load_config()` 加载用户车目录中的 `config.py` 和 `myconfig.py`。
+
+### Web UI 架构
+
+- 后端入口是 `web_ui/backend/main.py`，通过 `include_router` 挂载 `/api/config`、`/api/tub`、`/api/trainer`、`/api/drive`、`/api/arena`、`/api/connector`。
+- 后端业务辅助模块包括 `trainer_engine.py`、`connector_engine.py`、`remote_car_client.py` 和 `web_online_trainer.py`。
+- 前端入口是 `web_ui/frontend/src/main.tsx` 和 `App.tsx`，页面位于 `src/pages/`，复用组件位于 `src/components/`。
+- 前端 API 客户端集中在 `web_ui/frontend/src/services/api.ts`；URL 拼接、WebSocket 地址和错误消息应复用这里的工具。
+- 驾驶相关状态与输入逻辑分布在 `src/store/useDriveStore.ts`、`src/hooks/useDriveWebsocket.ts`、`src/hooks/useKeyboardDrive.ts`、`src/hooks/useGamepadDrive.ts`、`src/hooks/useGyroDrive.ts`。
+- 视频传输可以通过 `VITE_DRIVE_VIDEO_TRANSPORT=webrtc|mjpeg` 强制指定；默认是自动。
+- 生产构建是使用 HashRouter 的静态 SPA（`/#/drive`、`/#/trainer` 等）。
+
+### 车端 Web UI 桥
+
+- `donkeycar/parts/drive_api_bridge.py`（模板通过 `donkeydrifter.parts.drive_api_bridge` 导入）是一个线程部件，取代了传统的 Tornado `LocalWebController`。
+- 它通过 WebSocket 将状态/视频推送到 FastAPI 后端，同时支持 WebRTC 视频轨道和 MJPEG 降级回退。
 
 ## 开发约定
 
@@ -159,14 +211,6 @@ make tests   # 运行 pytest
 - 现有的 `DONKEY_*` 配置键在第一阶段迁移中不更名。
 - 现有的 Web UI `/api/*` 路由和驱动 WebSocket 协议在第一阶段迁移中不更名。
 - 不要盲目替换每个 Donkeycar 引用；上游归属、兼容性文档和许可文本必须在适当的地方保留 Donkeycar 名称。
-
-### Vehicle / Part / Memory 架构
-
-- `Vehicle`（`donkeycar/vehicle.py`）是主循环容器。
-- 部件通过 `Vehicle.add(part, inputs=[], outputs=[], threaded=False, run_condition=None)` 注册。
-- 每个循环节拍从 `Memory` 读取命名的 `inputs`，调用 `part.run()`（或对于 `threaded=True` 在后台线程中调用 `part.update()`），并将命名的 `outputs` 写回。
-- `Memory`（`donkeycar/memory.py`）是一个简单的键/值总线。部件通过字符串键通信，而非直接引用。
-- 部件使用鸭子类型：实现 `run()`；线程部件还实现 `update()`；清理放在 `shutdown()` 中。避免多个部件并发写入相同的 Memory 键。
 
 ### 代码风格
 
@@ -187,7 +231,7 @@ make tests   # 运行 pytest
 
 - **核心 Python 测试**：`pytest`（收集 `donkeycar/tests/` 和 `tests/`）。`donkeycar/tests/pytest.ini` 抑制弃用警告，启用 INFO 级别的 CLI 日志，并设置 `reruns = 3`。
 - **覆盖率**：`.coveragerc` 启用分支覆盖率并忽略 `donkeycar/tests/*`。
-- **根级集成测试**：`pytest tests/ -q` 覆盖迁移品牌、恢复逻辑、模型命名重构、在线训练器工作区、Tub 管理器刷新。
+- **根级集成测试**：`pytest tests/ -q` 覆盖迁移品牌、恢复逻辑、模型命名重构、在线训练器工作区、Tub 管理器刷新、驾驶页面布局。
 - **Web UI 后端测试**：`cd web_ui/backend && python -m pytest tests -q` 覆盖驱动（WebRTC/MJPEG/统计）、连接器、竞技场、配置和品牌。
 - **Web UI 前端测试**：`cd web_ui/frontend && npm run test` 在 jsdom 中运行 vitest。Playwright 风格的测试计划也存在于 `web_ui/frontend/testsprite_tests/` 下。
 
@@ -199,11 +243,12 @@ make tests   # 运行 pytest
 - 车辆端模板和 `myconfig.py` 可能包含硬件凭证或引脚。如果生成的车辆目录包含 SSH/MQTT 或云密钥，请将其视为敏感信息。
 - 不要提交密钥、`node_modules` 或构建产物。仓库已通过 `.gitignore` 排除它们。
 
-## 部署和打包
+## 部署和 CI/CD
 
 - **setuptools 打包**：`python -m build --sdist --wheel`（或 `make package`）生成 `donkeydrifter-<version>-py3-none-any.whl` 和 `donkeydrifter-<version>.tar.gz`。CI 在发布前运行 `twine check dist/*`。
-- **PyPI 发布**：`.github/workflows/publish-pypi.yml` 在标签 `v*` 上触发并通过 OIDC 发布。
-- **CI / 测试**：`.github/workflows/python-package-conda.yml` 在 push/PR 时跨 `macos-latest` 和 `ubuntu-latest` 运行，创建 Python 3.11 conda 环境，安装 `.[pc,dev]`，验证 `donkeydrifter` 和 `donkeycar` 导入，构建包，并运行 `pytest`。`.github/workflows/superlinter.yml` 以非阻塞模式运行 GitHub Super-Linter。
+- **PyPI 发布**：`.github/workflows/publish-pypi.yml` 在标签 `v*` 上触发，先 build 再经 OIDC 发布到 PyPI。
+- **CI / 测试**：`.github/workflows/python-package-conda.yml` 在 push/PR 时跨 `macos-latest` 和 `ubuntu-latest` 运行，创建 Python 3.11 conda 环境，安装 `.[pc,dev]`，验证 `donkeydrifter` 和 `donkeycar` 导入，构建包，并运行 `pytest`。
+- **Super-Linter**：`.github/workflows/superlinter.yml` 以非阻塞模式运行 GitHub Super-Linter（`continue-on-error: true`、`DISABLE_ERRORS: true`）。
 - **Docker**：顶层 `Dockerfile` 存在但目前已过时。它使用 `python:3.6`，引用不存在的 `setup.py` 和 `[tf]` extra，并面向 Jupyter 而非 FastAPI/React Web UI。除非明确更新，否则将其视为遗留文件。
 
 ## 迁移契约
@@ -227,6 +272,8 @@ make tests   # 运行 pytest
 - Tub v2 是规范的数据格式；录制逻辑集中在 `donkeycar/parts/tub_v2.py`。
 - CLI 模板文件既是用户生成的应用源，也是配置契约的一部分；模板的更改通常需要在 `cfg_*.py` 文件和测试中进行匹配更新。
 - 车辆端 Web UI 桥是 `donkeycar/parts/drive_api_bridge.py`（模板通过 `donkeydrifter.parts.drive_api_bridge` 导入），一个线程部件，取代了传统的 Tornado `LocalWebController`，并通过 WebSocket 将状态/视频推送到 FastAPI 后端；同时支持 WebRTC 视频轨道和 MJPEG 降级回退。
+- 涉及硬件、路径、进程或网络行为时要避免只适配当前开发机。
+- 新功能或已有功能变更通常需要同步用户文档。
 
 ## 有用的参考
 
@@ -236,3 +283,5 @@ make tests   # 运行 pytest
 - `docs/guide/web-drive-console-user-guide.md` – 驱动页面用户指南。
 - `docs/plan/donkeydrifter-v0.1.0-release-notes.md` – 验证结果和发布说明。
 - `docs/plan/web-drive-console-migration.md` 和 `docs/plan/drive-api-bridge-migration.md` – 迁移设计文档。
+- `docs/arch/` – 架构决策记录（参数持久化、Web 控制器、方向键控制修复等）。
+- `docs/workflow/git-worktree-parallel-development.md` – 使用 git worktree 进行并行开发的指南。
