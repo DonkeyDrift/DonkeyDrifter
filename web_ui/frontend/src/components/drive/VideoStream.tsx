@@ -163,7 +163,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
 
   return (
     <div className={`relative bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden min-h-[360px] ${className}`}>
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
+      <div className="absolute top-2 left-2 z-30 flex items-center gap-2">
         {statusBadge}
         {degraded && (
           <span className="rounded bg-amber-400/10 px-2 py-0.5 text-xs text-amber-300">
@@ -171,7 +171,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
           </span>
         )}
       </div>
-      <div className="absolute right-2 top-2 z-10 rounded-md border border-white/10 bg-zinc-900/35 px-2 py-1 text-center shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md">
+      <div className="absolute right-2 top-2 z-30 rounded-md border border-white/10 bg-zinc-900/35 px-2 py-1 text-center shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md">
         <div className="text-[10px] text-zinc-400 uppercase leading-none">FPS</div>
         <div className="text-base font-mono leading-tight text-cyan-400">{webRtcConnected ? browserFps : mjpegFps}</div>
         {webRtcConnected && (

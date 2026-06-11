@@ -26,6 +26,7 @@ from donkeydrifter.parts.transform import TriggeredCallback, DelayedTrigger
 from donkeydrifter.parts.tub_v2 import TubWriter
 from donkeydrifter.parts.datastore import TubHandler
 from donkeydrifter.parts.controller import LocalWebController, JoystickController, WebFpv
+from donkeydrifter.parts.drive_api_bridge import DriveApiBridge
 from donkeydrifter.parts.throttle_filter import ThrottleFilter
 from donkeydrifter.parts.behavior import BehaviorPart
 from donkeydrifter.parts.file_watcher import FileWatcher
@@ -414,6 +415,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None, camera_type
             print("You can now go to http://localhost:%d to drive your car." % cfg.WEB_CONTROL_PORT)
         else:
             print("You can now go to <your hostname.local>:%d to drive your car." % cfg.WEB_CONTROL_PORT)
+    elif isinstance(ctr, DriveApiBridge):
+        print("Web Console Drive 已就绪，请打开浏览器访问 http://localhost:5188/")
     elif isinstance(ctr, JoystickController):
         print("You can now move your joystick to drive your car.")
         ctr.set_tub(tub_writer.tub)

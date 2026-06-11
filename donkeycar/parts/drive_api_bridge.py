@@ -18,6 +18,15 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
+# 车端 WebRTC 底层日志控制：默认抑制，DEBUG 模式开启
+def _configure_webrtc_logging():
+    if os.environ.get("DRIVE_WEB_DEBUG", "").lower() not in ("1", "true", "yes"):
+        logging.getLogger("aioice").setLevel(logging.WARNING)
+        logging.getLogger("aioice.ice").setLevel(logging.WARNING)
+        logging.getLogger("aiortc").setLevel(logging.WARNING)
+
+_configure_webrtc_logging()
+
 try:
     import cv2
 except Exception:  # pragma: no cover - 运行环境缺少 OpenCV 时只影响图像上传

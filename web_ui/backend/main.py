@@ -20,6 +20,8 @@ if not DEBUG:
     logging.getLogger("aioice.ice").setLevel(logging.WARNING)
     # 抑制 aiortc 底层日志
     logging.getLogger("aiortc").setLevel(logging.WARNING)
+    # 抑制后端业务路由日志（连接/断连统计等）
+    logging.getLogger("routers.drive").setLevel(logging.WARNING)
 
 app = FastAPI(title="DonkeyDrifter Web API")
 
