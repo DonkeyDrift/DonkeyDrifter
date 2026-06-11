@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { VideoStream } from '../components/drive/VideoStream';
 import { VirtualJoystick } from '../components/drive/VirtualJoystick';
 import { ControlBars } from '../components/drive/ControlBars';
+import { VerticalThrottleBar } from '../components/drive/VerticalThrottleBar';
 import { DriveModeSelector, DriveMode } from '../components/drive/DriveModeSelector';
 import { useDriveWebsocket, type WebRtcSignal } from '../hooks/useDriveWebsocket';
 import { useDriveControlLoop } from '../hooks/useDriveControlLoop';
@@ -230,14 +231,19 @@ export const DrivePage: React.FC = () => {
             <span className="text-[10px] text-zinc-500">支持鼠标 / 触屏</span>
           </div>
           <div className="flex-1 flex flex-col items-center gap-4">
-            <VirtualJoystick
-              onChange={(a, t) => {
-                joystickRef.current = { angle: a, throttle: t };
-                lastInputType.current = 'joystick';
-              }}
-              size={220}
-            />
-            <ControlBars angle={angle} throttle={throttle} className="w-full max-w-[240px]" />
+            <div className="relative">
+              <div className="absolute right-full mr-8 top-1/2 -translate-y-1/2">
+                <VerticalThrottleBar throttle={throttle} className="h-[220px]" />
+              </div>
+              <VirtualJoystick
+                onChange={(a, t) => {
+                  joystickRef.current = { angle: a, throttle: t };
+                  lastInputType.current = 'joystick';
+                }}
+                size={220}
+              />
+            </div>
+            <ControlBars angle={angle} className="w-full max-w-[220px]" />
             <ProgrammableButtons
               className="w-full max-w-[240px]"
               onClick={(id) => send({ buttons: { [id]: true } })}
