@@ -29,7 +29,7 @@ donkeycar/           # 当前实现包 + 遗留兼容性命名空间
   vehicle.py         # 车辆驱动循环和 PartProfiler
   memory.py          # 部件间通信的键/值总线
   config.py          # 配置加载器
-  parts/             # 59+ 硬件/算法部件（摄像头、控制器、keras、pytorch、tub_v2、IMU、GPS、drive_api_bridge 等）
+  parts/             # 60+ 硬件/算法部件（摄像头、控制器、keras、pytorch、tub_v2、IMU、GPS、drive_api_bridge 等）
   pipeline/          # 训练流水线、数据增强、序列处理、数据库、类型定义
   management/        # CLI 工具和 UI（base.py、tui.py、train_local.py、train_online.py、ui/、tub_web/）
   templates/         # `donkey createcar` 使用的车辆应用模板和默认配置（basic、complete、cv_control、path_follow、simulator、arduino_drive 等）
@@ -59,7 +59,7 @@ docs/                # 架构、计划、指南、验证、工作流规范
 | `Makefile` | 提供 `tests`（pytest）、`package`（python -m build）、`installweb`（donkey installweb）三个目标 |
 | `.coveragerc` | 覆盖率配置：`branch = True`，并忽略 `donkeycar/tests/*` |
 | `donkeycar/tests/pytest.ini` | pytest 配置：忽略 `DeprecationWarning` 和 `FutureWarning`，启用 `log_cli = True` 且级别为 `INFO`，设置 `reruns = 3` |
-| `.github/linters/.python-black` | Black 配置：`line-length = 80`、`target-version = ['py37']`、`skip-string-normalization = true`（供 GitHub Super-Linter 使用） |
+| `.github/linters/.python-black` | Black 配置：`line-length = 80`、`target-version = ['py37']`、`skip-string-normalization = true`（供 GitHub Super-Linter 使用）；注意项目实际运行时为 Python 3.11 |
 | `web_ui/frontend/package.json` | 前端 npm 包定义：React 18、TypeScript ~5.8、Vite 6、Tailwind CSS 3、Zustand、Chart.js、axios、react-router-dom 7、lucide-react、clsx、tailwind-merge；测试使用 vitest + jsdom + @testing-library/react + Playwright |
 | `web_ui/frontend/tsconfig.json` | TypeScript 配置：`module: ESNext`、`moduleResolution: bundler`、`jsx: react-jsx`、`strict: false`，路径别名 `@/* -> ./src/*` |
 | `web_ui/frontend/tailwind.config.js` | Tailwind 配置：`darkMode: "class"`，内容路径 `./index.html` 和 `./src/**/*` |
@@ -191,7 +191,7 @@ make tests   # 运行 pytest
 - 后端入口是 `web_ui/backend/main.py`，通过 `include_router` 挂载 `/api/config`、`/api/tub`、`/api/trainer`、`/api/drive`、`/api/arena`、`/api/connector`。
 - 后端业务辅助模块包括 `trainer_engine.py`、`connector_engine.py`、`remote_car_client.py` 和 `web_online_trainer.py`。
 - 前端入口是 `web_ui/frontend/src/main.tsx` 和 `App.tsx`，页面位于 `src/pages/`，复用组件位于 `src/components/`。
-- 前端 API 客户端集中在 `web_ui/frontend/src/services/api.ts`；URL 拼接、WebSocket 地址和错误消息应复用这里的工具。
+- 前端 API 客户端集中在 `web_ui/frontend/src/services/api.ts` 中；URL 拼接、WebSocket 地址和错误消息应复用这里的工具。`VITE_API_BASE_URL` 可以覆盖基础 URL，`VITE_DRIVE_VIDEO_TRANSPORT` 可以强制指定视频传输方式（`webrtc|mjpeg`）。
 - 驾驶相关状态与输入逻辑分布在 `src/store/useDriveStore.ts`、`src/hooks/useDriveWebsocket.ts`、`src/hooks/useKeyboardDrive.ts`、`src/hooks/useGamepadDrive.ts`、`src/hooks/useGyroDrive.ts`。
 - 视频传输可以通过 `VITE_DRIVE_VIDEO_TRANSPORT=webrtc|mjpeg` 强制指定；默认是自动。
 - 生产构建是使用 HashRouter 的静态 SPA（`/#/drive`、`/#/trainer` 等）。
