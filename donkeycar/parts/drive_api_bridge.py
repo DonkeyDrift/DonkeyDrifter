@@ -514,7 +514,7 @@ class DriveApiBridge:
             return
         self.sent_local_ice_candidates.add(key)
         self.local_candidates_sent += 1
-        self._post_webrtc_ice(session_id, candidate)
+        self._run_async(self._post_webrtc_ice_async(session_id, candidate))
 
     def _extract_ice_candidates_from_sdp(self, sdp: str):
         candidates = []

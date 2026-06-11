@@ -135,6 +135,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   const trackReceivedRef = useRef(false);
   const negotiationTimerRef = useRef<number | null>(null);
   const retryTimerRef = useRef<number | null>(null);
+  const retryAttemptRef = useRef(0);
   const mountedRef = useRef(false);
   const attemptIdRef = useRef(0);
   const startInFlightRef = useRef(false);
@@ -170,11 +171,14 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
     if (retryTimerRef.current !== null) {
       window.clearTimeout(retryTimerRef.current);
     }
+    const attempt = retryAttemptRef.current;
+    const delay = Math.min(500 * Math.pow(2, attempt), 8000);
+    retryAttemptRef.current = attempt + 1;
     retryTimerRef.current = window.setTimeout(() => {
       retryTimerRef.current = null;
       startRef.current();
-    }, retryIntervalMs);
-  }, [retryIntervalMs]);
+    }, delay);
+  }, []);
 
   const scheduleFrameStats = useCallback(() => {
     const video = videoRef.current;
@@ -256,6 +260,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
           receiver.playoutDelayHint = 0;
         }
         trackReceivedRef.current = true;
+        retryAttemptRef.current = 0;
         if (negotiationTimerRef.current !== null) {
           window.clearTimeout(negotiationTimerRef.current);
           negotiationTimerRef.current = null;
@@ -306,7 +311,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
       scheduleRetry();
       startInFlightRef.current = false;
     }
-  }, [closePeer, createPeer, disabled, negotiationTimeoutMs, peerConnectionFactory, scheduleFrameStats, scheduleRetry]);
+  }, [closePeer, createPeer, disabled, negotiationTimeoutMs, peerConnectionFactory, scheduleFrameStats]);
 
   useEffect(() => {
     startRef.current = start;

@@ -509,7 +509,11 @@ def test_drive_api_bridge_posts_local_ice_candidates_from_sdp_once():
     posted = []
     bridge = DriveApiBridge(auto_start=False)
     bridge.active_webrtc_session_id = "session-1"
-    bridge._post_webrtc_ice = lambda session_id, candidate: posted.append((session_id, candidate))
+
+    async def mock_post_webrtc_ice_async(session_id, candidate):
+        posted.append((session_id, candidate))
+    bridge._post_webrtc_ice_async = mock_post_webrtc_ice_async
+
     sdp = "\r\n".join([
         "v=0",
         "m=video 9 UDP/TLS/RTP/SAVPF 96",
@@ -681,7 +685,10 @@ def test_drive_api_bridge_posts_local_ice_candidate():
     posted = []
     bridge = DriveApiBridge(auto_start=False)
     bridge.active_webrtc_session_id = "session-1"
-    bridge._post_webrtc_ice = lambda session_id, candidate: posted.append((session_id, candidate))
+
+    async def mock_post_webrtc_ice_async(session_id, candidate):
+        posted.append((session_id, candidate))
+    bridge._post_webrtc_ice_async = mock_post_webrtc_ice_async
 
     bridge._handle_local_ice_candidate(FakeLocalCandidate())
 
@@ -695,7 +702,10 @@ def test_drive_api_bridge_posts_local_ice_candidate():
 def test_drive_api_bridge_ignores_local_ice_without_session():
     posted = []
     bridge = DriveApiBridge(auto_start=False)
-    bridge._post_webrtc_ice = lambda session_id, candidate: posted.append((session_id, candidate))
+
+    async def mock_post_webrtc_ice_async(session_id, candidate):
+        posted.append((session_id, candidate))
+    bridge._post_webrtc_ice_async = mock_post_webrtc_ice_async
 
     bridge._handle_local_ice_candidate(FakeLocalCandidate())
 

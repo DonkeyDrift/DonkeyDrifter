@@ -64,12 +64,12 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
       ws.onopen = () => {
         if (wsRef.current !== ws || !mountedRef.current) return;
         setConnected(true);
-        // 心跳 15s 一次
+        // 心跳 5s 一次，更快感知断线与车端上线
         heartbeatTimerRef.current = setInterval(() => {
           if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'heartbeat' }));
           }
-        }, 15000);
+        }, 5000);
       };
 
       ws.onmessage = (event) => {
