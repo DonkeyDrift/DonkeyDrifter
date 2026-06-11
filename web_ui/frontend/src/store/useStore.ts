@@ -69,7 +69,7 @@ interface AppState {
   isPlaying: boolean;
   isLooping: boolean;
   error: string | null;
-  isSidePanelOpen: boolean;
+  activeDrawer: 'loaders' | 'connectors' | null;
   selectionStartIndex: number | null;
   selectionEndIndex: number | null;
   selectionHistory: { startIndex: number; endIndex: number }[];
@@ -91,7 +91,7 @@ interface AppState {
   setIsLooping: (isLooping: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
-  setSidePanelOpen: (isOpen: boolean) => void;
+  setActiveDrawer: (drawer: 'loaders' | 'connectors' | null) => void;
   setSelectionRange: (startIndex: number, endIndex: number) => void;
   clearSelectionRange: () => void;
   undoSelectionRange: () => void;
@@ -129,7 +129,7 @@ export const useStore = create<AppState>()(
       isPlaying: false,
       isLooping: false,
       error: null,
-      isSidePanelOpen: true,
+      activeDrawer: 'loaders' as 'loaders' | 'connectors' | null,
       selectionStartIndex: null,
       selectionEndIndex: null,
       selectionHistory: [],
@@ -163,7 +163,7 @@ export const useStore = create<AppState>()(
         pruneValLossDegradationLimit: 0.2,
       },
 
-      setConfig: (config, path) => set({ config, configPath: path, error: null, isSidePanelOpen: false }),
+      setConfig: (config, path) => set({ config, configPath: path, error: null, activeDrawer: null }),
       setTub: (path, records, fields, totalPhysicalRecords, deletedIndexes) =>
         set({
           tubPath: path,
@@ -176,7 +176,7 @@ export const useStore = create<AppState>()(
           fields,
           currentIndex: records.length > 0 ? 0 : 0,
           error: null,
-          isSidePanelOpen: false,
+          activeDrawer: null,
           isPlaying: false,
         }),
       setRecords: (records) => set({ records, totalRecords: records.length }),
@@ -203,9 +203,9 @@ export const useStore = create<AppState>()(
       setLoading: (loading) => set({ isLoading: loading }),
       setError: (error) => {
         const shouldOpenPanel = error && (error.includes('not found') || error.includes('Failed'));
-        set({ error, isSidePanelOpen: !!shouldOpenPanel });
+        set({ error, activeDrawer: shouldOpenPanel ? 'loaders' : null });
       },
-      setSidePanelOpen: (isOpen) => set({ isSidePanelOpen: isOpen }),
+      setActiveDrawer: (drawer) => set({ activeDrawer: drawer }),
       setSelectionRange: (startIndex, endIndex) =>
         set((state) => {
           const clampedStart = Math.max(0, Math.min(startIndex, state.totalRecords));
