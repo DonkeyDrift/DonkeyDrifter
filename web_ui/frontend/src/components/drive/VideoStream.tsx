@@ -24,10 +24,11 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedTransport = transport ?? getDriveVideoTransport();
   const forceMjpeg = selectedTransport === 'mjpeg';
-  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg, clientId, carOnline: carOnline ?? false });
+  const { videoRef, state, stats, metrics, videoReady } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg, clientId, carOnline: carOnline ?? false });
 
   const streamUrl = `${API_URL}/drive/video`;
   const webRtcConnected = state === 'connected' && !stats.degraded;
+  const webRtcVisible = webRtcConnected && videoReady;
   const degraded = forceMjpeg || mjpegFallbackAllowed;
   const browserFps = Math.round(metrics.browserFps || stats.browser_fps || 0);
   const p95 = Math.round(metrics.p95FrameIntervalMs || stats.browser_p95_frame_interval_ms || 0);
@@ -181,7 +182,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
           </div>
         )}
       </div>
-      {/* MJPEG 层：始终预加载，WebRTC 成功后被覆盖 */}
+      {/* MJPEG 层：始终预加载，WebRTC video 首帧就绪后才淡出 */}
       <img
         key={retryCount}
         ref={imgRef}
@@ -192,9 +193,9 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
           setStatus('error');
           scheduleRetry();
         }}
-        className={`absolute inset-0 w-full h-full object-contain ${webRtcConnected ? 'opacity-0' : 'opacity-100'}`}
+        className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-500 ${webRtcVisible ? 'opacity-0' : 'opacity-100'}`}
       />
-      {/* WebRTC 层：覆盖在 MJPEG 上方，连接成功后显示 */}
+      {/* WebRTC 层：覆盖在 MJPEG 上方，首帧就绪后显示 */}
       {!forceMjpeg && (
         <video
           ref={videoRef}
@@ -203,11 +204,11 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
           playsInline
           muted
           className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-500 ${
-            webRtcConnected ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none'
+            webRtcVisible ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none'
           }`}
         />
       )}
-      {!webRtcConnected && status !== 'connected' && (
+      {!webRtcVisible && status !== 'connected' && (
         <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 pointer-events-none z-20">
           <div className="text-center text-zinc-500 text-sm">
             {carOnline === false

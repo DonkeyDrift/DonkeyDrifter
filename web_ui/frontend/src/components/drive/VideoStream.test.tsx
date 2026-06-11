@@ -28,6 +28,7 @@ const connectedState = () => ({
   },
   metrics: { browserFps: 58, p95FrameIntervalMs: 24 },
   error: null,
+  videoReady: true,
   sessionId: 'session-1',
   reconnect: vi.fn(),
 });
@@ -49,6 +50,7 @@ const degradedState = () => ({
   },
   metrics: { browserFps: 0, p95FrameIntervalMs: 0 },
   error: null,
+  videoReady: false,
   sessionId: 'session-1',
   reconnect: vi.fn(),
 });
@@ -151,6 +153,7 @@ describe('VideoStream', () => {
       },
       metrics: { browserFps: 0, p95FrameIntervalMs: 0 },
       error: null,
+      videoReady: false,
       sessionId: null,
       reconnect: vi.fn(),
     });

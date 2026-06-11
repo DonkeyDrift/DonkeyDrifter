@@ -146,6 +146,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
   const [stats, setStats] = useState<DriveWebRtcStats>(EMPTY_STATS);
   const [metrics, setMetrics] = useState<DriveVideoMetrics>({ browserFps: 0, p95FrameIntervalMs: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
 
   const createPeer = useCallback(() => {
     if (peerConnectionFactory) {
@@ -163,8 +164,12 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
       videoRef.current.cancelVideoFrameCallback(frameCallbackRef.current);
       frameCallbackRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.onloadeddata = null;
+    }
     peerRef.current?.close();
     peerRef.current = null;
+    setVideoReady(false);
   }, []);
 
   const scheduleRetry = useCallback(() => {
@@ -267,6 +272,11 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
         }
         if (videoRef.current) {
           videoRef.current.srcObject = event.streams[0] ?? new MediaStream([event.track]);
+          videoRef.current.onloadeddata = () => {
+            if (mountedRef.current) {
+              setVideoReady(true);
+            }
+          };
           scheduleFrameStats();
         }
         setState('connected');
@@ -367,7 +377,8 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
     stats,
     metrics,
     error,
+    videoReady,
     sessionId: sessionIdRef.current,
     reconnect: start,
-  }), [error, metrics, start, state, stats]);
+  }), [error, metrics, start, state, stats, videoReady]);
 };
