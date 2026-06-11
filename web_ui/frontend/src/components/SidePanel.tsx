@@ -2,7 +2,7 @@ import React from 'react';
 import { ConfigLoader } from './ConfigLoader';
 import { TubLoader } from './TubLoader';
 import { SimulatorConfig } from './SimulatorConfig';
-import { PanelLeftClose, PanelLeftOpen, FolderOpen, Plug } from 'lucide-react';
+import { FolderOpen, Plug } from 'lucide-react';
 
 import { useStore } from '../store/useStore';
 
@@ -28,8 +28,8 @@ export const SidePanel: React.FC = () => {
             isLoadersOpen ? 'text-cyan-400 border-cyan-800/60' : 'text-zinc-400 hover:text-white'
           } ${anyOpen ? 'border-l' : 'border-l-0'}`}
         >
-          {isLoadersOpen ? <PanelLeftClose className="w-5 h-5 shrink-0" /> : <PanelLeftOpen className="w-5 h-5 shrink-0" />}
-          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
+          <FolderOpen className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isLoadersOpen ? 'text-cyan-400' : 'text-zinc-400 group-hover:text-white'}`} />
+          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2'}`}>
             Loaders
           </span>
         </button>
@@ -41,8 +41,8 @@ export const SidePanel: React.FC = () => {
             isConnectorsOpen ? 'text-cyan-400 border-cyan-800/60' : 'text-zinc-400 hover:text-white'
           } ${anyOpen ? 'border-l' : 'border-l-0'}`}
         >
-          {isConnectorsOpen ? <PanelLeftClose className="w-5 h-5 shrink-0" /> : <PanelLeftOpen className="w-5 h-5 shrink-0" />}
-          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
+          <Plug className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isConnectorsOpen ? 'text-cyan-400' : 'text-zinc-400 group-hover:text-white'}`} />
+          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2'}`}>
             Connectors
           </span>
         </button>
