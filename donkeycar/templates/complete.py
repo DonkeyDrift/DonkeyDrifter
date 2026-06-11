@@ -39,6 +39,7 @@ from donkeydrifter.parts.behavior import BehaviorPart
 from donkeydrifter.parts.controller import (JoystickController, LocalWebController,
                                         WebFpv)
 from donkeydrifter.parts.datastore import TubHandler
+from donkeydrifter.parts.drive_api_bridge import DriveApiBridge
 from donkeydrifter.parts.explode import ExplodeDict
 from donkeydrifter.parts.file_watcher import FileWatcher
 from donkeydrifter.parts.kinematics import (Bicycle,
@@ -571,7 +572,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
         V.add(pub, inputs=['jpg/bin'])
 
 
-    if cfg.DONKEY_GYM:
+    if isinstance(ctr, DriveApiBridge):
+        print("Web Console Drive 已就绪，请打开浏览器访问 http://localhost:5188/")
+    elif cfg.DONKEY_GYM:
         print("You can now go to http://localhost:%d to drive your car." % cfg.WEB_CONTROL_PORT)
     else:
         print("You can now go to <your hostname.local>:%d to drive your car." % cfg.WEB_CONTROL_PORT)
@@ -708,7 +711,19 @@ def add_user_controller(V, cfg, use_joystick, input_image='ui/image_array'):
     # This web controller will create a web server that is capable
     # of managing steering, throttle, and modes, and more.
     #
-    ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
+    server_url = os.environ.get("DRIVE_API_SERVER_URL") or getattr(cfg, "DRIVE_API_SERVER_URL", None)
+    if server_url:
+        ctr = DriveApiBridge(
+            server_url=server_url,
+            video_transport=getattr(cfg, "DRIVE_VIDEO_TRANSPORT", "webrtc"),
+            video_width=getattr(cfg, "DRIVE_VIDEO_WIDTH", 320),
+            video_height=getattr(cfg, "DRIVE_VIDEO_HEIGHT", 240),
+            video_fps=getattr(cfg, "DRIVE_VIDEO_FPS", 60),
+            webrtc_enabled=getattr(cfg, "DRIVE_WEBRTC_ENABLED", True),
+            webrtc_ice_servers=getattr(cfg, "DRIVE_WEBRTC_ICE_SERVERS", None),
+        )
+    else:
+        ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
     V.add(ctr,
           inputs=[input_image, 'tub/num_records', 'user/mode', 'recording'],
           outputs=['user/steering', 'user/throttle', 'user/mode', 'recording', 'web/buttons'],

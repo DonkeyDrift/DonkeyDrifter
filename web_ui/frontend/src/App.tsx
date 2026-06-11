@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { SidePanel } from './components/SidePanel';
 import { TubNavigator } from './components/TubNavigator';
 import { TubEditor } from './components/TubEditor';
 import { useStore } from './store/useStore';
+import { getApiErrorMessage, loadTub } from './services/api';
 
 const TrainerPage = React.lazy(() => import('./pages/TrainerPage').then((module) => ({ default: module.TrainerPage })));
 const DrivePage = React.lazy(() => import('./pages/DrivePage').then((module) => ({ default: module.DrivePage })));
@@ -38,7 +39,34 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 }
 
 function TubManagerPage() {
-  const { isLoading, error } = useStore();
+  const { isLoading, error, tubPath, setTub, setLoading, setError } = useStore();
+  const location = useLocation();
+
+  useEffect(() => {
+    const shouldRefreshTub = location.pathname === '/' && Boolean(tubPath);
+
+    if (shouldRefreshTub) {
+      const refreshCurrentTub = async () => {
+        setLoading(true);
+        try {
+          const data = await loadTub(tubPath);
+          setTub(
+            data.path,
+            data.records || [],
+            data.fields || [],
+            data.total_physical_records,
+            data.deleted_indexes,
+          );
+        } catch (err: unknown) {
+          setError(getApiErrorMessage(err, 'Failed to refresh tub'));
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      refreshCurrentTub();
+    }
+  }, [location.pathname, tubPath, setTub, setLoading, setError]);
 
   return (
     <>
@@ -65,6 +93,26 @@ function TubManagerPage() {
   );
 }
 
+function AppShell() {
+  return (
+    <ErrorBoundary>
+      <SidePanel />
+      <Layout>
+        <React.Suspense fallback={<div className="text-sm text-zinc-400">Loading</div>}>
+          <Routes>
+            <Route path="/" element={<TubManagerPage />} />
+            <Route path="/trainer" element={<TrainerPage />} />
+            <Route path="/drive" element={<DrivePage />} />
+            <Route path="/calibrate" element={<CalibratePage />} />
+            <Route path="/pilot" element={<PilotArenaPage />} />
+            <Route path="/connector" element={<CarConnectorPage />} />
+          </Routes>
+        </React.Suspense>
+      </Layout>
+    </ErrorBoundary>
+  );
+}
+
 function App() {
   useEffect(() => {
     const root = document.getElementById('root');
@@ -75,21 +123,7 @@ function App() {
 
   return (
     <HashRouter>
-      <ErrorBoundary>
-        <SidePanel />
-        <Layout>
-          <React.Suspense fallback={<div className="text-sm text-zinc-400">Loading</div>}>
-            <Routes>
-              <Route path="/" element={<TubManagerPage />} />
-              <Route path="/trainer" element={<TrainerPage />} />
-              <Route path="/drive" element={<DrivePage />} />
-              <Route path="/calibrate" element={<CalibratePage />} />
-              <Route path="/pilot" element={<PilotArenaPage />} />
-              <Route path="/connector" element={<CarConnectorPage />} />
-            </Routes>
-          </React.Suspense>
-        </Layout>
-      </ErrorBoundary>
+      <AppShell />
     </HashRouter>
   );
 }

@@ -13,7 +13,7 @@ Web 驾驶控制台是 Donkeycar 新一代统一 Web UI 的核心模块，将原
 ```bash
 # 后端
 cd web_ui/backend
-pip install -r requirements.txt   # 首次运行
+pip install -r requirements.txt   # 首次运行，包含 WebRTC 所需 aiortc / av
 python main.py                    # 默认监听 0.0.0.0:8000
 
 # 前端（新终端）
@@ -40,7 +40,14 @@ from donkeycar.parts.drive_api_bridge import DriveApiBridge
 # ctr = LocalWebController(port=cfg.WEB_CONTROL_PORT, mode=cfg.WEB_INIT_MODE)
 
 # 替换为
-ctr = DriveApiBridge(server_url=cfg.DRIVE_API_SERVER_URL)
+ctr = DriveApiBridge(
+    server_url=cfg.DRIVE_API_SERVER_URL,
+    video_transport=getattr(cfg, "DRIVE_VIDEO_TRANSPORT", "webrtc"),
+    video_width=getattr(cfg, "DRIVE_VIDEO_WIDTH", 320),
+    video_height=getattr(cfg, "DRIVE_VIDEO_HEIGHT", 240),
+    video_fps=getattr(cfg, "DRIVE_VIDEO_FPS", 60),
+    webrtc_enabled=getattr(cfg, "DRIVE_WEBRTC_ENABLED", True),
+)
 V.add(ctr,
       inputs=['cam/image_array', 'tub/num_records', 'user/mode', 'recording'],
       outputs=['user/angle', 'user/throttle', 'user/mode', 'recording', 'buttons'],
@@ -52,6 +59,15 @@ V.add(ctr,
 ```python
 # 电脑 IP 地址，车端通过此地址连接
 DRIVE_API_SERVER_URL = "ws://192.168.1.100:8000/api/drive/ws"
+
+# Drive 页面视频配置。60FPS 验收路径使用 WebRTC，MJPEG 仅作为降级。
+DRIVE_VIDEO_TRANSPORT = "webrtc"
+DRIVE_VIDEO_WIDTH = 320
+DRIVE_VIDEO_HEIGHT = 240
+DRIVE_VIDEO_FPS = 60
+DRIVE_WEBRTC_ENABLED = True
+DRIVE_WEBRTC_SINGLE_CLIENT = True
+DRIVE_WEBRTC_RECONNECT_TIMEOUT_SEC = 3.0
 ```
 
 然后正常启动车端：
@@ -91,7 +107,7 @@ python manage.py drive
 ├──────────────────────────┬─────────────────────────────────────┤
 │                          │  虚拟摇杆                           │
 │  摄像头实时画面           │  转向/油门指示条                    │
-│  (MJPEG 流，~20fps)      │  可编程按钮 (W1-W5)                 │
+│  (WebRTC 优先，MJPEG 降级)│  可编程按钮 (W1-W5)                 │
 │                          │  控制参数折叠面板                    │
 ├──────────────────────────┴─────────────────────────────────────┤
 │  车端连接 │ 驾驶模式 │ 录制状态 │ 已录制条数 │ 当前模型 │ 延迟  │
@@ -151,6 +167,58 @@ python manage.py drive
 - 点击顶部「开始录制」按钮或按 `R` 键切换录制状态
 - 录制中按钮变红并显示实时时长（分:秒）
 - 底部状态卡片实时显示已录制条数
+
+### 视频链路与 60FPS 状态
+
+Drive 页面优先使用 WebRTC 点对点视频链路；FastAPI 后端只负责信令协调，媒体帧不经过后端转发。页面右上角会显示：
+
+- `FPS`：浏览器实际展示帧率。
+- `P95`：浏览器展示帧间隔 95 分位，越低越稳定。
+- `源`：车端 `cam/image_array` 的真实新帧输入速率。
+- `发`：车端 WebRTC track 输出新帧速率。
+
+60FPS 验收建议在同一局域网、320×240 下连续运行 2 分钟：浏览器平均 FPS ≥ 58，P95 帧间隔 ≤ 25ms，断流恢复 ≤ 3 秒。若页面显示 `MJPEG 降级` 或 `非 60FPS 验收路径`，说明当前不在 WebRTC 60FPS 验收链路中。
+
+### WebRTC TURN 配置
+
+在 WSL、VPN、虚拟网卡或跨网段场景中，WebRTC host candidate 可能无法直连。此时可部署 Windows 原生 coturn 或等价 TURN 服务，并给前端和车端配置同一组 ICE servers。
+
+前端配置（修改后需要重启 Vite dev server 或重新构建）：
+
+```bash
+export VITE_DRIVE_WEBRTC_ICE_SERVERS='[{"urls":["turn:192.168.3.96:3478?transport=udp"],"username":"donkey","credential":"donkey-turn-secret"}]'
+```
+
+车端配置（环境变量优先于 `myconfig.py`）：
+
+```bash
+export DRIVE_WEBRTC_ICE_SERVERS='[{"urls":["turn:192.168.3.96:3478?transport=udp"],"username":"donkey","credential":"donkey-turn-secret"}]'
+```
+
+也可以写入 `myconfig.py`：
+
+```python
+DRIVE_WEBRTC_ICE_SERVERS = [
+    {
+        "urls": ["turn:192.168.3.96:3478?transport=udp"],
+        "username": "donkey",
+        "credential": "donkey-turn-secret",
+    }
+]
+```
+
+Windows 防火墙至少需要放行：
+
+| 端口 | 协议 | 用途 |
+|------|------|------|
+| 3478 | UDP/TCP | TURN 控制 |
+| 49160-49200 | UDP | TURN relay 媒体转发 |
+
+配置成功后，`/api/drive/webrtc/stats` 中 `ice_connection_state` 应变为 `connected` 或 `completed`，且 `sent_fps`、`browser_fps` 应大于 0。若 TURN 不可达，页面会继续使用 MJPEG 降级画面。
+
+### 控制链路
+
+Drive 页面在 WebSocket 已连接时会以 60Hz 持续发送完整控制状态，包括转向、油门、驾驶模式和录制状态。即使转向和油门为 0，也会持续发送当前控制状态，避免视频链路重连时影响控制输出。
 
 ### 可编程按钮
 
@@ -233,7 +301,12 @@ python manage.py drive
 |------|------|------|
 | `WS` | `/ws?role=car` | 车端 WebSocket 连接 |
 | `WS` | `/ws?role=client` | 浏览器 WebSocket 连接 |
-| `GET` | `/video` | MJPEG 视频流 |
+| `POST` | `/webrtc/session` | 创建 WebRTC 视频会话 |
+| `POST` | `/webrtc/offer` | 浏览器 offer 转发给车端 |
+| `POST` | `/webrtc/answer` | 车端 answer 转发给浏览器 |
+| `POST` | `/webrtc/ice` | WebRTC ICE candidate 双向转发 |
+| `GET` | `/webrtc/stats` | WebRTC 视频链路统计 |
+| `GET` | `/video` | MJPEG 降级视频流 |
 | `GET` | `/params` | 加载驾驶参数 |
 | `POST` | `/params` | 保存驾驶参数 |
 | `POST` | `/load_model` | 下发模型加载指令 |
@@ -257,7 +330,15 @@ python manage.py drive
 { "type": "car_state", "drive_mode": "user", "recording": false, "num_records": 0 }
 ```
 
-**车端 → 服务端（帧推送）**
+**服务端 ↔ 车端/浏览器（WebRTC 信令）**
+
+```json
+{ "type": "webrtc_signal", "signal_type": "offer", "session_id": "...", "sdp": "..." }
+{ "type": "webrtc_signal", "signal_type": "answer", "session_id": "...", "sdp": "..." }
+{ "type": "webrtc_signal", "signal_type": "ice", "session_id": "...", "candidate": { "candidate": "..." } }
+```
+
+**车端 → 服务端（MJPEG 降级帧推送）**
 
 ```json
 { "type": "frame", "data": "<base64 jpeg>" }
@@ -276,6 +357,13 @@ python manage.py drive
 1. 确认车端 Part 正确传入 `cam/image_array`
 2. 确认 `DriveApiBridge` 已替换原有的 `LocalWebController`
 3. 检查浏览器控制台是否有 WebSocket 连接错误
+4. 若 WebRTC 无法建立，页面会降级到 MJPEG；此时不应作为 60FPS 验收结果
+
+### Q: FPS 达不到 60？
+1. 先看页面中的 `源` FPS；如果源 FPS 低于 58，说明 Vehicle 主循环或摄像头没有提供足够新帧
+2. 如果源 FPS 正常但浏览器 FPS 低，检查网络、浏览器解码和 WebRTC 连接状态
+3. 确认分辨率为 320×240，且车端、后端、浏览器在同一局域网
+4. 确认页面没有显示 `MJPEG 降级` 或 `非 60FPS 验收路径`
 
 ### Q: 控制无响应？
 1. 检查输入源是否选中了正确的模式（如手柄未连接时选了手柄）

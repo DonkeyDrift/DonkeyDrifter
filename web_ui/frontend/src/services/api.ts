@@ -4,6 +4,28 @@ const DEFAULT_API_BASE = '/api';
 const RAW_API_BASE = import.meta.env.VITE_API_BASE_URL?.trim();
 export const API_URL = RAW_API_BASE && RAW_API_BASE.length > 0 ? RAW_API_BASE.replace(/\/$/, '') : DEFAULT_API_BASE;
 
+export type DriveVideoTransport = 'auto' | 'webrtc' | 'mjpeg';
+
+export const getDriveVideoTransport = (): DriveVideoTransport => {
+  const value = import.meta.env.VITE_DRIVE_VIDEO_TRANSPORT?.trim().toLowerCase();
+  return value === 'webrtc' || value === 'mjpeg' ? value : 'auto';
+};
+
+export const createDriveClientId = (): string => {
+  const key = 'donkeydrifter_drive_client_id';
+  try {
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) {
+      return existing;
+    }
+    const created = crypto.randomUUID();
+    window.sessionStorage.setItem(key, created);
+    return created;
+  } catch {
+    return crypto.randomUUID();
+  }
+};
+
 export const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -11,16 +33,17 @@ export const api = axios.create({
   },
 });
 
-export const getDriveCarWebSocketUrl = () => {
+export const getDriveCarWebSocketUrl = (clientId?: string) => {
   const apiBase = API_URL.replace(/\/$/, '');
+  const query = clientId ? `?client_id=${encodeURIComponent(clientId)}` : '';
   if (apiBase.startsWith('http://') || apiBase.startsWith('https://')) {
-    return `${apiBase.replace(/^http/, 'ws')}/drive/ws`;
+    return `${apiBase.replace(/^http/, 'ws')}/drive/ws${query}`;
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.hostname;
   const backendPort = window.location.port === '5188' ? '8000' : window.location.port;
   const port = backendPort ? `:${backendPort}` : '';
-  return `${protocol}//${host}${port}${apiBase}/drive/ws`;
+  return `${protocol}//${host}${port}${apiBase}/drive/ws${query}`;
 };
 
 export const getApiErrorMessage = (error: unknown, fallback = '未知错误') => {
@@ -130,6 +153,67 @@ export const deleteModel = async (path: string) => {
 export const loadModelToCar = async (modelPath: string, workingDir?: string) => {
   const response = await api.post('/drive/load_model', { model_path: modelPath, working_dir: workingDir });
   return response.data;
+};
+
+export interface DriveWebRtcStats {
+  active: boolean;
+  session_id: string | null;
+  webrtc_available: boolean;
+  source_fps: number;
+  sent_fps: number;
+  browser_fps: number;
+  browser_p95_frame_interval_ms: number;
+  disconnect_count: number;
+  stale_frames?: number;
+  peer_connection_state?: string | null;
+  ice_connection_state?: string | null;
+  ice_gathering_state?: string | null;
+  local_description_error?: string | null;
+  local_description_elapsed_ms?: number | null;
+  answer_sent_elapsed_ms?: number | null;
+  local_candidates_sent?: number;
+  offer_to_answer_elapsed_ms?: number | null;
+  inbound_fps?: number;
+  frames_dropped?: number;
+  jitter_ms?: number;
+  jitter_buffer_delay_ms?: number;
+  transport: 'webrtc' | 'mjpeg';
+  degraded: boolean;
+}
+
+export const createDriveWebRtcSession = async (clientId: string = crypto.randomUUID()) => {
+  const response = await api.post('/drive/webrtc/session', { client_id: clientId });
+  return response.data as { success: boolean; session_id: string; single_client: boolean };
+};
+
+export const sendDriveWebRtcOffer = async (sessionId: string, sdp: string) => {
+  const response = await api.post('/drive/webrtc/offer', { session_id: sessionId, sdp, type: 'offer' });
+  return response.data as { success: boolean };
+};
+
+export const sendDriveWebRtcIce = async (sessionId: string, candidate: RTCIceCandidateInit) => {
+  const response = await api.post('/drive/webrtc/ice', { session_id: sessionId, source: 'client', candidate });
+  return response.data as { success: boolean };
+};
+
+export const sendDriveWebRtcBrowserStats = async (
+  sessionId: string,
+  metrics: {
+    browser_fps: number;
+    browser_p95_frame_interval_ms: number;
+    inbound_fps?: number;
+    frames_dropped?: number;
+    jitter_ms?: number;
+    jitter_buffer_delay_ms?: number;
+  }
+) => {
+  const response = await api.post('/drive/webrtc/browser-stats', { session_id: sessionId, ...metrics });
+  return response.data as { success: boolean };
+};
+
+export const getDriveWebRtcStats = async () => {
+  const response = await api.get('/drive/webrtc/stats');
+  return response.data as DriveWebRtcStats;
 };
 
 export const sendCalibrate = async (params: Record<string, number | boolean>) => {
@@ -277,6 +361,22 @@ export const createConnectorJobStream = (jobId: string) => {
   return new EventSource(`${API_URL}/connector/jobs/${jobId}/events`);
 };
 
+export const getConnectorLocalIps = async () => {
+  const response = await api.get('/connector/local_ips');
+  return response.data as { ips: { ip: string; interface: string; priority: number }[]; count: number };
+};
+
+export const discoverConnectorCars = async () => {
+  const response = await api.post('/connector/discover');
+  return response.data as {
+    status: boolean;
+    found: { ip: string; port: number; latency_ms: number; reachable: boolean }[];
+    count: number;
+    scanned: number;
+    message: string;
+  };
+};
+
 // ------------------------------------------------------------------
 // Pilot Arena APIs
 // ------------------------------------------------------------------
@@ -396,4 +496,27 @@ export const getArenaPredictions = async (pilotId: string, payload: {
 }) => {
   const response = await api.post(`/arena/pilots/${pilotId}/predictions`, payload);
   return response.data as { status: boolean; limit: number; points: ArenaPredictionPoint[] };
+};
+
+// ------------------------------------------------------------------
+// Simulator Discovery APIs
+// ------------------------------------------------------------------
+export interface SimulatorHost {
+  ip: string;
+  port: number;
+  latency_ms: number;
+  reachable: boolean;
+}
+
+export const discoverSimulator = async (carPath?: string) => {
+  const response = await api.post('/config/discover_simulator', { car_path: carPath });
+  return response.data as { status: boolean; found: SimulatorHost[]; count: number; scanned: number; message: string };
+};
+
+export const saveSimulatorConfig = async (payload: {
+  path: string;
+  config: Record<string, string | number | boolean>;
+}) => {
+  const response = await api.post('/config/save_simulator', payload);
+  return response.data as { status: boolean; message: string };
 };

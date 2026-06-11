@@ -1,5 +1,5 @@
-import React from 'react';
-import { Gamepad2, Smartphone, Joystick, Keyboard } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Gamepad2, Smartphone, Joystick, Keyboard, ChevronDown, ChevronUp } from 'lucide-react';
 
 export type InputSource = 'joystick' | 'keyboard' | 'gamepad' | 'gyro';
 
@@ -25,42 +25,90 @@ export const InputSourceSelector: React.FC<InputSourceSelectorProps> = ({
   gyroAvailable = true,
   className = '',
 }) => {
-  return (
-    <div className={`inline-flex rounded-lg border border-zinc-800 overflow-hidden ${className}`}>
-      {SOURCES.map((src) => {
-        const active = value === src.value;
-        const disabled =
-          (src.value === 'gamepad' && !gamepadConnected) ||
-          (src.value === 'gyro' && !gyroAvailable);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-        return (
-          <button
-            key={src.value}
-            onClick={() => !disabled && onChange(src.value)}
-            disabled={disabled}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5
-              ${active
-                ? 'bg-cyan-500/20 text-cyan-400'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-              }
-              ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
-            `}
-            title={
-              src.value === 'gamepad'
-                ? gamepadConnected ? '已连接手柄' : '未检测到手柄'
-                : src.value === 'gyro'
-                  ? gyroAvailable ? '设备支持陀螺仪' : '设备不支持陀螺仪'
-                  : src.label
-            }
-          >
-            {src.icon}
-            <span>{src.label}</span>
-            {src.value === 'gamepad' && gamepadConnected && (
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            )}
-          </button>
-        );
-      })}
+  const selected = SOURCES.find((s) => s.value === value)!;
+  const others = SOURCES.filter((s) => s.value !== value);
+
+  const isDisabled = (source: InputSource) =>
+    (source === 'gamepad' && !gamepadConnected) ||
+    (source === 'gyro' && !gyroAvailable);
+
+  const handleSelect = (source: InputSource) => {
+    if (isDisabled(source)) return;
+    onChange(source);
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid="input-source-selector"
+      className={`relative inline-block ${className}`}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 text-xs font-medium flex items-center justify-between gap-2 text-cyan-400 hover:bg-zinc-800 transition-colors min-w-[6.5rem]"
+        title="输入源"
+      >
+        <span className="flex items-center gap-1.5">
+          {selected.icon}
+          <span>{selected.label}</span>
+          {selected.value === 'gamepad' && gamepadConnected && (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          )}
+        </span>
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 w-full pt-1 z-50">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 shadow-[0_8px_24px_rgba(0,0,0,0.25)] overflow-hidden">
+            {others.map((src) => {
+              const disabled = isDisabled(src.value);
+              return (
+                <button
+                  key={src.value}
+                  onClick={() => handleSelect(src.value)}
+                  disabled={disabled}
+                  className={`w-full px-3 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-colors text-left
+                    ${disabled
+                      ? 'text-zinc-600 cursor-not-allowed'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }
+                  `}
+                  title={
+                    src.value === 'gamepad'
+                      ? gamepadConnected ? '已连接手柄' : '未检测到手柄'
+                      : src.value === 'gyro'
+                        ? gyroAvailable ? '设备支持陀螺仪' : '设备不支持陀螺仪'
+                        : src.label
+                  }
+                >
+                  {src.icon}
+                  <span>{src.label}</span>
+                  {src.value === 'gamepad' && gamepadConnected && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

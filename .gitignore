@@ -31,3 +31,5 @@ tb_logs
 web_ui/frontend/node_modules/
 .donkey_history
 .ssh-tmp/
+.worktrees/
+start_test.sh

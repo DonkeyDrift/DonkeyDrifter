@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { API_URL } from '../services/api';
+import { createDriveClientId, getDriveCarWebSocketUrl } from '../services/api';
 
 export interface CarState {
   online: boolean;
@@ -8,16 +8,30 @@ export interface CarState {
   numRecords: number;
 }
 
+export interface WebRtcSignal {
+  type: 'webrtc_signal';
+  signal_type: 'offer' | 'answer' | 'ice';
+  session_id: string;
+  sdp?: string;
+  description_type?: 'offer' | 'answer';
+  candidate?: RTCIceCandidateInit;
+}
+
 interface UseDriveWebsocketOptions {
   autoReconnect?: boolean;
   reconnectInterval?: number;
+  onWebRtcSignal?: (signal: WebRtcSignal) => void;
+  clientId?: string;
 }
 
 export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
-  const { autoReconnect = true, reconnectInterval = 3000 } = options;
+  const { autoReconnect = true, reconnectInterval = 3000, onWebRtcSignal, clientId } = options;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clientIdRef = useRef(clientId ?? createDriveClientId());
+  const mountedRef = useRef(false);
+  const closingRef = useRef(false);
 
   const [connected, setConnected] = useState(false);
   const [carState, setCarState] = useState<CarState>({
@@ -27,7 +41,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
     numRecords: 0,
   });
 
-  const wsUrl = `${API_URL.replace(/^http/, 'ws')}/drive/ws?role=client`;
+  const wsUrl = `${getDriveCarWebSocketUrl(clientIdRef.current)}&role=client`;
 
   const clearTimers = () => {
     if (reconnectTimerRef.current) {
@@ -48,16 +62,18 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (wsRef.current !== ws || !mountedRef.current) return;
         setConnected(true);
-        // 心跳 15s 一次
+        // 心跳 5s 一次，更快感知断线与车端上线
         heartbeatTimerRef.current = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
+          if (wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'heartbeat' }));
           }
-        }, 15000);
+        }, 5000);
       };
 
       ws.onmessage = (event) => {
+        if (wsRef.current !== ws || !mountedRef.current) return;
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'car_connection') {
@@ -71,21 +87,26 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
               numRecords: Number(msg.num_records) || 0,
             }));
           }
+          if (msg.type === 'webrtc_signal') {
+            onWebRtcSignal?.(msg as WebRtcSignal);
+          }
         } catch {
           // 忽略格式错误的消息
         }
       };
 
       ws.onclose = () => {
+        if (wsRef.current !== ws || !mountedRef.current) return;
         setConnected(false);
         setCarState((prev) => ({ ...prev, online: false }));
         clearTimers();
-        if (autoReconnect) {
+        if (autoReconnect && !closingRef.current) {
           reconnectTimerRef.current = setTimeout(connect, reconnectInterval);
         }
       };
 
       ws.onerror = () => {
+        if (wsRef.current !== ws || !mountedRef.current) return;
         ws.close();
       };
     } catch {
@@ -94,7 +115,7 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
         reconnectTimerRef.current = setTimeout(connect, reconnectInterval);
       }
     }
-  }, [wsUrl, autoReconnect, reconnectInterval]);
+  }, [wsUrl, autoReconnect, reconnectInterval, onWebRtcSignal]);
 
   const send = useCallback((data: Record<string, unknown>) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -109,12 +130,17 @@ export const useDriveWebsocket = (options: UseDriveWebsocketOptions = {}) => {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
+    closingRef.current = false;
     connect();
     return () => {
+      mountedRef.current = false;
+      closingRef.current = true;
       clearTimers();
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws) {
+        ws.close();
       }
     };
   }, [connect]);

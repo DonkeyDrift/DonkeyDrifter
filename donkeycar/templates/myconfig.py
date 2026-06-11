@@ -38,21 +38,57 @@ CAMERA_INDEX = 0         # 摄像头索引（默认：0）
 # 智驾相关配置
 DRIVE_LOOP_HZ = 60      # 系统运行的循环频率（Hz）
 AI_THROTTLE_MULT = 1.1  # 自动驾驶时，油门的缩放因子（默认：1.1）
+DRIVE_VIDEO_TRANSPORT = "webrtc"  # 视频传输模式 ("webrtc" / "mjpeg")
+DRIVE_VIDEO_WIDTH = 320          # 视频流宽度
+DRIVE_VIDEO_HEIGHT = 240         # 视频流高度
+DRIVE_VIDEO_FPS = 60             # 视频流目标帧率
+DRIVE_WEBRTC_ENABLED = True      # 是否启用 WebRTC
+DRIVE_WEBRTC_SINGLE_CLIENT = True  # 是否只允许单个客户端
+DRIVE_WEBRTC_RECONNECT_TIMEOUT_SEC = 3.0  # WebRTC 连接超时恢复时间（秒）
+DRIVE_WEBRTC_ICE_SERVERS = []  # 示例: [{"urls": ["turn:192.168.3.96:3478?transport=udp"], "username": "donkey", "credential": "donkey-turn-secret"}]
 
 #--------------------------For DonkeySim 驴车模拟器相关配置
 # DonkeySim 驴车模拟器相关配置
-DONKEY_GYM = False           # 是否使用DonkeySim模拟器（默认：False）
+DONKEY_GYM = True           # 是否使用DonkeySim模拟器（默认：False）
 DONKEY_SIM_PATH = "remote"  # DonkeySim模拟器的安装路基（默认："remote"，需要先运行DonkeySim模拟器）
 GYM_CONF = { 
-    "body_style" : "donkey",        # 车子模型（"donkey" | "bare" | "car01" | "f1" | "cybertruck")
-    "body_rgb" : (128, 128, 128),   # 车子颜色(红, 绿, 蓝)，数值范围（0-255）
+    "body_style" : "car01",        # 车子模型（"donkey" | "bare" | "car01" | "f1" | "cybertruck")
+    "body_rgb" : (128, 12, 12),   # 车子颜色(红, 绿, 蓝)，数值范围（0-255）
     "car_name" : "DKC",             # 小车名称
     "font_size" : 50                # 车名字体大小
     } 
 
-
 def get_wsl_host_ip():
-    # 尝试 1: 使用 ip route 获取默认网关 (WSL2 中 Windows 主机 IP 就是默认网关)
+    # 尝试 1: 使用 ipconfig.exe 优先获取 Windows 真实局域网 IP (192.168.x.x)
+    try:
+        result = subprocess.run(['ipconfig.exe'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            output = result.stdout
+            try:
+                text = output.decode('gbk')
+            except:
+                text = output.decode('utf-8', errors='ignore')
+
+            ips = []
+            for line in text.splitlines():
+                if "IPv4" in line or "IP Address" in line:
+                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                    if match:
+                        ips.append(match.group(1))
+
+            # 优先返回 192.168.x.x 局域网地址
+            for ip in ips:
+                if ip.startswith("192.168."):
+                    return ip
+
+            # 其次返回其他非回环、非 WSL 虚拟网段地址
+            for ip in ips:
+                if not ip.startswith("127.") and not ip.startswith("172.") and not ip.startswith("10.255."):
+                    return ip
+    except Exception:
+        pass
+
+    # 尝试 2: 使用 ip route 获取默认网关 (WSL2 中 Windows 主机虚拟网卡 IP)
     try:
         result = subprocess.run(['ip', 'route', 'show'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
@@ -62,33 +98,6 @@ def get_wsl_host_ip():
     except Exception:
         pass
 
-    # 尝试 2: 使用 ipconfig.exe (能获取 Windows 局域网 IP)
-    try:
-        result = subprocess.run(['ipconfig.exe'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode == 0:
-            output = result.stdout
-            try:
-                text = output.decode('gbk')
-            except:
-                text = output.decode('utf-8', errors='ignore')
-            
-            ips = []
-            for line in text.splitlines():
-                if "IPv4" in line or "IP Address" in line:
-                    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
-                    if match:
-                        ips.append(match.group(1))
-            
-            for ip in ips:
-                if ip.startswith("192.168."):
-                    return ip
-            
-            for ip in ips:
-                if not ip.startswith("127.") and not ip.startswith("172.") and not ip.startswith("10.255."):
-                    return ip
-    except Exception:
-        pass
-    
     return "127.0.0.1"
 
 SIM_HOST = get_wsl_host_ip()

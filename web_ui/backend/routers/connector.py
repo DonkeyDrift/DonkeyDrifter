@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from connector_engine import connector_job_manager
+from network_utils import get_local_ips, discover_hosts
 from remote_car_client import ConnectorConfig, RemoteCarClient, validate_remote_path
 
 
@@ -247,3 +248,25 @@ async def stream_job_events(job_id: str):
                 break
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.get("/local_ips")
+async def list_local_ips():
+    """返回本机可用于局域网通信的 IPv4 地址列表（优先 RFC1918 私有地址）。"""
+    ips = get_local_ips()
+    return {"ips": ips, "count": len(ips)}
+
+
+@router.post("/discover")
+async def discover_cars():
+    """扫描局域网中开放 SSH 端口（22）的主机，返回候选车辆 IP 列表。"""
+    try:
+        found, scanned = await discover_hosts(port=22)
+        message = ""
+        if not found:
+            message = f"扫描了 {scanned} 个地址，未在局域网中发现开放 SSH 端口的主机。请确认车端已开机并与本机处于同一网络。"
+        else:
+            message = f"扫描了 {scanned} 个地址，发现 {len(found)} 个开放 SSH 端口的主机。"
+        return {"status": True, "found": found, "count": len(found), "scanned": scanned, "message": message}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

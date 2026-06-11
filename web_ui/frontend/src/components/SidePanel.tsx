@@ -1,54 +1,110 @@
 import React from 'react';
 import { ConfigLoader } from './ConfigLoader';
 import { TubLoader } from './TubLoader';
-import { PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
+import { SimulatorConfig } from './SimulatorConfig';
+import { FolderOpen, Plug } from 'lucide-react';
 
 import { useStore } from '../store/useStore';
 
 export const SidePanel: React.FC = () => {
-  const { isSidePanelOpen, setSidePanelOpen } = useStore();
+  const { activeDrawer, setActiveDrawer } = useStore();
+  const [hovered, setHovered] = React.useState<'loaders' | 'connectors' | null>(null);
+
+  const isLoadersOpen = activeDrawer === 'loaders';
+  const isConnectorsOpen = activeDrawer === 'connectors';
+
+  const toggleLoaders = () => setActiveDrawer(isLoadersOpen ? null : 'loaders');
+  const toggleConnectors = () => setActiveDrawer(isConnectorsOpen ? null : 'connectors');
+
+  const anyOpen = isLoadersOpen || isConnectorsOpen;
 
   return (
-    <div 
-      className={`fixed left-0 top-16 h-[calc(100vh-4rem)] z-40 transition-all duration-300 ease-in-out ${
-        isSidePanelOpen ? 'w-96' : 'w-0'
-      }`}
-    >
-      {/* Trigger Tab */}
-      <button
-        onClick={() => setSidePanelOpen(!isSidePanelOpen)}
-        className="absolute left-full top-2 bg-zinc-900 border border-l-0 border-zinc-800 p-2 rounded-r-md text-zinc-400 hover:text-white transition-all duration-300 shadow-lg flex items-center group"
+    <>
+      {/* Shared Drawer Container — width only changes when opening/closing, not when switching tabs */}
+      <div
+        className={`fixed left-0 top-16 h-[calc(100vh-4rem)] z-40 transition-all duration-300 ease-in-out ${
+          anyOpen ? 'w-96' : 'w-0'
+        }`}
       >
-        {isSidePanelOpen ? <PanelLeftClose className="w-5 h-5 shrink-0" /> : <PanelLeftOpen className="w-5 h-5 shrink-0" />}
-        {!isSidePanelOpen && (
-          <span className="text-xs font-medium flex items-center overflow-hidden transition-all duration-300 max-w-0 opacity-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2 group-hover:gap-1 group-hover:pr-1">
-            <Settings2 className="w-4 h-4 shrink-0" />
-            <span className="whitespace-nowrap">Loaders</span>
-          </span>
-        )}
-      </button>
+        {/* Floating Trigger Buttons — outside overflow-hidden content */}
+        <div className="absolute left-full top-2 flex flex-col gap-1 items-start">
+          {/* Loaders Button */}
+          <button
+            onClick={toggleLoaders}
+            onMouseEnter={() => setHovered('loaders')}
+            onMouseLeave={() => setHovered(null)}
+            className={`border p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center ${
+              isLoadersOpen
+                ? 'bg-zinc-900 text-cyan-400 border-cyan-800/60'
+                : hovered === 'loaders'
+                  ? 'bg-zinc-800 text-white border-zinc-700'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+            } ${anyOpen ? 'border-l' : 'border-l-0'}`}
+          >
+            <FolderOpen className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isLoadersOpen ? 'text-cyan-400' : hovered === 'loaders' ? 'text-white' : 'text-zinc-400'}`} />
+            <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen || hovered === 'loaders' ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
+              Loaders
+            </span>
+          </button>
 
-      {/* Panel Content */}
-      <div className="h-full bg-zinc-900 border-r border-zinc-800 shadow-2xl overflow-y-auto overflow-x-hidden">
-        <div className={`p-6 space-y-6 transition-opacity duration-300 ${isSidePanelOpen ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="flex items-center gap-2 mb-2 text-zinc-100 font-bold text-lg border-b border-zinc-800 pb-4">
-            <Settings2 className="w-5 h-5 text-cyan-500" />
-            Data Management
-          </div>
-          <div className="space-y-6">
-            <ConfigLoader />
-            <TubLoader />
+          {/* Connectors Button */}
+          <button
+            onClick={toggleConnectors}
+            onMouseEnter={() => setHovered('connectors')}
+            onMouseLeave={() => setHovered(null)}
+            className={`border p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center ${
+              isConnectorsOpen
+                ? 'bg-zinc-900 text-cyan-400 border-cyan-800/60'
+                : hovered === 'connectors'
+                  ? 'bg-zinc-800 text-white border-zinc-700'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+            } ${anyOpen ? 'border-l' : 'border-l-0'}`}
+          >
+            <Plug className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isConnectorsOpen ? 'text-cyan-400' : hovered === 'connectors' ? 'text-white' : 'text-zinc-400'}`} />
+            <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen || hovered === 'connectors' ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
+              Connectors
+            </span>
+          </button>
+        </div>
+
+        {/* Panel Content — inside overflow-hidden area */}
+        <div className="h-full bg-zinc-900 border-r border-zinc-800 shadow-2xl overflow-y-auto overflow-x-hidden">
+          <div className={`p-6 space-y-6 transition-opacity duration-300 ${anyOpen ? 'opacity-100' : 'opacity-0'}`}>
+            {isLoadersOpen && (
+              <>
+                <div className="flex items-center gap-2 mb-2 text-zinc-100 font-bold text-lg border-b border-zinc-800 pb-4">
+                  <FolderOpen className="w-5 h-5 text-cyan-500" />
+                  Loaders
+                </div>
+                <div className="space-y-6">
+                  <ConfigLoader />
+                  <TubLoader />
+                </div>
+              </>
+            )}
+
+            {isConnectorsOpen && (
+              <>
+                <div className="flex items-center gap-2 mb-2 text-zinc-100 font-bold text-lg border-b border-zinc-800 pb-4">
+                  <Plug className="w-5 h-5 text-cyan-500" />
+                  Connectors
+                </div>
+                <div className="space-y-6">
+                  <SimulatorConfig />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Backdrop for mobile or focusing */}
-      {isSidePanelOpen && (
-        <div 
-          className="fixed inset-0 bg-black/20 -z-10 backdrop-blur-[1px]"
-          onClick={() => setSidePanelOpen(false)}
+      {/* Shared Backdrop */}
+      {anyOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-30 backdrop-blur-[1px]"
+          onClick={() => setActiveDrawer(null)}
         />
       )}
-    </div>
+    </>
   );
 };
