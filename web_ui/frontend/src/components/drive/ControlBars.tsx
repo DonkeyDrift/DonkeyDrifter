@@ -20,7 +20,7 @@ export const ControlBars: React.FC<ControlBarsProps> = ({ angle, className = '' 
           <span className="text-zinc-400 font-medium">转 向</span>
           <span>右 转</span>
         </div>
-        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden relative w-[220px] mx-auto">
+        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden relative w-full">
           <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-zinc-600" />
           {angle >= 0 ? (
             <div

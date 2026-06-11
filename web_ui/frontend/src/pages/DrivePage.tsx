@@ -231,17 +231,19 @@ export const DrivePage: React.FC = () => {
             <span className="text-[10px] text-zinc-500">支持鼠标 / 触屏</span>
           </div>
           <div className="flex-1 flex flex-col items-center gap-4">
-            <div className="flex items-center gap-6">
+            <div className="grid grid-cols-[auto_220px] gap-6">
               <VerticalThrottleBar throttle={throttle} className="h-[220px]" />
-              <VirtualJoystick
-                onChange={(a, t) => {
-                  joystickRef.current = { angle: a, throttle: t };
-                  lastInputType.current = 'joystick';
-                }}
-                size={220}
-              />
+              <div className="flex flex-col items-center gap-2 w-[220px]">
+                <VirtualJoystick
+                  onChange={(a, t) => {
+                    joystickRef.current = { angle: a, throttle: t };
+                    lastInputType.current = 'joystick';
+                  }}
+                  size={220}
+                />
+                <ControlBars angle={angle} className="w-full" />
+              </div>
             </div>
-            <ControlBars angle={angle} className="w-full max-w-[220px]" />
             <ProgrammableButtons
               className="w-full max-w-[240px]"
               onClick={(id) => send({ buttons: { [id]: true } })}
