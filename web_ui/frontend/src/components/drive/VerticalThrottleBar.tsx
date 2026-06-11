@@ -36,9 +36,9 @@ export const VerticalThrottleBar: React.FC<VerticalThrottleBarProps> = ({ thrott
       </div>
 
       {/* 右侧标签：前进 / 油门 / 倒车 */}
-      <div className="absolute left-full ml-2 flex flex-col justify-between h-full py-1 text-[10px] text-zinc-500">
+      <div className="absolute left-full ml-2 flex flex-col justify-between h-full py-1 text-[10px] text-zinc-500 items-start">
         <span>前进</span>
-        <span className="[writing-mode:vertical-rl] self-center">油门</span>
+        <span className="[writing-mode:vertical-rl] -translate-x-1">油 门</span>
         <span>倒车</span>
       </div>
     </div>
