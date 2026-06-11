@@ -361,6 +361,22 @@ export const createConnectorJobStream = (jobId: string) => {
   return new EventSource(`${API_URL}/connector/jobs/${jobId}/events`);
 };
 
+export const getConnectorLocalIps = async () => {
+  const response = await api.get('/connector/local_ips');
+  return response.data as { ips: { ip: string; interface: string; priority: number }[]; count: number };
+};
+
+export const discoverConnectorCars = async () => {
+  const response = await api.post('/connector/discover');
+  return response.data as {
+    status: boolean;
+    found: { ip: string; port: number; latency_ms: number; reachable: boolean }[];
+    count: number;
+    scanned: number;
+    message: string;
+  };
+};
+
 // ------------------------------------------------------------------
 // Pilot Arena APIs
 // ------------------------------------------------------------------

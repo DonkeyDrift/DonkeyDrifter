@@ -25,6 +25,8 @@ def test_main_registers_connector_router():
     routes = {route.path for route in main.app.routes}
     assert "/api/connector/config" in routes
     assert "/api/connector/status" in routes
+    assert "/api/connector/local_ips" in routes
+    assert "/api/connector/discover" in routes
 
 
 def test_config_round_trip(monkeypatch, tmp_path):
@@ -369,3 +371,62 @@ def test_drive_stop_failure_keeps_pid(monkeypatch):
 
     assert job.status == "failed"
     assert manager.drive_pid == 1234
+
+
+def test_local_ips_endpoint(monkeypatch, tmp_path):
+    client, connector = make_client(monkeypatch, tmp_path)
+
+    def fake_get_local_ips():
+        return [
+            {"ip": "192.168.1.10", "interface": "eth0", "priority": 0},
+            {"ip": "10.0.0.5", "interface": "wlan0", "priority": 0},
+        ]
+
+    monkeypatch.setattr(connector, "get_local_ips", fake_get_local_ips)
+
+    response = client.get("/api/connector/local_ips")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 2
+    assert data["ips"][0]["ip"] == "192.168.1.10"
+
+
+def test_discover_endpoint(monkeypatch, tmp_path):
+    import asyncio
+    from network_utils import discover_hosts
+
+    client, connector = make_client(monkeypatch, tmp_path)
+
+    async def fake_discover_hosts(port, timeout=0.4, max_concurrent=64):
+        return [
+            {"ip": "192.168.1.20", "port": port, "latency_ms": 2.5, "reachable": True}
+        ], 256
+
+    monkeypatch.setattr(connector, "discover_hosts", fake_discover_hosts)
+
+    response = client.post("/api/connector/discover")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] is True
+    assert data["count"] == 1
+    assert data["found"][0]["ip"] == "192.168.1.20"
+    assert "扫描了 256 个地址" in data["message"]
+
+
+def test_discover_endpoint_empty_result(monkeypatch, tmp_path):
+    client, connector = make_client(monkeypatch, tmp_path)
+
+    async def fake_discover_hosts(port, timeout=0.4, max_concurrent=64):
+        return [], 256
+
+    monkeypatch.setattr(connector, "discover_hosts", fake_discover_hosts)
+
+    response = client.post("/api/connector/discover")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] is True
+    assert data["count"] == 0
+    assert "未在局域网中发现开放 SSH 端口的主机" in data["message"]
