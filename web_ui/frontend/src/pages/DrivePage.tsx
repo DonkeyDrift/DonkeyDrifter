@@ -231,10 +231,8 @@ export const DrivePage: React.FC = () => {
             <span className="text-[10px] text-zinc-500">支持鼠标 / 触屏</span>
           </div>
           <div className="flex-1 flex flex-col items-center gap-4">
-            <div className="relative">
-              <div className="absolute right-full mr-8 top-1/2 -translate-y-1/2">
-                <VerticalThrottleBar throttle={throttle} className="h-[220px]" />
-              </div>
+            <div className="flex items-center gap-6">
+              <VerticalThrottleBar throttle={throttle} className="h-[220px]" />
               <VirtualJoystick
                 onChange={(a, t) => {
                   joystickRef.current = { angle: a, throttle: t };
