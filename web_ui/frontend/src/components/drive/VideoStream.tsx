@@ -4,7 +4,7 @@ import { Wifi, WifiOff } from 'lucide-react';
 import { useDriveWebRtcVideo } from '../../hooks/useDriveWebRtcVideo';
 import type { WebRtcSignal } from '../../hooks/useDriveWebsocket';
 
-export const DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS = 15000;
+export const DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS = 3000;
 
 interface VideoStreamProps {
   className?: string;
@@ -24,7 +24,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedTransport = transport ?? getDriveVideoTransport();
   const forceMjpeg = selectedTransport === 'mjpeg';
-  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg, clientId });
+  const { videoRef, state, stats, metrics } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg, clientId, carOnline: carOnline ?? false });
 
   const streamUrl = `${API_URL}/drive/video`;
   const webRtcConnected = state === 'connected' && !stats.degraded;
@@ -118,7 +118,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
         </span>
       );
     }
-    if (!degraded && webRtcConnected) {
+    if (webRtcConnected) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">
           <Wifi className="w-3 h-3" />
@@ -161,7 +161,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   })();
 
   return (
-    <div className={`relative bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden ${className}`}>
+    <div className={`relative bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden min-h-[360px] ${className}`}>
       <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
         {statusBadge}
         {degraded && (
@@ -172,8 +172,8 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
       </div>
       <div className="absolute right-2 top-2 z-10 rounded-md border border-white/10 bg-zinc-900/35 px-2 py-1 text-center shadow-[0_8px_24px_rgba(0,0,0,0.25)] backdrop-blur-md">
         <div className="text-[10px] text-zinc-400 uppercase leading-none">FPS</div>
-        <div className="text-base font-mono leading-tight text-cyan-400">{degraded ? mjpegFps : browserFps}</div>
-        {!degraded && (
+        <div className="text-base font-mono leading-tight text-cyan-400">{webRtcConnected ? browserFps : mjpegFps}</div>
+        {webRtcConnected && (
           <div className="mt-1 flex gap-2 text-[10px] text-zinc-400">
             <span>P95 {p95}ms</span>
             <span>源 {sourceFps}</span>
@@ -181,31 +181,34 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
           </div>
         )}
       </div>
-      {degraded ? (
-        <img
-          key={retryCount}
-          ref={imgRef}
-          src={streamUrl}
-          alt="Camera feed"
-          onLoad={() => setStatus('connected')}
-          onError={() => {
-            setStatus('error');
-            scheduleRetry();
-          }}
-          className="w-full h-auto object-contain min-h-[360px]"
-        />
-      ) : (
+      {/* MJPEG 层：始终预加载，WebRTC 成功后被覆盖 */}
+      <img
+        key={retryCount}
+        ref={imgRef}
+        src={streamUrl}
+        alt="Camera feed"
+        onLoad={() => setStatus('connected')}
+        onError={() => {
+          setStatus('error');
+          scheduleRetry();
+        }}
+        className={`absolute inset-0 w-full h-full object-contain ${webRtcConnected ? 'opacity-0' : 'opacity-100'}`}
+      />
+      {/* WebRTC 层：覆盖在 MJPEG 上方，连接成功后显示 */}
+      {!forceMjpeg && (
         <video
           ref={videoRef}
           aria-label="WebRTC camera feed"
           autoPlay
           playsInline
           muted
-          className="w-full h-auto object-contain min-h-[360px]"
+          className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-500 ${
+            webRtcConnected ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none'
+          }`}
         />
       )}
-      {degraded && status !== 'connected' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 pointer-events-none">
+      {!webRtcConnected && status !== 'connected' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 pointer-events-none z-20">
           <div className="text-center text-zinc-500 text-sm">
             {carOnline === false
               ? '车端离线：等待 DriveApiBridge 连接到 /api/drive/ws?role=car'

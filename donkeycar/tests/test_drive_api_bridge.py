@@ -412,7 +412,10 @@ def test_drive_api_bridge_creates_aiortc_peer_from_offer(monkeypatch):
     monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCSessionDescription", FakeSessionDescription)
 
     bridge = DriveApiBridge(auto_start=False)
-    monkeypatch.setattr(bridge, "_post_webrtc_answer", lambda session_id, sdp: answers.append((session_id, sdp)))
+
+    async def mock_post_webrtc_answer_async(session_id, sdp):
+        answers.append((session_id, sdp))
+    monkeypatch.setattr(bridge, "_post_webrtc_answer_async", mock_post_webrtc_answer_async)
 
     bridge._handle_webrtc_signal({
         "type": "webrtc_signal",
@@ -445,7 +448,10 @@ def test_drive_api_bridge_passes_ice_servers_to_aiortc_peer(monkeypatch):
     monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCIceServer", FakeIceServer)
 
     bridge = DriveApiBridge(auto_start=False, webrtc_ice_servers=servers)
-    monkeypatch.setattr(bridge, "_post_webrtc_answer", lambda _session_id, _sdp: None)
+
+    async def mock_post_webrtc_answer_async(_session_id, _sdp):
+        pass
+    monkeypatch.setattr(bridge, "_post_webrtc_answer_async", mock_post_webrtc_answer_async)
 
     bridge._handle_webrtc_signal({
         "type": "webrtc_signal",
@@ -480,7 +486,10 @@ def test_drive_api_bridge_posts_answer_before_set_local_description(monkeypatch,
     monkeypatch.setattr("donkeycar.parts.drive_api_bridge.RTCSessionDescription", FakeSessionDescription)
 
     bridge = DriveApiBridge(auto_start=False)
-    monkeypatch.setattr(bridge, "_post_webrtc_answer", lambda session_id, sdp: answers.append((session_id, sdp)))
+
+    async def mock_post_webrtc_answer_async(session_id, sdp):
+        answers.append((session_id, sdp))
+    monkeypatch.setattr(bridge, "_post_webrtc_answer_async", mock_post_webrtc_answer_async)
 
     bridge._handle_webrtc_signal({
         "type": "webrtc_signal",

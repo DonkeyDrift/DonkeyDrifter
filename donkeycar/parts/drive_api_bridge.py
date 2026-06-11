@@ -466,7 +466,7 @@ class DriveApiBridge:
         await peer.setRemoteDescription(RTCSessionDescription(sdp=msg.get("sdp", ""), type="offer"))
         answer = await peer.createAnswer()
         started_at = time.time()
-        self._post_webrtc_answer(msg["session_id"], answer.sdp)
+        await self._post_webrtc_answer_async(msg["session_id"], answer.sdp)
         self.webrtc_answer_sent_elapsed_ms = (time.time() - started_at) * 1000.0
         try:
             await asyncio.wait_for(peer.setLocalDescription(answer), timeout=self.webrtc_local_description_timeout)
@@ -562,6 +562,16 @@ class DriveApiBridge:
         response.raise_for_status()
         return response
 
+    async def _post_json_async(self, path: str, payload: dict):
+        """在线程池中执行同步 HTTP 请求，避免阻塞 asyncio 事件循环。"""
+        url = f"{self.http_api_base}{path}"
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None, lambda: requests.post(url, json=payload, timeout=3)
+        )
+        response.raise_for_status()
+        return response
+
     def _post_webrtc_answer(self, session_id: str, sdp: str):
         self._post_json("/webrtc/answer", {
             "session_id": session_id,
@@ -569,8 +579,22 @@ class DriveApiBridge:
             "type": "answer",
         })
 
+    async def _post_webrtc_answer_async(self, session_id: str, sdp: str):
+        await self._post_json_async("/webrtc/answer", {
+            "session_id": session_id,
+            "sdp": sdp,
+            "type": "answer",
+        })
+
     def _post_webrtc_ice(self, session_id: str, candidate: dict):
         self._post_json("/webrtc/ice", {
+            "session_id": session_id,
+            "source": "car",
+            "candidate": candidate,
+        })
+
+    async def _post_webrtc_ice_async(self, session_id: str, candidate: dict):
+        await self._post_json_async("/webrtc/ice", {
             "session_id": session_id,
             "source": "car",
             "candidate": candidate,

@@ -65,29 +65,30 @@ describe('VideoStream', () => {
     expect(screen.getByText('WebRTC')).toBeInTheDocument();
     expect(screen.getByText('P95 24ms')).toBeInTheDocument();
     expect(screen.getByText('源 60')).toBeInTheDocument();
-    expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
+    expect(screen.getByLabelText('WebRTC camera feed')).toHaveClass('opacity-100');
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-0');
   });
 
-  it('WebRTC 降级后在 fallback 延迟前仍保持 video', () => {
+  it('WebRTC 降级后在 fallback 延迟前 video 透明、MJPEG 可见', () => {
     vi.useFakeTimers();
     mockWebRtc.mockReturnValue(degradedState());
 
     render(<VideoStream />);
 
-    expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
-    expect(screen.queryByAltText('Camera feed')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('WebRTC camera feed')).toHaveClass('opacity-0');
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-100');
     expect(screen.queryByText('非 60FPS 验收路径')).not.toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS - 1);
     });
 
-    expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
-    expect(screen.queryByAltText('Camera feed')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('WebRTC camera feed')).toHaveClass('opacity-0');
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-100');
     vi.useRealTimers();
   });
 
-  it('WebRTC 超过 fallback 延迟后才显示 MJPEG', () => {
+  it('WebRTC 超过 fallback 延迟后 video 透明、MJPEG 可见且显示降级标签', () => {
     vi.useFakeTimers();
     mockWebRtc.mockReturnValue(degradedState());
 
@@ -97,13 +98,13 @@ describe('VideoStream', () => {
       vi.advanceTimersByTime(DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS);
     });
 
-    expect(screen.getByAltText('Camera feed')).toBeInTheDocument();
-    expect(screen.queryByLabelText('WebRTC camera feed')).not.toBeInTheDocument();
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-100');
+    expect(screen.getByLabelText('WebRTC camera feed')).toHaveClass('opacity-0');
     expect(screen.getByText('非 60FPS 验收路径')).toBeInTheDocument();
     vi.useRealTimers();
   });
 
-  it('fallback 后 WebRTC 重试成功会切回 video', () => {
+  it('fallback 后 WebRTC 重试成功会切回 video 覆盖 MJPEG', () => {
     vi.useFakeTimers();
     mockWebRtc.mockReturnValue(degradedState());
     const { rerender } = render(<VideoStream />);
@@ -111,13 +112,13 @@ describe('VideoStream', () => {
     act(() => {
       vi.advanceTimersByTime(DRIVE_VIDEO_MJPEG_FALLBACK_DELAY_MS);
     });
-    expect(screen.getByAltText('Camera feed')).toBeInTheDocument();
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-100');
 
     mockWebRtc.mockReturnValue(connectedState());
     rerender(<VideoStream />);
 
-    expect(screen.getByLabelText('WebRTC camera feed')).toBeInTheDocument();
-    expect(screen.queryByAltText('Camera feed')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('WebRTC camera feed')).toHaveClass('opacity-100');
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-0');
     expect(screen.queryByText('非 60FPS 验收路径')).not.toBeInTheDocument();
     vi.useRealTimers();
   });

@@ -21,6 +21,7 @@ interface UseDriveWebRtcVideoOptions {
   retryIntervalMs?: number;
   disabled?: boolean;
   clientId?: string;
+  carOnline?: boolean;
 }
 
 export interface DriveVideoMetrics {
@@ -123,7 +124,7 @@ const collectBrowserInboundStats = async (peer: RTCPeerConnection | null): Promi
 };
 
 export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) => {
-  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = DRIVE_WEBRTC_NEGOTIATION_TIMEOUT_MS, retryIntervalMs = 5000, disabled = false, clientId } = options;
+  const { incomingSignal, peerConnectionFactory, negotiationTimeoutMs = DRIVE_WEBRTC_NEGOTIATION_TIMEOUT_MS, retryIntervalMs = 5000, disabled = false, clientId, carOnline } = options;
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -313,7 +314,9 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
 
   useEffect(() => {
     mountedRef.current = true;
-    start();
+    if (carOnline !== false) {
+      start();
+    }
     return () => {
       mountedRef.current = false;
       attemptIdRef.current += 1;
@@ -324,7 +327,7 @@ export const useDriveWebRtcVideo = (options: UseDriveWebRtcVideoOptions = {}) =>
       }
       closePeer();
     };
-  }, [closePeer, start]);
+  }, [closePeer, start, carOnline]);
 
   useEffect(() => {
     if (!incomingSignal || incomingSignal.session_id !== sessionIdRef.current || !peerRef.current) {
