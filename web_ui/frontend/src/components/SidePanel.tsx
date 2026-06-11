@@ -20,84 +20,55 @@ export const SidePanel: React.FC = () => {
 
   return (
     <>
-      {/* Floating Trigger Buttons — follow drawer together */}
-      <div className={`fixed top-16 z-50 flex flex-col gap-1 transition-all duration-300 ease-in-out ${anyOpen ? 'left-96' : 'left-0'}`}>
-        {/* Loaders Button */}
-        <button
-          onClick={toggleLoaders}
-          className={`bg-zinc-900 border border-zinc-800 p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center group ${
-            isLoadersOpen ? 'text-cyan-400 border-cyan-800/60' : 'text-zinc-400 hover:text-white'
-          } ${anyOpen ? 'border-l' : 'border-l-0'}`}
-        >
-          <FolderOpen className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isLoadersOpen ? 'text-cyan-400' : 'text-zinc-400 group-hover:text-white'}`} />
-          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2'}`}>
-            Loaders
-          </span>
-        </button>
-
-        {/* Connectors Button */}
-        <button
-          onClick={toggleConnectors}
-          className={`bg-zinc-900 border border-zinc-800 p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center group ${
-            isConnectorsOpen ? 'text-cyan-400 border-cyan-800/60' : 'text-zinc-400 hover:text-white'
-          } ${anyOpen ? 'border-l' : 'border-l-0'}`}
-        >
-          <Plug className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isConnectorsOpen ? 'text-cyan-400' : 'text-zinc-400 group-hover:text-white'}`} />
-          <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2'}`}>
-            Connectors
-          </span>
-        </button>
-      </div>
-
-      {/* Loaders Drawer */}
+      {/* Shared Drawer Container — width only changes when opening/closing, not when switching tabs */}
       <div
         className={`fixed left-0 top-16 h-[calc(100vh-4rem)] z-40 transition-all duration-300 ease-in-out ${
           anyOpen ? 'w-96' : 'w-0'
         }`}
       >
-        {/* Floating Trigger Buttons — outside overflow-hidden content */}
-        <div className="absolute left-full top-2 flex flex-col gap-1 items-start">
-          {/* Loaders Button */}
-          <button
-            onClick={toggleLoaders}
-            onMouseEnter={() => setHovered('loaders')}
-            onMouseLeave={() => setHovered(null)}
-            className={`border p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center ${
-              isLoadersOpen
-                ? 'bg-zinc-900 text-cyan-400 border-cyan-800/60'
-                : hovered === 'loaders'
-                  ? 'bg-zinc-800 text-white border-zinc-700'
-                  : 'bg-zinc-900 text-zinc-400 border-zinc-800'
-            } ${anyOpen ? 'border-l' : 'border-l-0'}`}
-          >
-            <FolderOpen className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isLoadersOpen ? 'text-cyan-400' : hovered === 'loaders' ? 'text-white' : 'text-zinc-400'}`} />
-            <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen || hovered === 'loaders' ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
-              Loaders
-            </span>
-          </button>
+        <div className="h-full bg-zinc-900 border-r border-zinc-800 shadow-2xl overflow-y-auto overflow-x-hidden relative">
+          {/* Floating Trigger Buttons — attached to drawer right edge */}
+          <div className="absolute left-full top-2 flex flex-col gap-1 items-start">
+            {/* Loaders Button */}
+            <button
+              onClick={toggleLoaders}
+              onMouseEnter={() => setHovered('loaders')}
+              onMouseLeave={() => setHovered(null)}
+              className={`border p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center ${
+                isLoadersOpen
+                  ? 'bg-zinc-900 text-cyan-400 border-cyan-800/60'
+                  : hovered === 'loaders'
+                    ? 'bg-zinc-800 text-white border-zinc-700'
+                    : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+              } ${anyOpen ? 'border-l' : 'border-l-0'}`}
+            >
+              <FolderOpen className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isLoadersOpen ? 'text-cyan-400' : hovered === 'loaders' ? 'text-white' : 'text-zinc-400'}`} />
+              <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen || hovered === 'loaders' ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
+                Loaders
+              </span>
+            </button>
 
-          {/* Connectors Button */}
-          <button
-            onClick={toggleConnectors}
-            onMouseEnter={() => setHovered('connectors')}
-            onMouseLeave={() => setHovered(null)}
-            className={`border p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center ${
-              isConnectorsOpen
-                ? 'bg-zinc-900 text-cyan-400 border-cyan-800/60'
-                : hovered === 'connectors'
-                  ? 'bg-zinc-800 text-white border-zinc-700'
-                  : 'bg-zinc-900 text-zinc-400 border-zinc-800'
-            } ${anyOpen ? 'border-l' : 'border-l-0'}`}
-          >
-            <Plug className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isConnectorsOpen ? 'text-cyan-400' : hovered === 'connectors' ? 'text-white' : 'text-zinc-400'}`} />
-            <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen || hovered === 'connectors' ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
-              Connectors
-            </span>
-          </button>
-        </div>
+            {/* Connectors Button */}
+            <button
+              onClick={toggleConnectors}
+              onMouseEnter={() => setHovered('connectors')}
+              onMouseLeave={() => setHovered(null)}
+              className={`border p-2 rounded-r-md transition-all duration-300 shadow-lg flex items-center ${
+                isConnectorsOpen
+                  ? 'bg-zinc-900 text-cyan-400 border-cyan-800/60'
+                  : hovered === 'connectors'
+                    ? 'bg-zinc-800 text-white border-zinc-700'
+                    : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+              } ${anyOpen ? 'border-l' : 'border-l-0'}`}
+            >
+              <Plug className={`w-5 h-5 shrink-0 transition-colors duration-300 ${isConnectorsOpen ? 'text-cyan-400' : hovered === 'connectors' ? 'text-white' : 'text-zinc-400'}`} />
+              <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${anyOpen || hovered === 'connectors' ? 'max-w-[100px] opacity-100 ml-2' : 'max-w-0 opacity-0 ml-0'}`}>
+                Connectors
+              </span>
+            </button>
+          </div>
 
-        {/* Panel Content — inside overflow-hidden area */}
-        <div className="h-full bg-zinc-900 border-r border-zinc-800 shadow-2xl overflow-y-auto overflow-x-hidden">
+          {/* Panel Content — switches without drawer movement */}
           <div className={`p-6 space-y-6 transition-opacity duration-300 ${anyOpen ? 'opacity-100' : 'opacity-0'}`}>
             {isLoadersOpen && (
               <>
