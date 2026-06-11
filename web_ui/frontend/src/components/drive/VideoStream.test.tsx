@@ -119,9 +119,16 @@ describe('VideoStream', () => {
     mockWebRtc.mockReturnValue(connectedState());
     rerender(<VideoStream />);
 
+    // WebRTC 立即开始渐入
     expect(screen.getByLabelText('WebRTC camera feed')).toHaveClass('opacity-100');
-    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-0');
+    // MJPEG 还在等待 500ms 延迟，等 WebRTC 完全显示后才开始淡出
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-100');
     expect(screen.queryByText('非 60FPS 验收路径')).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByAltText('Camera feed')).toHaveClass('opacity-0');
     vi.useRealTimers();
   });
 

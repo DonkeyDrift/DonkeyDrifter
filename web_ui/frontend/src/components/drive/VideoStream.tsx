@@ -23,6 +23,8 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   const imgRef = useRef<HTMLImageElement>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mjpegFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevWebRtcVisibleRef = useRef(false);
   const selectedTransport = transport ?? getDriveVideoTransport();
   const forceMjpeg = selectedTransport === 'mjpeg';
   const { videoRef, state, stats, metrics, videoReady } = useDriveWebRtcVideo({ incomingSignal, disabled: forceMjpeg, clientId, carOnline: carOnline ?? false });
@@ -31,6 +33,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
   const webRtcConnected = state === 'connected' && !stats.degraded;
   const webRtcVisible = webRtcConnected && videoReady;
   const degraded = forceMjpeg || mjpegFallbackAllowed;
+  const [mjpegVisible, setMjpegVisible] = useState(!webRtcVisible);
   const browserFps = Math.round(metrics.browserFps || stats.browser_fps || 0);
   const p95 = Math.round(metrics.p95FrameIntervalMs || stats.browser_p95_frame_interval_ms || 0);
   const sourceFps = Math.round(stats.source_fps || 0);
@@ -98,6 +101,29 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
     } else {
       video.addEventListener('loadedmetadata', updateRatio, { once: true });
     }
+  }, [webRtcVisible]);
+
+  useEffect(() => {
+    const wasVisible = prevWebRtcVisibleRef.current;
+    if (webRtcVisible && !wasVisible) {
+      // WebRTC 刚连上：等它完全渐入（500ms）后再淡出 MJPEG，避免中间 Gap 闪烁
+      mjpegFadeTimerRef.current = setTimeout(() => {
+        setMjpegVisible(false);
+      }, 500);
+    } else if (!webRtcVisible) {
+      if (mjpegFadeTimerRef.current) {
+        clearTimeout(mjpegFadeTimerRef.current);
+        mjpegFadeTimerRef.current = null;
+      }
+      setMjpegVisible(true);
+    }
+    prevWebRtcVisibleRef.current = webRtcVisible;
+    return () => {
+      if (mjpegFadeTimerRef.current) {
+        clearTimeout(mjpegFadeTimerRef.current);
+        mjpegFadeTimerRef.current = null;
+      }
+    };
   }, [webRtcVisible]);
 
   useEffect(() => {
@@ -200,7 +226,7 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
           </div>
         )}
       </div>
-      {/* MJPEG 层：始终预加载，WebRTC video 首帧就绪后才淡出 */}
+      {/* MJPEG 层：始终预加载，WebRTC 完全显示后才淡出，避免中间 Gap 闪烁 */}
       <img
         key={retryCount}
         ref={imgRef}
@@ -216,9 +242,9 @@ export const VideoStream: React.FC<VideoStreamProps> = ({ className = '', incomi
           setStatus('error');
           scheduleRetry();
         }}
-        className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-500 ${webRtcVisible ? 'opacity-0' : 'opacity-100'}`}
+        className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-500 ${mjpegVisible ? 'opacity-100' : 'opacity-0'}`}
       />
-      {/* WebRTC 层：覆盖在 MJPEG 上方，首帧就绪后显示 */}
+      {/* WebRTC 层：覆盖在 MJPEG 上方，首帧就绪后先渐入，完全显示后 MJPEG 再淡出 */}
       {!forceMjpeg && (
         <video
           ref={videoRef}
