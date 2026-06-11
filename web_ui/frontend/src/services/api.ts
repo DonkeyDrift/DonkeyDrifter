@@ -481,3 +481,26 @@ export const getArenaPredictions = async (pilotId: string, payload: {
   const response = await api.post(`/arena/pilots/${pilotId}/predictions`, payload);
   return response.data as { status: boolean; limit: number; points: ArenaPredictionPoint[] };
 };
+
+// ------------------------------------------------------------------
+// Simulator Discovery APIs
+// ------------------------------------------------------------------
+export interface SimulatorHost {
+  ip: string;
+  port: number;
+  latency_ms: number;
+  reachable: boolean;
+}
+
+export const discoverSimulator = async (carPath?: string) => {
+  const response = await api.post('/config/discover_simulator', { car_path: carPath });
+  return response.data as { status: boolean; found: SimulatorHost[]; count: number };
+};
+
+export const saveSimulatorConfig = async (payload: {
+  path: string;
+  config: Record<string, string | number | boolean>;
+}) => {
+  const response = await api.post('/config/save_simulator', payload);
+  return response.data as { status: boolean; message: string };
+};

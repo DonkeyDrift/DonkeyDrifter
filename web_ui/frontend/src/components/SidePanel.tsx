@@ -1,6 +1,7 @@
 import React from 'react';
 import { ConfigLoader } from './ConfigLoader';
 import { TubLoader } from './TubLoader';
+import { SimulatorConfig } from './SimulatorConfig';
 import { PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
 
 import { useStore } from '../store/useStore';
@@ -38,6 +39,7 @@ export const SidePanel: React.FC = () => {
           <div className="space-y-6">
             <ConfigLoader />
             <TubLoader />
+            <SimulatorConfig />
           </div>
         </div>
       </div>
