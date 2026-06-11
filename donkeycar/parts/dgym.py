@@ -178,13 +178,18 @@ class DonkeyGymEnv(object):
                     time.sleep(1.0)
                     continue
 
-            if self.delay > 0.0:
-                step_result = self.env.step(self.action)
-                current_frame, _, _, _, current_info = step_result
-                self.delay_buffer(current_frame, current_info)
-            else:
-                step_result = self.env.step(self.action)
-                self.frame, _, _, _, self.info = step_result
+            try:
+                if self.delay > 0.0:
+                    step_result = self.env.step(self.action)
+                    current_frame, _, _, _, current_info = step_result
+                    self.delay_buffer(current_frame, current_info)
+                else:
+                    step_result = self.env.step(self.action)
+                    self.frame, _, _, _, self.info = step_result
+            except Exception as e:
+                print(f"[DonkeyGymEnv] 模拟器连接异常: {e}")
+                self._close_env()
+                time.sleep(1.0)
 
     def run_threaded(self, steering, throttle, brake=None):
         if steering is None or throttle is None:
