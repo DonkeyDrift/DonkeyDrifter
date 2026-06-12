@@ -76,6 +76,12 @@ class DriveState:
         self.car_ws: Optional[WebSocket] = None
         self.client_ws: Dict[str, WebSocket] = {}
 
+        # 模拟器自动恢复任务
+        self.sim_recovery_task: Optional[asyncio.Task] = None
+        self.sim_recovery_interval: float = float(
+            os.environ.get("SIM_RECOVERY_INTERVAL", "5.0")
+        )
+
     async def broadcast_to_clients(self, data: dict):
         """向所有已连接的客户端广播消息，失败时关闭并清理失效连接。"""
         payload = json.dumps(data)
@@ -114,6 +120,40 @@ class DriveState:
         except Exception:
             self.car_ws = None
             return False
+
+    async def _sim_recovery_worker(self):
+        """周期性向车端发送重连模拟器请求。"""
+        while True:
+            try:
+                await asyncio.sleep(self.sim_recovery_interval)
+            except asyncio.CancelledError:
+                break
+
+            if self.car_ws is None:
+                logger.debug("恢复任务：车端不在线，跳过本次重连")
+                continue
+
+            try:
+                await self.car_ws.send_text(
+                    json.dumps({"type": "reconnect_simulator"})
+                )
+                logger.debug("恢复任务：已发送 reconnect_simulator 到车端")
+            except Exception as e:
+                logger.warning(f"恢复任务：发送重连命令失败: {e}")
+                self.car_ws = None
+
+    def start_sim_recovery(self):
+        """启动模拟器自动恢复任务。"""
+        if self.sim_recovery_task is None or self.sim_recovery_task.done():
+            self.sim_recovery_task = asyncio.create_task(self._sim_recovery_worker())
+            logger.info("模拟器自动恢复任务已启动")
+
+    def stop_sim_recovery(self):
+        """停止模拟器自动恢复任务。"""
+        if self.sim_recovery_task and not self.sim_recovery_task.done():
+            self.sim_recovery_task.cancel()
+            self.sim_recovery_task = None
+            logger.info("模拟器自动恢复任务已停止")
 
     def car_online(self) -> bool:
         """车端是否在线（心跳超时 5 秒视为离线）"""

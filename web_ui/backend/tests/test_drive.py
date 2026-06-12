@@ -1,8 +1,10 @@
+import asyncio
 import importlib
 import sys
 from datetime import datetime
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -367,3 +369,18 @@ def test_webrtc_session_resets_diagnostics():
     assert data["last_client_ice_at"] is None
     assert data["last_car_ice_at"] is None
     assert data["degraded"] is False
+
+
+@pytest.mark.anyio
+async def test_sim_recovery_starts_and_stops():
+    client, drive = make_client()
+    assert drive.drive_state.sim_recovery_task is None
+
+    drive.drive_state.start_sim_recovery()
+    assert drive.drive_state.sim_recovery_task is not None
+    assert not drive.drive_state.sim_recovery_task.done()
+
+    drive.drive_state.stop_sim_recovery()
+    # Give the event loop a chance to process cancellation
+    await asyncio.sleep(0.1)
+    assert drive.drive_state.sim_recovery_task is None or drive.drive_state.sim_recovery_task.done()
