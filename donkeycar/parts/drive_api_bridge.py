@@ -311,6 +311,7 @@ class DriveApiBridge:
         self.last_heartbeat = 0.0
         self.last_webrtc_stats = 0.0
         self.last_car_state = 0.0
+        self.last_num_records: int = 0
         self.active_webrtc_session_id = None
         self.webrtc_peer = None
         self.aiortc_track = None
@@ -337,6 +338,15 @@ class DriveApiBridge:
         if path.endswith("/ws"):
             path = path[:-3]
         return urlunsplit((scheme, parsed.netloc, path.rstrip("/"), "", ""))
+
+    def web_console_url(self) -> str:
+        """返回 Web Console 前端 URL，供车辆进程启动提示使用。"""
+        url = os.environ.get("DRIVE_WEB_CONSOLE_URL")
+        if url:
+            return url.rstrip("/")
+        parsed = urlsplit(self.server_url)
+        host = parsed.hostname or "localhost"
+        return f"http://{host}:5188"
 
     def start(self):
         self.running = True
@@ -406,6 +416,9 @@ class DriveApiBridge:
             return
         if msg.get("type") == "reconnect_simulator":
             self.reconnect_simulator = True
+            return
+        if msg.get("type") == "request_car_state":
+            self._send_car_state(self.last_num_records)
             return
         if "angle" in msg:
             self.angle = float(msg["angle"])
@@ -686,23 +699,27 @@ class DriveApiBridge:
                 self._send_webrtc_stats()
             if now - self.last_car_state >= 1.0:
                 self.last_car_state = now
-                self._send_car_state(num_records)
+                self.last_num_records = int(num_records or 0)
+                self._send_car_state(self.last_num_records)
             aiortc_sent_frames = getattr(self.aiortc_track, "sent_frames", 0)
             if (RTCPeerConnection is None or av is None or aiortc_sent_frames == 0) and self.connected and now - self.last_frame > 0.05:
                 self.last_frame = now
+                self.last_num_records = int(num_records or 0)
                 try:
-                    self._send_frame(img_arr, num_records, mode, recording)
+                    self._send_frame(img_arr, self.last_num_records, mode, recording)
                 except Exception as e:
                     logger.debug(f"发送降级帧失败: {e}")
         else:
             now = time.time()
             if now - self.last_car_state >= 1.0:
                 self.last_car_state = now
-                self._send_car_state(num_records)
+                self.last_num_records = int(num_records or 0)
+                self._send_car_state(self.last_num_records)
             if self.connected and img_arr is not None and now - self.last_frame > 0.05:
                 self.last_frame = now
+                self.last_num_records = int(num_records or 0)
                 try:
-                    self._send_frame(img_arr, num_records, mode, recording)
+                    self._send_frame(img_arr, self.last_num_records, mode, recording)
                 except Exception as e:
                     logger.debug(f"发送帧失败: {e}")
 
