@@ -17,7 +17,7 @@ def test_json_output(server):
     json_result = json.dumps(result)
     d = json.loads(json_result)
     
-    assert server.port == 8887
+    assert server.port == cfg.WEB_CONTROL_PORT
     
     assert d is not None
     assert int(d[0]) == 0
