@@ -833,3 +833,26 @@ def test_drive_api_bridge_handles_reconnect_simulator():
     assert len(outputs) == 6, f"expected 6 outputs, got {len(outputs)}: {outputs}"
     assert outputs[-1] is True
     assert bridge.reconnect_simulator is False
+
+
+def test_drive_api_bridge_caches_last_num_records():
+    bridge = DriveApiBridge(auto_start=False)
+
+    bridge.run_threaded(img_arr=None, num_records=42, mode="user", recording=False)
+
+    assert bridge.last_num_records == 42
+
+
+def test_drive_api_bridge_handles_request_car_state(monkeypatch):
+    sent = []
+    bridge = DriveApiBridge(auto_start=False)
+    bridge.last_num_records = 123
+    monkeypatch.setattr(bridge, "_send_json", sent.append)
+
+    bridge._handle_message({"type": "request_car_state"})
+
+    assert sent == [{
+        "num_records": 123,
+        "drive_mode": bridge.mode,
+        "recording": bridge.recording,
+    }]
