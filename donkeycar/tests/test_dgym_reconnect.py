@@ -212,8 +212,6 @@ def test_update_detects_disconnect_and_reconnects(mock_gym_make):
     gym_env.shutdown()
     thread.join(timeout=2.0)
     assert not thread.is_alive(), "shutdown 后线程应该退出"
-
-
 def test_run_threaded_reconnect_closes_env(mock_gym_make):
     """验证 run_threaded 收到 reconnect=True 时会关闭当前 env。"""
     fake_env = FakeEnv(fail_after=9999)
