@@ -33,16 +33,17 @@ donkeycar/           # 当前实现包 + 遗留兼容性命名空间
   pipeline/          # 训练流水线、数据增强、序列处理、数据库、类型定义
   management/        # CLI 工具和 UI（base.py、tui.py、train_local.py、train_online.py、ui/、tub_web/）
   templates/         # `donkey createcar` 使用的车辆应用模板和默认配置（basic、complete、cv_control、path_follow、simulator、arduino_drive 等）
-  tests/             # 核心单元/集成测试（40+ 测试文件）
+  tests/             # 核心单元/集成测试（50+ 测试文件）
   utilities/         # 辅助工具和 TrackSpeedPlanner
   contrib/、gym/     # 社区和模拟器集成
 web_ui/              # 统一的 FastAPI 后端 + React/Vite 前端
   backend/main.py    # FastAPI 应用，挂载 /api/{config,tub,trainer,drive,arena,connector}
   backend/routers/   # FastAPI 路由模块（config.py、tub.py、trainer.py、drive.py、arena.py、connector.py）
-  backend/tests/     # FastAPI 契约测试（test_arena.py、test_branding.py、test_config.py、test_connector.py、test_drive.py）
+  backend/tests/     # FastAPI 契约测试（test_arena.py、test_branding.py、test_config.py、test_connector.py、test_drive.py、test_drive_ws_disconnect.py）
   backend/requirements.txt  # 后端运行时依赖清单
   frontend/package.json     # 前端 npm 依赖与脚本
   frontend/src/      # React/TypeScript/Vite SPA（pages/、components/、services/、store/、hooks/）
+  frontend/testsprite_tests/ # Playwright 风格的前端验收测试用例脚本
 parts/               # 额外的顶层部件目录（保留旧版 drive_api_bridge.py，但模板实际导入的是 donkeycar/parts/drive_api_bridge.py）
 tests/               # 根级迁移/集成测试（6 个文件）
 scripts/             # 独立工具（convert、freeze、profile、migrate_model_names、multi_train 等）
@@ -61,10 +62,10 @@ docs/                # 架构、计划、指南、验证、工作流规范
 | `donkeycar/tests/pytest.ini` | pytest 配置：忽略 `DeprecationWarning` 和 `FutureWarning`，启用 `log_cli = True` 且级别为 `INFO`，设置 `reruns = 3` |
 | `.github/linters/.python-black` | Black 配置：`line-length = 80`、`target-version = ['py37']`、`skip-string-normalization = true`（供 GitHub Super-Linter 使用）；注意项目实际运行时为 Python 3.11 |
 | `web_ui/frontend/package.json` | 前端 npm 包定义：React 18、TypeScript ~5.8、Vite 6、Tailwind CSS 3、Zustand、Chart.js、axios、react-router-dom 7、lucide-react、clsx、tailwind-merge；测试使用 vitest + jsdom + @testing-library/react + Playwright |
-| `web_ui/frontend/tsconfig.json` | TypeScript 配置：`module: ESNext`、`moduleResolution: bundler`、`jsx: react-jsx`、`strict: false`，路径别名 `@/* -> ./src/*` |
-| `web_ui/frontend/tailwind.config.js` | Tailwind 配置：`darkMode: "class"`，内容路径 `./index.html` 和 `./src/**/*` |
+| `web_ui/frontend/tsconfig.json` | TypeScript 配置：`module: ESNext`、`moduleResolution: bundler`、`jsx: react-jsx`、`strict: false`，包含 `src` 和 `api`，路径别名 `@/* -> ./src/*` |
+| `web_ui/frontend/tailwind.config.js` | Tailwind 配置：`darkMode: "class"`，内容路径 `./index.html` 和 `./src/**/*.{js,ts,jsx,tsx}` |
 | `web_ui/frontend/eslint.config.js` | ESLint 配置：`typescript-eslint` recommended + `react-hooks` recommended + `react-refresh/only-export-components` warn |
-| `web_ui/frontend/vite.config.ts` | Vite 配置：开发服务器端口 `5188`，`/api` 代理到 `http://localhost:8000`，测试环境 `jsdom`，生产构建含 manualChunks 拆包 |
+| `web_ui/frontend/vite.config.ts` | Vite 配置：开发服务器端口 `5188`、host `0.0.0.0`、`/api` 代理到 `VITE_API_PROXY_TARGET` 或 `http://localhost:8000`，测试环境 `jsdom` 且 `globals: true`，生产构建含 manualChunks 拆包，并集成 `vite-plugin-trae-solo-badge` |
 | `web_ui/backend/requirements.txt` | 后端独立运行时依赖：`fastapi`、`uvicorn`、`python-multipart`、`pandas`、`numpy`、`pillow`、`websockets`、`aiortc`、`av` |
 | `Dockerfile` | **已过时**。基于 `python:3.6`，引用不存在的 `setup.py` 和 `[tf]` extra，面向 Jupyter 而非 FastAPI/React Web UI。不要直接使用，除非明确更新。 |
 
@@ -86,9 +87,9 @@ docs/                # 架构、计划、指南、验证、工作流规范
 
 - `Vehicle`（`donkeycar/vehicle.py`）是主循环容器。
 - 部件通过 `Vehicle.add(part, inputs=[], outputs=[], threaded=False, run_condition=None)` 注册。
-- 每个循环节拍从 `Memory` 读取命名的 `inputs`，调用 `part.run()`（或对于 `threaded=True` 在后台线程中调用 `part.update()`），并将命名的 `outputs` 写回。
+- 每个循环节拍从 `Memory` 读取命名的 `inputs`，调用 `part.run()`（或对于 `threaded=True` 在后台线程中调用 `part.update()`，主循环再调用 `part.run_threaded()`），并将命名的 `outputs` 写回。
 - `Memory`（`donkeycar/memory.py`）是一个简单的键/值总线。部件通过字符串键通信，而非直接引用。
-- 部件使用鸭子类型：实现 `run()`；线程部件还实现 `update()`；清理放在 `shutdown()` 中。避免多个部件并发写入相同的 Memory 键。
+- 部件使用鸭子类型：实现 `run()`；线程部件还实现 `update()`，可选 `run_threaded()`；清理放在 `shutdown()` 中。避免多个部件并发写入相同的 Memory 键。
 
 ### Python 包与 CLI
 
@@ -100,12 +101,12 @@ docs/                # 架构、计划、指南、验证、工作流规范
 ### Web UI 架构
 
 - 后端入口是 `web_ui/backend/main.py`，通过 `include_router` 挂载 `/api/config`、`/api/tub`、`/api/trainer`、`/api/drive`、`/api/arena`、`/api/connector`。
-- 后端业务辅助模块包括 `trainer_engine.py`、`connector_engine.py`、`remote_car_client.py` 和 `web_online_trainer.py`。
-- 前端入口是 `web_ui/frontend/src/main.tsx` 和 `App.tsx`，页面位于 `src/pages/`，复用组件位于 `src/components/`。
+- 后端业务辅助模块包括 `trainer_engine.py`、`connector_engine.py`、`remote_car_client.py`、`web_online_trainer.py` 和 `network_utils.py`。
+- 前端入口是 `web_ui/frontend/src/main.tsx` 和 `App.tsx`；页面位于 `src/pages/`，复用组件位于 `src/components/`。
+- 生产构建使用 `HashRouter`，路由包括 `/`（Tub 管理）、`/trainer`、`/drive`、`/calibrate`、`/pilot`、`/connector`。`Home.tsx` 当前为空，根路由对应的 `TubManagerPage` 在 `App.tsx` 中内联定义。
 - 前端 API 客户端集中在 `web_ui/frontend/src/services/api.ts` 中；URL 拼接、WebSocket 地址和错误消息应复用这里的工具。`VITE_API_BASE_URL` 可以覆盖基础 URL，`VITE_DRIVE_VIDEO_TRANSPORT` 可以强制指定视频传输方式（`webrtc|mjpeg`）。
-- 驾驶相关状态与输入逻辑分布在 `src/store/useDriveStore.ts`、`src/hooks/useDriveWebsocket.ts`、`src/hooks/useKeyboardDrive.ts`、`src/hooks/useGamepadDrive.ts`、`src/hooks/useGyroDrive.ts`。
+- 驾驶相关状态与输入逻辑分布在 `src/store/useDriveStore.ts`、`src/hooks/useDriveWebsocket.ts`、`src/hooks/useDriveControlLoop.ts`、`src/hooks/useDriveWebRtcVideo.ts`、`src/hooks/useKeyboardDrive.ts`、`src/hooks/useGamepadDrive.ts`、`src/hooks/useGyroDrive.ts`、`src/hooks/useDriveHotkeys.ts`。
 - 视频传输可以通过 `VITE_DRIVE_VIDEO_TRANSPORT=webrtc|mjpeg` 强制指定；默认是自动。
-- 生产构建是使用 HashRouter 的静态 SPA（`/#/drive`、`/#/trainer` 等）。
 
 ### 车端 Web UI 桥
 
@@ -166,7 +167,7 @@ python -m pytest tests -q
 
 ```bash
 cd web_ui/frontend
-npm run check   # tsc --noEmit
+npm run check   # tsc -b --noEmit
 npm run lint    # eslint .
 npm run build
 npm run test    # vitest
@@ -207,22 +208,22 @@ make tests   # 运行 pytest
 - **Python**：`CONTRIBUTING.md` 引用 PEP-8。Black 配置存在于 `.github/linters/.python-black`（`line-length = 80`、`target-version = ['py37']`、`skip-string-normalization = true`），主要由 GitHub Super-Linter 使用；注意项目实际运行时为 Python 3.11。
 - **TypeScript**：`tsconfig.json` 使用 `module: ESNext`、`moduleResolution: bundler`、`jsx: react-jsx`、`strict: false`，路径别名 `@/* -> ./src/*`。
 - **ESLint**：`eslint.config.js` 使用 `typescript-eslint` recommended、`react-hooks` recommended，以及 `react-refresh/only-export-components` 作为警告。
-- **Tailwind**：`tailwind.config.js` 使用 `darkMode: "class"` 和内容路径 `./index.html` 和 `./src/**/*`。
+- **Tailwind**：`tailwind.config.js` 使用 `darkMode: "class"` 和内容路径 `./index.html` 和 `./src/**/*.{js,ts,jsx,tsx}`。
 
 ## 测试策略
 
 - **核心 Python 测试**：`pytest`（收集 `donkeycar/tests/` 和 `tests/`）。`donkeycar/tests/pytest.ini` 抑制弃用警告，启用 INFO 级别的 CLI 日志，并设置 `reruns = 3`。
 - **覆盖率**：`.coveragerc` 启用分支覆盖率并忽略 `donkeycar/tests/*`。
-- **根级集成测试**：`pytest tests/ -q` 覆盖迁移品牌、恢复逻辑、模型命名重构、在线训练器工作区、Tub 管理器刷新、驾驶页面布局。
-- **Web UI 后端测试**：`cd web_ui/backend && python -m pytest tests -q` 覆盖驱动（WebRTC/MJPEG/统计）、连接器、竞技场、配置和品牌。
-- **Web UI 前端测试**：`cd web_ui/frontend && npm run test` 在 jsdom 中运行 vitest。Playwright 风格的测试计划也存在于 `web_ui/frontend/testsprite_tests/` 下。
+- **根级集成测试**：`pytest tests/ -q` 覆盖迁移品牌、恢复逻辑、模型命名重构、在线训练器工作区、驾驶页面布局、Tub 管理器自动刷新。
+- **Web UI 后端测试**：`cd web_ui/backend && python -m pytest tests -q` 覆盖驱动（WebRTC/MJPEG/统计/WebSocket 断连）、连接器、竞技场、配置和品牌。
+- **Web UI 前端测试**：`cd web_ui/frontend && npm run test` 在 jsdom 中运行 vitest，当前包括 `src/hooks/*.test.tsx` 和 `src/components/drive/*.test.tsx`。Playwright 风格的验收测试计划位于 `web_ui/frontend/testsprite_tests/`。
 
 ## 部署和 CI/CD
 
 - **setuptools 打包**：`python -m build --sdist --wheel`（或 `make package`）生成 `donkeydrifter-<version>-py3-none-any.whl` 和 `donkeydrifter-<version>.tar.gz`。CI 在发布前运行 `twine check dist/*`。
 - **PyPI 发布**：`.github/workflows/publish-pypi.yml` 在标签 `v*` 上触发，先 build 再经 OIDC 发布到 PyPI。
 - **CI / 测试**：`.github/workflows/python-package-conda.yml` 在 push/PR 时跨 `macos-latest` 和 `ubuntu-latest` 运行，创建 Python 3.11 conda 环境，安装 `.[pc,dev]`，验证 `donkeydrifter` 和 `donkeycar` 导入，构建包，并运行 `pytest`。
-- **Super-Linter**：`.github/workflows/superlinter.yml` 以非阻塞模式运行 GitHub Super-Linter（`continue-on-error: true`、`DISABLE_ERRORS: true`）。
+- **Super-Linter**：`.github/workflows/superlinter.yml` 以非阻塞模式运行 GitHub Super-Linter（`continue-on-error: true`、`DISABLE_ERRORS: true`），排除 `*.css` 和 `*.js`。
 - **Docker**：顶层 `Dockerfile` 存在但目前已过时。它使用 `python:3.6`，引用不存在的 `setup.py` 和 `[tf]` extra，并面向 Jupyter 而非 FastAPI/React Web UI。除非明确更新，否则将其视为遗留文件。
 
 ## 安全注意事项
