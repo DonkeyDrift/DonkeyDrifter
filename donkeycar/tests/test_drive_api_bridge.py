@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import time
 
 import numpy as np
 
@@ -98,6 +99,8 @@ def test_drive_api_bridge_sends_base64_frame(monkeypatch):
     encoded_images = []
     bridge = DriveApiBridge(auto_start=False, video_transport="mjpeg")
     bridge.connected = True
+    # Suppress the periodic car_state send so this test only verifies the frame payload.
+    bridge.last_car_state = time.time()
 
     monkeypatch.setattr(
         "donkeycar.parts.drive_api_bridge.cv2.cvtColor",
@@ -115,7 +118,7 @@ def test_drive_api_bridge_sends_base64_frame(monkeypatch):
 
     assert outputs == (0.0, 0.0, "user", False, {}, False)
     assert encoded_images == ["converted-rgb-image-4"]
-    assert sent_payloads == [{
+    assert [p for p in sent_payloads if p.get("type") == "frame"] == [{
         "type": "frame",
         "data": base64.b64encode(b"jpeg-bytes").decode("ascii"),
         "num_records": 7,
